@@ -114,7 +114,7 @@ def db(Sessions) -> Iterator[Session]:
 def settings(db_url: str) -> Settings:
     return Settings(
         database_url=db_url,
-        public_base_url="https://testserver",
+        web_base_url="https://testserver",
         cookie_secure=True,
         mail_transport="console",
         _env_file=None,
@@ -147,13 +147,13 @@ def client(app) -> Iterator[TestClient]:
 
 # --- helpers ----------------------------------------------------------------------
 
-LINK_RE = re.compile(r"https://testserver/auth/confirm\?token=\S+")
+LINK_RE = re.compile(r"https://testserver/auth/confirm#token=\S+")
 
 
 def token_from_mail(text: str) -> str:
     m = LINK_RE.search(text)
     assert m, f"no sign-in link in mail:\n{text}"
-    return parse_qs(urlparse(m.group(0)).query)["token"][0]
+    return parse_qs(urlparse(m.group(0)).fragment)["token"][0]
 
 
 def make_user(db: Session, email: str, role: str = "member", status: str = "active") -> User:

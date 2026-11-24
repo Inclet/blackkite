@@ -160,7 +160,7 @@ def test_rate_limit_per_ip(client, settings):
 def test_link_points_at_confirm_page(client, db, outbox):
     make_user(db, "member@example.com")
     _request(client, "member@example.com")
-    assert "https://testserver/auth/confirm?token=" in outbox.outbox[0].text
+    assert "https://testserver/auth/confirm#token=" in outbox.outbox[0].text
     assert "/auth/verify" not in outbox.outbox[0].text
 
 
@@ -221,9 +221,36 @@ def test_invite_link_points_at_confirm_page(app, db, outbox):
     c = sign_in(TestClient(app, base_url="https://testserver"), outbox, "admin@example.com")
     assert c.post("/admin/invites", json={"email": "new@example.com"}).status_code == 201
     text = outbox.outbox[-1].text
-    assert "https://testserver/auth/confirm?token=" in text
+    assert "https://testserver/auth/confirm#token=" in text
     token = token_from_mail(text)
     invitee = TestClient(app, base_url="https://testserver")
     assert invitee.get("/auth/verify", params={"token": token}).status_code == 405
     assert _verify(invitee, token).status_code == 200
     assert invitee.get("/me").json()["email"] == "new@example.com"
+
+
+# --- Link target: the web origin, token in the fragment ---------------------------
+
+
+def test_link_default_is_web_origin_with_fragment_token(monkeypatch):
+    from urllib.parse import urlparse
+
+    from blackkite.auth.service import confirm_url
+    from blackkite.config import Settings
+
+    monkeypatch.delenv("BK_WEB_BASE_URL", raising=False)
+    monkeypatch.delenv("BK_PUBLIC_BASE_URL", raising=False)
+    url = urlparse(confirm_url(Settings(_env_file=None), "tok-123"))
+    assert (url.scheme, url.netloc, url.path) == ("http", "localhost:5173", "/auth/confirm")
+    assert url.query == ""  # never in the query: it would reach access logs and Referer
+    assert url.fragment == "token=tok-123"
+
+
+def test_web_base_url_env_and_alias(monkeypatch):
+    from blackkite.config import Settings
+
+    monkeypatch.delenv("BK_WEB_BASE_URL", raising=False)
+    monkeypatch.setenv("BK_PUBLIC_BASE_URL", "https://old.example.com")
+    assert Settings(_env_file=None).web_base_url == "https://old.example.com"
+    monkeypatch.setenv("BK_WEB_BASE_URL", "https://app.example.com")
+    assert Settings(_env_file=None).web_base_url == "https://app.example.com"

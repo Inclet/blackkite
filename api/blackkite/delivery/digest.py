@@ -14,13 +14,17 @@ the visual check. That chrome is never sent.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 Stream = Literal["tender", "investment", "funding", "event"]
 
@@ -32,6 +36,41 @@ STREAM_COLOURS: dict[str, tuple[str, str]] = {
     "funding": ("#8F2F1F", "#F0705A"),
     "event": ("#333F9E", "#6C7BF2"),
 }
+
+# A bare "#" is the board's placeholder link. It is accepted only while
+# allow_placeholder_links() is active (the reference fixture, for the preview);
+# a real digest carries http(s) links only.
+PLACEHOLDER_LINK = "#"
+_allow_placeholder: ContextVar[bool] = ContextVar("bk_digest_allow_placeholder", default=False)
+
+
+@contextmanager
+def allow_placeholder_links() -> Iterator[None]:
+    """Let DigestItem/DigestView/DigestFooter accept "#" links inside this block."""
+    reset = _allow_placeholder.set(True)
+    try:
+        yield
+    finally:
+        _allow_placeholder.reset(reset)
+
+
+def _check_link(value: str) -> str:
+    """Absolute http/https URL with a host; rejects javascript:, data:, relative, etc."""
+    if value == PLACEHOLDER_LINK and _allow_placeholder.get():
+        return value
+    if not value or value != value.strip() or any(ord(c) < 0x21 or ord(c) == 0x7F for c in value):
+        raise ValueError("link must be an http(s) URL without spaces or control characters")
+    try:
+        parts = urlsplit(value)
+    except ValueError as exc:
+        raise ValueError("link is not a valid URL") from exc
+    if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
+        raise ValueError("link must be an absolute http or https URL")
+    return value
+
+
+# Every href in the digest goes through this type.
+LinkUrl = Annotated[str, AfterValidator(_check_link)]
 
 CTA_LABEL = "Open your feed"
 DEFAULT_LOGO_SRC = "cid:kite-logo"
@@ -46,7 +85,7 @@ class DigestItem(_Model):
     # Profile name shown as "FOR <NAME>"; None when the item is not tied to one profile.
     profile_label: str | None = None
     title: str
-    url: str
+    url: LinkUrl
     # One line in our own words: organisation and the reason it matched.
     summary: str
     # The date phrase shown in bold, e.g. "Closes Mon 30 Nov" or "Tue 1 to Wed 2 Dec".
@@ -74,8 +113,8 @@ class DigestFooter(_Model):
     source_count: int = Field(ge=0)
     # How often, as a phrase completing "You get this ...", e.g. "every Monday".
     frequency: str
-    change_frequency_url: str
-    unsubscribe_url: str
+    change_frequency_url: LinkUrl
+    unsubscribe_url: LinkUrl
 
     @property
     def sources_line(self) -> str:
@@ -92,7 +131,7 @@ class DigestView(_Model):
     greeting: str = "Good morning"
     intro: str
     items: list[DigestItem]
-    cta_url: str
+    cta_url: LinkUrl
     more_count: int = Field(ge=0)
     footer: DigestFooter
 
