@@ -30,10 +30,10 @@ export function StateCard({ kind, title, body, action }: StateCardProps) {
   }
   return (
     <div className={styles.stack}>
-      {kind === 'nothing-new' && <Kite width={48} height={32} fill="#D6D3CD" />}
+      {kind === 'nothing-new' && <Kite width={48} height={32} fill="var(--bk-stone-300)" />}
       {kind === 'source-down' ? (
         <div className={styles.alertTitle}>
-          <Icon name="conflict" size={18} stroke="#A12A21" strokeWidth={1.5} />
+          <Icon name="conflict" size={18} stroke="var(--bk-alert-text)" strokeWidth={1.5} />
           {title}
         </div>
       ) : (

@@ -30,7 +30,7 @@ export interface KiteProps {
   style?: CSSProperties;
 }
 
-export function Kite({ variant = 'small', width, height, rotate, fill = '#2B2A28', label, className, style }: KiteProps) {
+export function Kite({ variant = 'small', width, height, rotate, fill = 'var(--bk-graphite)', label, className, style }: KiteProps) {
   const a11y = label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': true as const };
   return (
     <svg
@@ -39,7 +39,7 @@ export function Kite({ variant = 'small', width, height, rotate, fill = '#2B2A28
       className={className}
       style={{ width, height, ...(rotate !== undefined ? { transform: `rotate(${rotate}deg)` } : {}), ...style }}
     >
-      <path d={KITE_PATHS[variant]} fill={fill} />
+      <path d={KITE_PATHS[variant]} fill={fill} style={{ fill }} />
     </svg>
   );
 }

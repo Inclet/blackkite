@@ -16,7 +16,7 @@ test('scored row with a deadline', () => {
       deadline={{ deadline: '2026-11-30' }}
     />,
   );
-  expect(screen.getByRole('img', { name: 'Tender' })).toHaveAttribute('stroke', '#7A5200');
+  expect(screen.getByRole('img', { name: 'Tender' })).toHaveAttribute('stroke', 'var(--bk-tender-text)');
   expect(screen.getByText('Strong')).toBeInTheDocument();
   expect(screen.getByText('6 days left')).toHaveClass('solid');
 });
@@ -32,6 +32,6 @@ test('closed rows lose their colour', () => {
     <FeedRow stream="tender" title="Invitation for bids" subtitle="AviaTech" fit={null} deadline={{ deadline: '2026-11-23' }} closed />,
   );
   expect(container.firstElementChild).toHaveClass('closed');
-  expect(screen.getByRole('img', { name: 'Tender' })).toHaveAttribute('stroke', '#5F5D59');
+  expect(screen.getByRole('img', { name: 'Tender' })).toHaveAttribute('stroke', 'var(--bk-slate)');
   expect(screen.getByText('Closed 23 Nov')).toBeInTheDocument();
 });

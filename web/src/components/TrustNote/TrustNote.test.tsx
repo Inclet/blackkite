@@ -3,9 +3,9 @@ import { expect, test } from 'vitest';
 import { TrustNote } from './TrustNote';
 
 test.each([
-  ['confirmed', 'Confirmed at the source', '#2B2A28'],
-  ['unconfirmed', 'Not yet confirmed at the source', '#5F5D59'],
-  ['conflict', 'Sources disagree on the date', '#A12A21'],
+  ['confirmed', 'Confirmed at the source', 'var(--bk-graphite)'],
+  ['unconfirmed', 'Not yet confirmed at the source', 'var(--bk-slate)'],
+  ['conflict', 'Sources disagree on the date', 'var(--bk-alert-text)'],
 ] as const)('%s', (state, text, stroke) => {
   render(<TrustNote state={state} />);
   const note = screen.getByText(text);

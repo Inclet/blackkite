@@ -1,13 +1,13 @@
-/** The four streams. Colours copied from the boards (identical to design/tokens.css). */
+/** The four streams. Colours are the design/tokens.css variables (identical to the boards' values). */
 export type Stream = 'tender' | 'investment' | 'funding' | 'event';
 
 export const STREAMS: readonly Stream[] = ['tender', 'investment', 'funding', 'event'];
 
 export const STREAM_COLOURS: Record<Stream, { base: string; tint: string; text: string; icon: string }> = {
-  tender: { base: '#F2A83B', tint: '#FCEFD6', text: '#7A5200', icon: '#C98412' },
-  investment: { base: '#1FA898', tint: '#DDF3EF', text: '#0E5F56', icon: '#1FA898' },
-  funding: { base: '#F0705A', tint: '#FCE4DF', text: '#8F2F1F', icon: '#F0705A' },
-  event: { base: '#6C7BF2', tint: '#E5E8FD', text: '#333F9E', icon: '#6C7BF2' },
+  tender: { base: 'var(--bk-tender)', tint: 'var(--bk-tender-tint)', text: 'var(--bk-tender-text)', icon: 'var(--bk-tender-icon)' },
+  investment: { base: 'var(--bk-investment)', tint: 'var(--bk-investment-tint)', text: 'var(--bk-investment-text)', icon: 'var(--bk-investment)' },
+  funding: { base: 'var(--bk-funding)', tint: 'var(--bk-funding-tint)', text: 'var(--bk-funding-text)', icon: 'var(--bk-funding)' },
+  event: { base: 'var(--bk-event)', tint: 'var(--bk-event-tint)', text: 'var(--bk-event-text)', icon: 'var(--bk-event)' },
 };
 
 /** Singular names, as on tags and icon labels. */

@@ -22,8 +22,8 @@ export function FeedRow({ stream, title, subtitle, fit, deadline, closed = false
   const colours = STREAM_COLOURS[stream];
   return (
     <div className={cx(styles.row, closed && styles.closed, className)}>
-      <div className={styles.tile} style={{ background: closed ? '#EFEDE9' : colours.tint }}>
-        <Icon name={stream} label={STREAM_NAMES[stream]} size={18} strokeWidth={1.4} stroke={closed ? '#5F5D59' : colours.text} />
+      <div className={styles.tile} style={{ background: closed ? 'var(--bk-stone-100)' : colours.tint }}>
+        <Icon name={stream} label={STREAM_NAMES[stream]} size={18} strokeWidth={1.4} stroke={closed ? 'var(--bk-slate)' : colours.text} />
       </div>
       <div className={styles.text}>
         <div className={styles.title}>{title}</div>

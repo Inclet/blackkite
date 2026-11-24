@@ -5,7 +5,11 @@ import styles from './TrustNote.module.css';
 
 export type TrustState = 'confirmed' | 'unconfirmed' | 'conflict';
 
-const STROKES: Record<TrustState, string> = { confirmed: '#2B2A28', unconfirmed: '#5F5D59', conflict: '#A12A21' };
+const STROKES: Record<TrustState, string> = {
+  confirmed: 'var(--bk-graphite)',
+  unconfirmed: 'var(--bk-slate)',
+  conflict: 'var(--bk-alert-text)',
+};
 const DEFAULT_TEXT: Record<TrustState, string> = {
   confirmed: 'Confirmed at the source',
   unconfirmed: 'Not yet confirmed at the source',

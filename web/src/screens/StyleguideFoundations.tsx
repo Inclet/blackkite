@@ -62,12 +62,12 @@ export function StyleguideFoundations() {
                 </Mark>
                 <Mark caption="Favicon">
                   <div className={styles.favicon}>
-                    <Kite width={26} height={17} rotate={-16} fill="#F6F5F2" />
+                    <Kite width={26} height={17} rotate={-16} fill="var(--bk-mist)" />
                   </div>
                 </Mark>
                 <Mark caption="App icon">
                   <div className={styles.appIcon}>
-                    <Kite width={44} height={29} rotate={-16} fill="#F6F5F2" />
+                    <Kite width={44} height={29} rotate={-16} fill="var(--bk-mist)" />
                   </div>
                 </Mark>
               </div>
@@ -81,9 +81,9 @@ export function StyleguideFoundations() {
         <Card label="Signature · the kite circles, then drops" padding="24px 28px" gap={16}>
           <div className={styles.signatureRow}>
             <KiteOrbit orbit={ORBITS.signature}>
-              <div className={styles.dot} style={{ left: 104, top: 46, background: '#F2A83B' }} />
-              <div className={styles.dot} style={{ left: 40, top: 96, background: '#6C7BF2' }} />
-              <div className={styles.dot} style={{ left: 60, top: 30, background: '#1FA898' }} />
+              <div className={styles.dot} style={{ left: 104, top: 46, background: 'var(--bk-tender)' }} />
+              <div className={styles.dot} style={{ left: 40, top: 96, background: 'var(--bk-event)' }} />
+              <div className={styles.dot} style={{ left: 60, top: 30, background: 'var(--bk-investment)' }} />
             </KiteOrbit>
             <div className={styles.signatureText}>
               <div>
@@ -139,7 +139,7 @@ export function StyleguideFoundations() {
             <TrustNote state="conflict" />
           </div>
           <div className={styles.alertRow}>
-            <div className={styles.swatch} style={{ background: '#C4352B' }} />
+            <div className={styles.swatch} style={{ background: 'var(--bk-alert)' }} />
             <strong>Alert</strong>
             <span className={styles.slate}>#C4352B · errors and last-day deadlines only</span>
           </div>
@@ -159,7 +159,7 @@ export function StyleguideFoundations() {
         <Card label="Space and shape" padding="22px 24px" gap={12}>
           <div className={styles.space}>
             {SPACE.map((n) => (
-              <div key={n} style={{ width: n, height: n, background: '#2B2A28' }} />
+              <div key={n} style={{ width: n, height: n, background: 'var(--bk-graphite)' }} />
             ))}
           </div>
           <div className={styles.slateNumbers}>4 · 8 · 12 · 16 · 24 · 32 · 48</div>

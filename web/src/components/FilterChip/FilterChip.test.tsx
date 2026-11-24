@@ -7,15 +7,15 @@ test('selected tender: pressed, icon in the text shade at 1.4', () => {
   const chip = screen.getByRole('button', { name: 'Tenders', pressed: true });
   expect(chip).toHaveClass('tender', 'selected');
   const svg = chip.querySelector('svg')!;
-  expect(svg).toHaveAttribute('stroke', '#7A5200');
+  expect(svg).toHaveAttribute('stroke', 'var(--bk-tender-text)');
   expect(svg).toHaveAttribute('stroke-width', '1.4');
 });
 
 test.each([
-  ['tender', 'Tenders', '#C98412'],
-  ['investment', 'Investments', '#1FA898'],
-  ['funding', 'Funding', '#F0705A'],
-  ['event', 'Events', '#6C7BF2'],
+  ['tender', 'Tenders', 'var(--bk-tender-icon)'],
+  ['investment', 'Investments', 'var(--bk-investment)'],
+  ['funding', 'Funding', 'var(--bk-funding)'],
+  ['event', 'Events', 'var(--bk-event)'],
 ] as const)('unselected %s: icon stroke %s at 1.6', (stream, name, stroke) => {
   render(<FilterChip stream={stream} selected={false} />);
   const chip = screen.getByRole('button', { name, pressed: false });
