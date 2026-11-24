@@ -1,0 +1,48 @@
+# Blackkite: single-VPS stack (spec 9).
+#   docker compose up -d db api                 # database + API
+#   docker compose --profile dev up -d          # plus Mailpit (dev mail, UI on :8025)
+#   docker compose run --rm api bk bootstrap    # first admin + seed profiles
+#   docker compose run --rm api bk seed-sources # seed sources (status testing)
+name: blackkite
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-blackkite}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-blackkite}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./api
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      BK_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-blackkite}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-blackkite}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  mailpit:
+    image: axllent/mailpit:v1.20
+    profiles: ["dev"]
+    ports:
+      - "127.0.0.1:1025:1025"   # SMTP; inside compose use BK_SMTP_HOST=mailpit
+      - "127.0.0.1:8025:8025"   # web UI
+
+volumes:
+  db-data:

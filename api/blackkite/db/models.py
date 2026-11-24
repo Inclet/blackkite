@@ -1,0 +1,476 @@
+"""Database schema: CLAUDE.md section 6 (plus 4.1 for `source`, section 9 for sessions).
+
+Per-user tables carry a non-null, indexed `user_id`; see PER_USER_TABLES.
+"""
+
+import uuid
+from datetime import datetime
+from decimal import Decimal
+from typing import Any
+
+import sqlalchemy as sa
+from pgvector.sqlalchemy import Vector
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+from blackkite.config import EMBEDDING_DIM
+from blackkite.db.base import Base, created_at, enum, in_list_check, updated_at, uuid_pk
+
+# --- Enumerations (values exactly as the spec names them) -------------------
+
+STREAMS = ("tender", "investment", "funding", "event")
+ROLES = ("member", "admin")
+USER_STATUSES = ("active", "deactivated")
+PROFILE_TYPES = ("business", "personal")
+DIGEST_CHANNELS = ("email", "telegram")  # spec 8: email first, Telegram second
+DIGEST_FREQUENCIES = ("weekly",)  # spec names only weekly; see open questions
+WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+SOURCE_KINDS = ("original", "publisher", "aggregator", "news", "community")
+SOURCE_STATUSES = ("suggested", "testing", "active", "paused", "retired")
+COLLECTOR_TYPES = (
+    "rss",
+    "html_list",
+    "browser_list",
+    "json_api",
+    "search_query",
+    "email_ingest",
+    "custom",
+)
+SOURCE_RUN_STATUSES = ("running", "succeeded", "failed")
+SUGGESTION_STATUSES = ("suggested", "accepted", "rejected")
+OPPORTUNITY_STATUSES = ("open", "closing_soon", "expired", "awarded", "cancelled")
+VERIFICATIONS = ("verified_original", "aggregator_only", "unverified")
+VISIBILITIES = ("public", "private")
+USER_OPPORTUNITY_STATES = ("unseen", "saved", "dismissed", "acting", "done")
+
+# Tables whose rows belong to one user. Every query on them filters by user_id.
+PER_USER_TABLES = (
+    "profile",
+    "digest_setting",
+    "source_suggestion",
+    "user_source_mute",
+    "user_opportunity",
+    "digest_log",
+    "session",
+)
+
+
+def _ts(nullable: bool = True) -> Mapped[Any]:
+    return mapped_column(sa.DateTime(timezone=True), nullable=nullable)
+
+
+def _user_fk(ondelete: str = "CASCADE") -> Mapped[uuid.UUID]:
+    return mapped_column(
+        sa.ForeignKey("user.id", ondelete=ondelete), nullable=False, index=True
+    )
+
+
+# --- Identity ----------------------------------------------------------------
+
+
+class User(Base):
+    __tablename__ = "user"
+    __table_args__ = (sa.Index("uq_user_email_lower", sa.text("lower(email)"), unique=True),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    email: Mapped[str] = mapped_column(sa.String(320), nullable=False)
+    name: Mapped[str | None] = mapped_column(sa.String(200))
+    role: Mapped[str] = mapped_column(enum(*ROLES, name="role"), nullable=False, server_default="member")
+    status: Mapped[str] = mapped_column(
+        enum(*USER_STATUSES, name="status"), nullable=False, server_default="active"
+    )
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == "admin"
+
+
+class Invite(Base):
+    __tablename__ = "invite"
+    __table_args__ = (sa.Index("ix_invite_email_lower", sa.text("lower(email)")),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    email: Mapped[str] = mapped_column(sa.String(320), nullable=False)
+    invited_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("user.id", ondelete="SET NULL"), index=True
+    )
+    # sha256 hex of the token sent in the invite email; the raw token is never stored.
+    token_hash: Mapped[str] = mapped_column(sa.String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = created_at()
+    expires_at: Mapped[datetime] = _ts(nullable=False)
+    accepted_at: Mapped[datetime | None] = _ts()
+    accepted_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("user.id", ondelete="SET NULL"), index=True
+    )
+
+
+class LoginToken(Base):
+    """A magic-link token. Single use, short-lived, stored hashed.
+
+    Issued to an existing user (user_id) or to the holder of a pending invite (invite_id).
+    """
+
+    __tablename__ = "login_token"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "(user_id IS NOT NULL) <> (invite_id IS NOT NULL)", name="user_xor_invite"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    token_hash: Mapped[str] = mapped_column(sa.String(64), nullable=False, unique=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("user.id", ondelete="CASCADE"), index=True
+    )
+    invite_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("invite.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = created_at()
+    expires_at: Mapped[datetime] = _ts(nullable=False)
+    used_at: Mapped[datetime | None] = _ts()
+
+
+class Session(Base):
+    """Server-side session. The cookie carries a random id; only its sha256 is stored."""
+
+    __tablename__ = "session"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    token_hash: Mapped[str] = mapped_column(sa.String(64), nullable=False, unique=True)
+    user_id: Mapped[uuid.UUID] = _user_fk()
+    created_at: Mapped[datetime] = created_at()
+    expires_at: Mapped[datetime] = _ts(nullable=False)
+
+
+
+class Profile(Base):
+    __tablename__ = "profile"
+    __table_args__ = (
+        sa.UniqueConstraint("user_id", "name"),
+        # Target for composite FKs that keep a profile reference inside one user's data.
+        sa.UniqueConstraint("id", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = _user_fk()
+    name: Mapped[str] = mapped_column(sa.String(200), nullable=False)
+    type: Mapped[str] = mapped_column(enum(*PROFILE_TYPES, name="type"), nullable=False)
+    data: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    )
+    version: Mapped[int] = mapped_column(sa.Integer, nullable=False, server_default="1")
+    active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, server_default=sa.true())
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
+class DigestSetting(Base):
+    __tablename__ = "digest_setting"
+    __table_args__ = (
+        sa.UniqueConstraint("user_id", "channel"),
+        sa.CheckConstraint(
+            "alert_threshold IS NULL OR alert_threshold BETWEEN 0 AND 100",
+            name="alert_threshold_range",
+        ),
+        in_list_check("streams", STREAMS, "streams_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = _user_fk()
+    channel: Mapped[str] = mapped_column(enum(*DIGEST_CHANNELS, name="channel"), nullable=False)
+    address: Mapped[str] = mapped_column(sa.String(320), nullable=False)
+    frequency: Mapped[str] = mapped_column(
+        enum(*DIGEST_FREQUENCIES, name="frequency"), nullable=False
+    )
+    day: Mapped[str | None] = mapped_column(enum(*WEEKDAYS, name="day"))
+    alert_threshold: Mapped[int | None] = mapped_column(sa.SmallInteger)
+    # NULL means "the streams of the user's profiles".
+    streams: Mapped[list[str] | None] = mapped_column(ARRAY(sa.String(32)))
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
+# --- Sources -------------------------------------------------------------------
+
+
+class Source(Base):
+    __tablename__ = "source"
+    __table_args__ = (
+        sa.UniqueConstraint("name"),
+        in_list_check("streams", STREAMS, "streams_valid"),
+        sa.CheckConstraint("cardinality(streams) >= 1", name="streams_not_empty"),
+        sa.CheckConstraint("rate_limit IS NULL OR rate_limit > 0", name="rate_limit_positive"),
+        sa.Index("ix_source_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(sa.String(200), nullable=False)
+    home_url: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    publisher: Mapped[str | None] = mapped_column(sa.String(200))
+    streams: Mapped[list[str]] = mapped_column(ARRAY(sa.String(32)), nullable=False)
+    kind: Mapped[str] = mapped_column(enum(*SOURCE_KINDS, name="kind"), nullable=False)
+    collector_type: Mapped[str] = mapped_column(
+        enum(*COLLECTOR_TYPES, name="collector_type"), nullable=False
+    )
+    config: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    )
+    # How often to run, as a cron expression (UTC). NULL = not scheduled yet.
+    schedule: Mapped[str | None] = mapped_column(sa.String(100))
+    # Minimum seconds between two requests to this source's host.
+    rate_limit: Mapped[float | None] = mapped_column(sa.Float)
+    access_note: Mapped[str | None] = mapped_column(sa.Text)
+    status: Mapped[str] = mapped_column(
+        enum(*SOURCE_STATUSES, name="status"), nullable=False, server_default="testing"
+    )
+    added_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("user.id", ondelete="SET NULL"), index=True
+    )
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
+class SourceRun(Base):
+    __tablename__ = "source_run"
+    __table_args__ = (sa.Index("ix_source_run_source_id_started_at", "source_id", "started_at"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("source.id", ondelete="CASCADE"), nullable=False
+    )
+    started_at: Mapped[datetime] = created_at()
+    finished_at: Mapped[datetime | None] = _ts()
+    status: Mapped[str] = mapped_column(
+        enum(*SOURCE_RUN_STATUSES, name="status"), nullable=False, server_default="running"
+    )
+    items_found: Mapped[int] = mapped_column(sa.Integer, nullable=False, server_default="0")
+    items_new: Mapped[int] = mapped_column(sa.Integer, nullable=False, server_default="0")
+    error: Mapped[str | None] = mapped_column(sa.Text)
+
+
+class SourceSuggestion(Base):
+    __tablename__ = "source_suggestion"
+    __table_args__ = (sa.Index("ix_source_suggestion_status", "status"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = _user_fk()
+    url: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    note: Mapped[str | None] = mapped_column(sa.Text)
+    status: Mapped[str] = mapped_column(
+        enum(*SUGGESTION_STATUSES, name="status"), nullable=False, server_default="suggested"
+    )
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("user.id", ondelete="SET NULL"), index=True
+    )
+    reviewed_at: Mapped[datetime | None] = _ts()
+    # The source created from this suggestion, if accepted.
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("source.id", ondelete="SET NULL"), index=True
+    )
+    created_at: Mapped[datetime] = created_at()
+
+
+class UserSourceMute(Base):
+    __tablename__ = "user_source_mute"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("user.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("source.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    created_at: Mapped[datetime] = created_at()
+
+
+# --- Catalogue (shared) -------------------------------------------------------------
+
+
+class Opportunity(Base):
+    __tablename__ = "opportunity"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "visibility <> 'private' OR owner_user_id IS NOT NULL", name="private_has_owner"
+        ),
+        sa.CheckConstraint(
+            "value_currency IS NULL OR value_currency ~ '^[A-Z]{3}$'", name="value_currency_iso"
+        ),
+        sa.Index("ix_opportunity_stream_status", "stream", "status"),
+        sa.Index("ix_opportunity_deadline_at", "deadline_at"),
+        sa.Index("ix_opportunity_event_start", "event_start"),
+        sa.Index("ix_opportunity_tags", "tags", postgresql_using="gin"),
+        sa.Index(
+            "ix_opportunity_needs_review", "needs_review", postgresql_where=sa.text("needs_review")
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    stream: Mapped[str] = mapped_column(enum(*STREAMS, name="stream"), nullable=False)
+    subtype: Mapped[str | None] = mapped_column(sa.String(100))
+    title: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    organisation: Mapped[str | None] = mapped_column(sa.Text)
+    # Short name for row subtitles (owner decision 5).
+    organisation_short: Mapped[str | None] = mapped_column(sa.String(100))
+    summary: Mapped[str | None] = mapped_column(sa.Text)
+    published_at: Mapped[datetime | None] = _ts()
+    deadline_at: Mapped[datetime | None] = _ts()
+    event_start: Mapped[datetime | None] = _ts()
+    event_end: Mapped[datetime | None] = _ts()
+    value_amount: Mapped[Decimal | None] = mapped_column(sa.Numeric(20, 2))
+    value_currency: Mapped[str | None] = mapped_column(sa.String(3))
+    value_note: Mapped[str | None] = mapped_column(sa.Text)
+    location: Mapped[str | None] = mapped_column(sa.Text)
+    eligibility: Mapped[str | None] = mapped_column(sa.Text)
+    requirements: Mapped[list[Any] | None] = mapped_column(JSONB)
+    submission_method: Mapped[str | None] = mapped_column(sa.Text)
+    fees: Mapped[str | None] = mapped_column(sa.Text)
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(sa.String(100)), nullable=False, server_default=sa.text("'{}'::varchar[]")
+    )
+    embedding: Mapped[Any | None] = mapped_column(Vector(EMBEDDING_DIM))
+    # Supporting snippet per extracted field (spec 5 step 5, spec 10): {"deadline_at": "...", ...}
+    evidence: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    )
+    status: Mapped[str] = mapped_column(
+        enum(*OPPORTUNITY_STATUSES, name="status"), nullable=False, server_default="open"
+    )
+    verification: Mapped[str] = mapped_column(
+        enum(*VERIFICATIONS, name="verification"), nullable=False, server_default="unverified"
+    )
+    needs_review: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, server_default=sa.false())
+    visibility: Mapped[str] = mapped_column(
+        enum(*VISIBILITIES, name="visibility"), nullable=False, server_default="public"
+    )
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("user.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
+class OpportunitySource(Base):
+    __tablename__ = "opportunity_source"
+    __table_args__ = (
+        sa.UniqueConstraint("opportunity_id", "source_id", "url"),
+        # At most one original per opportunity.
+        sa.Index(
+            "uq_opportunity_source_one_original",
+            "opportunity_id",
+            unique=True,
+            postgresql_where=sa.text("is_original"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    opportunity_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("opportunity.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("source.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    url: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    is_original: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, server_default=sa.false())
+    first_seen: Mapped[datetime] = created_at()
+    last_seen: Mapped[datetime] = created_at()
+
+
+class Document(Base):
+    __tablename__ = "document"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    opportunity_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("opportunity.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    url: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    file_path: Mapped[str | None] = mapped_column(sa.Text)
+    extracted_text: Mapped[str | None] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class ChangeEvent(Base):
+    __tablename__ = "change_event"
+    __table_args__ = (sa.Index("ix_change_event_opportunity_id_at", "opportunity_id", "at"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    opportunity_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("opportunity.id", ondelete="CASCADE"), nullable=False
+    )
+    field: Mapped[str] = mapped_column(sa.String(100), nullable=False)
+    old: Mapped[Any | None] = mapped_column(JSONB)
+    new: Mapped[Any | None] = mapped_column(JSONB)
+    at: Mapped[datetime] = created_at()
+
+
+class Award(Base):
+    """Awarded contract, from Umucyo awarded lists, for price benchmarking."""
+
+    __tablename__ = "award"
+    __table_args__ = (sa.Index("ix_award_tender_ref", "tender_ref"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tender_ref: Mapped[str | None] = mapped_column(sa.String(200))
+    entity: Mapped[str | None] = mapped_column(sa.Text)
+    # [{"name": ...}, ...]
+    bidders: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")
+    )
+    # [{"bidder": ..., "amount": ..., "currency": ...}, ...]
+    prices: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")
+    )
+    winner: Mapped[str | None] = mapped_column(sa.Text)
+    period: Mapped[str | None] = mapped_column(sa.String(100))
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("source.id", ondelete="SET NULL"), index=True
+    )
+    created_at: Mapped[datetime] = created_at()
+
+
+# --- Per user ------------------------------------------------------------------------
+
+
+class UserOpportunity(Base):
+    __tablename__ = "user_opportunity"
+    __table_args__ = (
+        sa.UniqueConstraint("user_id", "opportunity_id", "profile_id"),
+        # The profile must belong to the same user.
+        sa.ForeignKeyConstraint(
+            ["profile_id", "user_id"],
+            ["profile.id", "profile.user_id"],
+            name="fk_user_opportunity_profile_owner",
+            ondelete="CASCADE",
+        ),
+        sa.CheckConstraint("score IS NULL OR score BETWEEN 0 AND 100", name="score_range"),
+        sa.Index("ix_user_opportunity_user_id_state", "user_id", "state"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = _user_fk()
+    opportunity_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("opportunity.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    profile_id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, nullable=False, index=True)
+    score: Mapped[int | None] = mapped_column(sa.SmallInteger)
+    score_breakdown: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    score_reason: Mapped[str | None] = mapped_column(sa.Text)
+    state: Mapped[str] = mapped_column(
+        enum(*USER_OPPORTUNITY_STATES, name="state"), nullable=False, server_default="unseen"
+    )
+    dismiss_reason: Mapped[str | None] = mapped_column(sa.Text)
+    note: Mapped[str | None] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
+class DigestLog(Base):
+    __tablename__ = "digest_log"
+    __table_args__ = (sa.Index("ix_digest_log_user_id_sent_at", "user_id", "sent_at"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = _user_fk()
+    sent_at: Mapped[datetime] = created_at()
+    opportunity_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(sa.Uuid), nullable=False, server_default=sa.text("'{}'::uuid[]")
+    )
