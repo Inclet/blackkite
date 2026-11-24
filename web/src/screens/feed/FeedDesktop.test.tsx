@@ -82,6 +82,32 @@ test('X removes the selected row and selects the next one', () => {
   expect(screen.getByText('Five things worth a look.')).toBeInTheDocument();
 });
 
+test('X on the focused row moves focus to the newly selected row', () => {
+  renderAt('/?fixture=reference');
+  act(() => current()!.focus());
+  press('x');
+  expect(current()).toHaveTextContent('ABH Summit');
+  expect(document.activeElement).toBe(current());
+});
+
+test('X with focus elsewhere leaves focus where it is', () => {
+  renderAt('/?fixture=reference');
+  const save = within(pane()).getByRole('button', { name: 'Save to shortlist' });
+  act(() => save.focus());
+  press('x');
+  expect(document.activeElement).toBe(within(pane()).getByRole('button', { name: 'Save to shortlist' }));
+});
+
+test('dismissing the last row moves focus to the page heading', () => {
+  renderAt('/?fixture=reference');
+  fireEvent.click(screen.getByRole('button', { name: 'Investments' }));
+  expect(rows()).toHaveLength(1);
+  act(() => current()!.focus());
+  press('x');
+  expect(screen.queryByRole('region', { name: 'Opportunities' })).toBeNull();
+  expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 }));
+});
+
 test('the Not for me button does the same as X', () => {
   renderAt('/o/tbond-5y?fixture=reference');
   fireEvent.click(within(pane()).getByRole('button', { name: 'Not for me' }));

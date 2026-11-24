@@ -83,6 +83,11 @@
   letter-spacing: -0.015em;
 }
 
+/* Focused only by script, after the last row is dismissed: a heading, not a control. */
+.h1:focus {
+  outline: none;
+}
+
 .summary {
   font-size: 15px;
   color: var(--bk-slate);

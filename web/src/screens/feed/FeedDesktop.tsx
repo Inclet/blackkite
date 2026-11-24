@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { Button } from '../../components/Button/Button';
 import { Card } from '../../components/Card/Card';
@@ -21,6 +21,9 @@ import { useStateCard } from './useStateCard';
 import styles from './FeedDesktop.module.css';
 
 export const rowId = (id: string) => `row-${id}`;
+
+/** pendingFocus value for "the page heading". Not a valid item id (ids are slugs). */
+export const HEADING = '#heading';
 
 export const NAV = [
   { label: 'Feed', to: '/' },
@@ -46,14 +49,31 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
 
   const select = (id: string, replace = true) => navigate(`/o/${id}${search}`, { replace });
 
+  // Where focus goes once a dismissal has re-rendered: a row id, or the heading when the list is empty.
+  const pendingFocus = useRef<string | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
   const dismissSelected = () => {
     if (!selected) return;
     const index = items.indexOf(selected);
     const next = items[index + 1] ?? items[index - 1];
+    // If focus is on the row being removed (or already lost), it follows the selection.
+    const active = document.activeElement;
+    const row = document.getElementById(rowId(selected.id));
+    if (!active || active === document.body || row?.contains(active)) pendingFocus.current = next ? next.id : HEADING;
     model.dismiss(selected.id);
     if (next) select(next.id);
     else navigate(`/${search}`, { replace: true });
   };
+
+  useEffect(() => {
+    const target = pendingFocus.current;
+    if (!target) return;
+    if (target !== HEADING && target !== selected?.id) return;
+    pendingFocus.current = null;
+    if (target === HEADING) headingRef.current?.focus();
+    else document.getElementById(rowId(target))?.focus();
+  });
 
   useFeedKeys({
     onNext: () => {
@@ -102,7 +122,9 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
       <main className={styles.main}>
         <div className={styles.head}>
           <div className={styles.greet}>
-            <h1 className={styles.h1}>{greeting(feed.user.name)}</h1>
+            <h1 ref={headingRef} tabIndex={-1} className={styles.h1}>
+              {greeting(feed.user.name)}
+            </h1>
             <div className={styles.summary}>{feedSummary(items)}</div>
           </div>
           <div className={styles.checked}>
