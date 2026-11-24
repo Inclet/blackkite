@@ -5,8 +5,16 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
-from blackkite.delivery.digest import DigestFooter, DigestItem, render_digest, render_digest_preview
+from blackkite.delivery.digest import (
+    DigestFooter,
+    DigestItem,
+    DigestView,
+    allow_placeholder_links,
+    render_digest,
+    render_digest_preview,
+)
 from blackkite.delivery.fixtures import digest_reference
 from blackkite.delivery.fixtures.digest_reference import REFERENCE
 
@@ -124,14 +132,15 @@ def test_more_line_singular_and_absent():
 
 
 def test_investment_stream_has_colours():
-    item = DigestItem(stream="investment", title="t", url="#", summary="s", date_line="d")
+    item = DigestItem(stream="investment", title="t", url="https://e.org/i", summary="s",
+                      date_line="d")
     _, html, _ = render_digest(REFERENCE.model_copy(update={"items": [item]}))
     assert "#0E5F56" in html and "#1FA898" in html
 
 
 def test_single_source_wording():
     f = DigestFooter(source_count=1, frequency="every Monday",
-                     change_frequency_url="#", unsubscribe_url="#")
+                     change_frequency_url="https://e.org/s", unsubscribe_url="https://e.org/u")
     assert f.sources_line == "The 1 source was checked this week."
 
 
@@ -190,3 +199,73 @@ def test_preview_is_chrome_plus_the_email_card():
     preview_card = preview[preview.index(card_start):preview.index("\n</div>\n</div>\n</body>")]
     assert preview_card.replace(" height: 100%;", "").replace("height: 100%; ", "") == email_card
     assert "Subject:" in preview and "Subject:" not in html
+
+
+# --- Link safety: every href is an http(s) URL ----------------------------------
+
+BAD_LINKS = [
+    "javascript:alert(1)",
+    "JavaScript:alert(1)",
+    " javascript:alert(1)",
+    "java\tscript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "vbscript:msgbox(1)",
+    "file:///etc/passwd",
+    "mailto:someone",
+    "//evil.example/x",
+    "/relative/path",
+    "https://",
+    "https://e.org/a b",
+    "https://e.org/\nx",
+    "",
+    "#",  # placeholder: only inside allow_placeholder_links()
+    "#top",
+]
+
+
+def _item(url: str) -> DigestItem:
+    return DigestItem(stream="tender", title="t", url=url, summary="s", date_line="d")
+
+
+@pytest.mark.parametrize("url", BAD_LINKS)
+def test_item_url_rejects_non_http(url):
+    with pytest.raises(ValidationError):
+        _item(url)
+
+
+@pytest.mark.parametrize("url", BAD_LINKS)
+def test_cta_and_footer_urls_reject_non_http(url):
+    good = "https://e.org/ok"
+    with pytest.raises(ValidationError):
+        DigestFooter(source_count=1, frequency="f", change_frequency_url=url, unsubscribe_url=good)
+    with pytest.raises(ValidationError):
+        DigestFooter(source_count=1, frequency="f", change_frequency_url=good, unsubscribe_url=url)
+    data = REFERENCE.model_dump()
+    data["cta_url"] = url
+    data["items"] = [{**i, "url": good} for i in data["items"]]
+    data["footer"].update(change_frequency_url=good, unsubscribe_url=good)
+    with pytest.raises(ValidationError):
+        DigestView.model_validate(data)
+
+
+@pytest.mark.parametrize("url", ["https://e.org/o/1?x=1#frag", "http://localhost:5173/feed",
+                                 "HTTPS://E.ORG/"])
+def test_http_links_accepted(url):
+    assert _item(url).url == url
+
+
+def test_placeholder_only_inside_context():
+    with allow_placeholder_links():
+        assert _item("#").url == "#"
+        with pytest.raises(ValidationError):
+            _item("javascript:alert(1)")  # the context admits "#" only
+    with pytest.raises(ValidationError):
+        _item("#")
+
+
+def test_fixture_round_trip_needs_placeholder_context():
+    data = REFERENCE.model_dump()
+    with pytest.raises(ValidationError):
+        DigestView.model_validate(data)
+    with allow_placeholder_links():
+        assert DigestView.model_validate(data) == REFERENCE
