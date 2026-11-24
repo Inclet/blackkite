@@ -29,8 +29,11 @@ def confirm_url(settings: Settings, token: str) -> str:
 
     Opening it spends nothing, so mail scanners that fetch links cannot use the
     token up. Only the page's POST /auth/verify spends it.
+
+    The token rides in the URL fragment, which browsers never send to a server,
+    so it stays out of access logs and Referer headers.
     """
-    return f"{settings.public_base_url.rstrip('/')}/auth/confirm?{urlencode({'token': token})}"
+    return f"{settings.web_base_url.rstrip('/')}/auth/confirm#{urlencode({'token': token})}"
 
 
 def find_user_by_email(db: DB, email: str) -> User | None:

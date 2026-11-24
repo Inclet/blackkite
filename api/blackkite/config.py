@@ -22,8 +22,13 @@ class Settings(BaseSettings):
     # Database (SQLAlchemy URL, psycopg 3 driver)
     database_url: str = "postgresql+psycopg://blackkite:blackkite@localhost:5432/blackkite"
 
-    # Public URL that magic links point at (the web app, which proxies /auth to the API)
-    public_base_url: str = "http://localhost:8000"
+    # Origin of the WEB app; emailed sign-in and invite links point at its
+    # /auth/confirm page (a web route, not an API path). BK_PUBLIC_BASE_URL is
+    # accepted as an older alias.
+    web_base_url: str = Field(
+        default="http://localhost:5173",
+        validation_alias=AliasChoices("BK_WEB_BASE_URL", "BK_PUBLIC_BASE_URL", "web_base_url"),
+    )
     # Where the confirm page sends the browser after POST /auth/verify succeeds
     after_login_url: str = "/"
 
