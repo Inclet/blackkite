@@ -15,7 +15,7 @@ Anything built without a reference board. Built from existing components and tok
 | Sign-in confirm page `/auth/confirm` | Phase 2, AuthConfirm | Wordmark, heading, body, one primary "Continue to sign in" button; plain error message (decision 17) |
 | State cards inside the feed | Phase 2, feed | Checking, source down and first visit sit above the list; nothing new replaces list and pane; phone card margin 0 12px, padding 22px 24px; first visit shows the list unranked |
 | Nothing-new card reused when everything is dismissed or filtered away | Phase 2, feed | Same card and copy |
-| Save action | Phase 2, feed | Button relabels "Saved to shortlist" (aria-pressed); S or a second press unsaves |
+| Save action | Phase 2, feed | Button keeps one label, "Save to shortlist"; aria-pressed carries the saved state. S or a second press unsaves |
 | Dismiss action | Phase 2, feed | Row leaves the list, selection moves to next (or previous); phone returns to the feed; no undo, no reason yet |
 | Live region announcements | Phase 2, feed | Visually hidden, for save and dismiss |
 | Selected-row hover | Phase 2, FeedRow | Text turns slate (board's a:hover); no hover fill |
