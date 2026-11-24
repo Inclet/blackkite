@@ -195,3 +195,13 @@ def test_second_requested_link_after_acceptance_signs_in_same_member(app, admin_
     assert verify(other, second).status_code == 200
     assert other.get("/me").json()["email"] == "new@example.com"
     assert db.scalar(sa.select(sa.func.count()).select_from(User)) == 2
+
+
+def test_admin_can_deactivate_another_admin(app, admin_client, db, outbox):
+    """Decision 20: allowed; the other admin's sessions end and they cannot sign in."""
+    other = make_user(db, "admin2@example.com", role="admin")
+    c = sign_in(_new_client(app), outbox, "admin2@example.com")
+    r = admin_client.post(f"/admin/users/{other.id}/deactivate")
+    assert r.status_code == 200 and r.json()["status"] == "deactivated"
+    assert c.get("/me").status_code == 401
+    assert admin_client.get("/me").status_code == 200
