@@ -9,18 +9,22 @@ export interface CardProps {
   padding?: string;
   /** Gap between children, px. */
   gap?: number;
+  /** The element: section (default), article (the detail pane) or div. */
+  as?: 'section' | 'article' | 'div';
   className?: string;
   style?: CSSProperties;
   children?: ReactNode;
+  'aria-label'?: string;
+  'aria-labelledby'?: string;
 }
 
 /** The white 14px-radius panel. */
-export function Card({ label, padding = '22px 24px', gap, className, style, children }: CardProps) {
+export function Card({ label, padding = '22px 24px', gap, as: Tag = 'section', className, style, children, ...aria }: CardProps) {
   return (
-    <section className={cx(styles.card, className)} style={{ padding, gap, ...style }}>
+    <Tag {...aria} className={cx(styles.card, className)} style={{ padding, gap, ...style }}>
       {label !== undefined && <CardLabel>{label}</CardLabel>}
       {children}
-    </section>
+    </Tag>
   );
 }
 

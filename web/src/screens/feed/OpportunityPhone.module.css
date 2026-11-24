@@ -1,0 +1,57 @@
+/* Values copied from design/reference/opportunity-phone.html. */
+
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  background: var(--bk-mist);
+  color: var(--bk-graphite);
+  font-family: var(--bk-font);
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px 0;
+}
+
+.content {
+  padding: 8px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.titleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.meta {
+  font-size: 14px;
+  color: var(--bk-slate);
+}
+
+.actions {
+  margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  background: var(--bk-white);
+  border-top: 1px solid var(--bk-stone-200);
+  padding: 12px 20px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 10px;
+}

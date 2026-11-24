@@ -1,0 +1,79 @@
+import { useLocation, useNavigate } from 'react-router';
+import { BackLink } from '../../components/BackLink/BackLink';
+import { Button } from '../../components/Button/Button';
+import { Card } from '../../components/Card/Card';
+import { TextLink } from '../../components/TextLink/TextLink';
+import { TrustPanel } from '../../components/TrustNote/TrustNote';
+import { detailMeta } from '../../lib/feed';
+import { useAppLink } from '../../lib/useAppLink';
+import type { FeedModel } from './model';
+import { DetailTop, FitSection, hasFitSection, LiveRegion } from './parts';
+import styles from './OpportunityPhone.module.css';
+
+/** opportunity-phone.html: one opportunity, with a sticky action bar. Below 792 px. */
+export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }) {
+  const link = useAppLink();
+  const navigate = useNavigate();
+  const { search } = useLocation();
+  const item = model.byId(id);
+  const back = link('/');
+
+  if (!item) {
+    return (
+      <div className={styles.page}>
+        <header className={styles.header}>
+          <BackLink {...back}>Feed</BackLink>
+        </header>
+        <main className={styles.content}>
+          <h1 className={styles.h1}>We could not find that item</h1>
+          <div className={styles.meta}>It may have been removed at the source.</div>
+        </main>
+      </div>
+    );
+  }
+
+  const saved = model.saved.has(item.id);
+  return (
+    <div className={styles.page}>
+      <header className={styles.header}>
+        <BackLink {...back}>Feed</BackLink>
+      </header>
+
+      <main className={styles.content}>
+        <DetailTop item={item} tagGap={6} />
+        <div className={styles.titleBlock}>
+          <h1 className={styles.h1}>{item.title}</h1>
+          <div className={styles.meta}>{detailMeta(item)}</div>
+        </div>
+        {hasFitSection(item) && (
+          <Card padding="16px" gap={10}>
+            <FitSection item={item} />
+          </Card>
+        )}
+        <TrustPanel state={item.detail.trust.state} tone="stone">
+          {item.detail.trust.phone}
+        </TrustPanel>
+        <TextLink spacing="block" href={item.detail.originalUrl} target="_blank" rel="noopener noreferrer">
+          Read the original notice
+        </TextLink>
+      </main>
+
+      <div className={styles.actions} role="group" aria-label="Actions">
+        <Button size="large" aria-pressed={saved} onClick={() => model.toggleSaved(item.id)}>
+          {saved ? 'Saved to shortlist' : 'Save to shortlist'}
+        </Button>
+        <Button
+          size="large"
+          variant="secondary"
+          onClick={() => {
+            model.dismiss(item.id);
+            navigate(`/${search}`);
+          }}
+        >
+          Not for me
+        </Button>
+      </div>
+      <LiveRegion message={model.announcement} />
+    </div>
+  );
+}

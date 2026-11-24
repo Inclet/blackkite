@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
-import { expect, test } from 'vitest';
+import { afterEach, beforeEach, expect, test } from 'vitest';
+import { setNowForTests } from './lib/now';
 import { routes } from './routes';
+
+beforeEach(() => setNowForTests('2026-11-24T14:00:00+02:00'));
+afterEach(() => setNowForTests(null));
 
 function renderAt(url: string) {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [url] })} />);
@@ -11,7 +15,7 @@ test.each([
   ['/', 'Feed'],
   ['/o/wfp-logistics', 'Opportunity'],
   ['/digest/preview', 'Digest preview'],
-])('%s renders its screen', (url, name) => {
+])('%s without a fixture renders its placeholder (live data comes in Phase 4)', (url, name) => {
   renderAt(url);
   expect(screen.getByText(new RegExp(`^${name} \\(placeholder`))).toBeInTheDocument();
 });
@@ -24,9 +28,14 @@ test.each([
   expect(screen.getByText(text)).toBeInTheDocument();
 });
 
-test('?fixture=reference selects the reference fixture', () => {
+test('?fixture=reference renders the feed', () => {
   renderAt('/?fixture=reference');
-  expect(screen.getByText('Feed (placeholder, fixture: reference)')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { level: 1, name: 'Good afternoon, Clet' })).toBeInTheDocument();
+});
+
+test.each(['/shortlist', '/calendar', '/sources', '/profiles', '/more'])('%s is a not-designed placeholder', (url) => {
+  renderAt(url);
+  expect(screen.getByText(/not designed yet/)).toBeInTheDocument();
 });
 
 test('an unknown fixture falls back to live data', () => {
