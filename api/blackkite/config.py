@@ -4,9 +4,13 @@ Third-party API keys keep their conventional names without the prefix
 (ANTHROPIC_API_KEY, VOYAGE_API_KEY, BRAVE_API_KEY).
 """
 
+import logging
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
+from dotenv import dotenv_values
 from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -23,12 +27,10 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://blackkite:blackkite@localhost:5432/blackkite"
 
     # Origin of the WEB app; emailed sign-in and invite links point at its
-    # /auth/confirm page (a web route, not an API path). BK_PUBLIC_BASE_URL is
-    # accepted as an older alias.
-    web_base_url: str = Field(
-        default="http://localhost:5173",
-        validation_alias=AliasChoices("BK_WEB_BASE_URL", "BK_PUBLIC_BASE_URL", "web_base_url"),
-    )
+    # /auth/confirm page (a web route, not an API path). Set only by
+    # BK_WEB_BASE_URL; the old BK_PUBLIC_BASE_URL is ignored (see
+    # warn_ignored_env) because it used to hold the API origin.
+    web_base_url: str = "http://localhost:5173"
     # Where the confirm page sends the browser after POST /auth/verify succeeds
     after_login_url: str = "/"
 
@@ -70,6 +72,26 @@ class Settings(BaseSettings):
     brave_api_key: SecretStr | None = Field(
         default=None, validation_alias=AliasChoices("BRAVE_API_KEY")
     )
+
+
+# Variables that no longer set anything, with what to use instead.
+IGNORED_ENV = {"BK_PUBLIC_BASE_URL": "BK_WEB_BASE_URL"}
+
+log = logging.getLogger("blackkite.config")
+
+
+def ignored_env_present(env_file: str | Path | None = ".env") -> list[str]:
+    """Names from IGNORED_ENV set in the process environment or in env_file."""
+    file_vars = dotenv_values(env_file) if env_file and Path(env_file).is_file() else {}
+    return [name for name in IGNORED_ENV if name in os.environ or name in file_vars]
+
+
+def warn_ignored_env(env_file: str | Path | None = ".env") -> list[str]:
+    """Log a warning for each ignored variable present; return their names."""
+    found = ignored_env_present(env_file)
+    for name in found:
+        log.warning("%s is set but ignored; use %s", name, IGNORED_ENV[name])
+    return found
 
 
 @lru_cache

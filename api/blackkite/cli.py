@@ -4,11 +4,18 @@ from pathlib import Path
 
 import typer
 
-from blackkite.config import get_settings
+from blackkite.config import get_settings, warn_ignored_env
 
 app = typer.Typer(help="Blackkite command line.", no_args_is_help=True)
 
 API_DIR = Path(__file__).resolve().parent.parent
+
+
+@app.callback()
+def _startup() -> None:
+    # Runs before every command, so any command that sends mail (now or later)
+    # warns about an old BK_PUBLIC_BASE_URL that would otherwise go unnoticed.
+    warn_ignored_env()
 
 
 def _alembic_config():
