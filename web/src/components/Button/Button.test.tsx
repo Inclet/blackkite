@@ -26,3 +26,8 @@ test('secondary, disabled and forced states', () => {
   expect(screen.getByRole('button', { name: 'Hover' })).toHaveClass('force-hover');
   expect(screen.getByRole('button', { name: 'Keyboard focus' })).toHaveClass('force-focus');
 });
+
+test('large size for the phone action bar', () => {
+  render(<Button size="large">Save to shortlist</Button>);
+  expect(screen.getByRole('button', { name: 'Save to shortlist' })).toHaveClass('primary', 'large');
+});

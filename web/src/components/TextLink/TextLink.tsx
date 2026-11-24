@@ -3,8 +3,11 @@ import { cx } from '../../lib/streams';
 import styles from './TextLink.module.css';
 
 export interface TextLinkProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
-  /** inline: beside buttons (12px 6px padding). stacked: under text in a card (8px 0). */
-  spacing?: 'inline' | 'stacked';
+  /**
+   * inline: beside buttons (12px 6px padding). stacked: under text in a card (8px 0).
+   * block: on its own line on the phone (15px, 44px high, no padding).
+   */
+  spacing?: 'inline' | 'stacked' | 'block';
 }
 
 /** An underlined text link. Its hit area is at least 44px high and wide (decision 2). */

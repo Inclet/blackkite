@@ -25,3 +25,27 @@ export function TrustNote({ state, children, className }: { state: TrustState; c
     </span>
   );
 }
+
+export interface TrustPanelProps {
+  state: TrustState;
+  /** Defaults to the state's standard wording. */
+  title?: ReactNode;
+  /** What we know and what to check. */
+  children: ReactNode;
+  /** mist on the desktop detail pane, stone on the phone (the boards differ). */
+  tone?: 'mist' | 'stone';
+  className?: string;
+}
+
+/** The inset trust panel: icon and state, then one or two sentences. */
+export function TrustPanel({ state, title, children, tone = 'mist', className }: TrustPanelProps) {
+  return (
+    <div className={cx(styles.panel, styles[tone], className)}>
+      <div className={cx(styles.panelTitle, state === 'conflict' && styles.conflict)}>
+        <Icon name={state} size={16} stroke={STROKES[state]} strokeWidth={1.5} />
+        {title ?? DEFAULT_TEXT[state]}
+      </div>
+      <div className={styles.panelBody}>{children}</div>
+    </div>
+  );
+}

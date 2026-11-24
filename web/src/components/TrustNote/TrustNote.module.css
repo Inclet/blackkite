@@ -13,3 +13,28 @@
 .conflict {
   color: var(--bk-alert-text);
 }
+
+.panel {
+  border-radius: var(--bk-radius-tile);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mist { background: var(--bk-mist); }
+.stone { background: var(--bk-stone-100); }
+
+.panelTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.panelBody {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--bk-slate);
+}

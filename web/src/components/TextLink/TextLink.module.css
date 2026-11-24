@@ -47,3 +47,10 @@
 .stacked {
   padding: 8px 0;
 }
+
+.block {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: 15px;
+}

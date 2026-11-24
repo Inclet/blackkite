@@ -32,3 +32,8 @@ test('TextButton is a button with the link look', () => {
   expect(b).toHaveAttribute('type', 'button');
   expect(b).toHaveClass('link', 'button', 'stacked');
 });
+
+test('block spacing for a link on its own line', () => {
+  render(<TextLink spacing="block" href="/n">Read the original notice</TextLink>);
+  expect(screen.getByRole('link', { name: 'Read the original notice' })).toHaveClass('link', 'block');
+});

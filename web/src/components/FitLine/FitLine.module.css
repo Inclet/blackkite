@@ -24,3 +24,23 @@
 .reason {
   color: var(--bk-slate);
 }
+
+.heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.fitReason {
+  display: flex;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.check {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
