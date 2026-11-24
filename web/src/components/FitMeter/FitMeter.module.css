@@ -1,0 +1,15 @@
+.meter {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.bar {
+  width: 4px;
+  border-radius: 1px;
+  background: var(--bk-stone-300);
+}
+
+.filled {
+  background: var(--bk-graphite);
+}
