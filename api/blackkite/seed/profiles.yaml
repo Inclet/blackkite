@@ -1,0 +1,52 @@
+# Seed profiles for the first admin: CLAUDE.md section 7.1, copied verbatim.
+# Loaded by `bk bootstrap`. null means not yet provided.
+profiles:
+  - name: Ironji-Trade
+    type: business
+    streams: [tender, funding, event]
+    location: Kigali, Rwanda
+    services: [dry freight, cold chain, last-mile distribution]
+    registrations_held:
+      - RDB company registration
+      - RRA tax clearance
+      - RSSB clearance
+    registrations_not_held:
+      - Umucyo supplier account      # planned; owner will create it later
+      - transport operator licence   # owner's position: not needed for Ironji's model
+    capacity:
+      model: partner network         # trucks are a network, not an owned fleet
+      trucks_in_network: 1000        # "more than 1,000"
+      refrigerated_in_network: 100   # "around 100"
+      owned_trucks: null
+      tonnage: null
+    min_contract_rwf: 5000000
+
+  - name: AI lab
+    type: business
+    streams: [tender, funding, event]
+    services: [software development, AI/ML, data, digital consulting]   # default set, confirmed as provisional
+    provisional: true
+    registrations_held: null
+    min_contract_rwf: null
+
+  - name: Personal
+    type: personal
+    streams: [investment, event]
+    instruments:
+      - treasury bonds and bills
+      - RSE shares
+      - corporate bonds
+      - real estate and land
+      - private deals and startups
+    ticket_range_rwf: null           # owner chose not to filter by size
+    event_topics:
+      - AI and tech
+      - logistics and trade
+      - startups and investors
+      - finance and fintech
+      - agriculture and food
+      - general networking
+
+digest:
+  channel: email
+  frequency: weekly
