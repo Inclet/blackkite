@@ -14,5 +14,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "tests/visual/**/*.ts", "tests/e2e/**/*.ts"]
+  "include": ["vite.config.ts", "apiProxy.ts", "apiProxy.test.ts", "vitest.config.ts", "tests/visual/**/*.ts", "tests/e2e/**/*.ts"]
 }
