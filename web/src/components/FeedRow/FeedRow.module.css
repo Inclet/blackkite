@@ -56,3 +56,81 @@
 .deadline {
   justify-self: end;
 }
+
+/* List and phone layouts (feed-desktop and feed-phone boards): the row is a link. */
+.link {
+  display: grid;
+  gap: 12px;
+  color: var(--bk-graphite);
+  text-decoration: none;
+  transition: color var(--bk-quick) var(--bk-ease);
+}
+
+/* The boards' global rule: a:hover is slate. */
+.link:hover {
+  color: var(--bk-slate);
+}
+
+.link:focus-visible {
+  outline: none;
+  box-shadow: var(--bk-focus-ring);
+}
+
+.list {
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 12px;
+  border-radius: var(--bk-radius-tile);
+}
+
+.list.selected {
+  background: var(--bk-mist);
+}
+
+.phone {
+  grid-template-columns: 36px minmax(0, 1fr);
+  padding: 14px 0;
+  border-bottom: 1px solid var(--bk-stone-200);
+}
+
+.phone:last-child {
+  border-bottom: 0;
+}
+
+.phoneBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.phoneTitle {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+.phoneMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.closed .phoneTitle {
+  color: var(--bk-slate);
+}
+
+/* New items drop in once. */
+.new {
+  animation: bk-row-drop var(--bk-settle) var(--bk-ease) both;
+}
+
+@keyframes bk-row-drop {
+  from { transform: translateY(-8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .new { animation: none; }
+}
