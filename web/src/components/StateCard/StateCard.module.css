@@ -1,0 +1,45 @@
+.checking {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-grow: 1;
+}
+
+.checkingText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-grow: 1;
+  justify-content: center;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.alertTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--bk-alert-text);
+}
+
+.body {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--bk-slate);
+}
+
+.buttonRow {
+  display: flex;
+  padding-top: 4px;
+}
