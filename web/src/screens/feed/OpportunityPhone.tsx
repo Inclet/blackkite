@@ -5,8 +5,10 @@ import { Card } from '../../components/Card/Card';
 import { TextLink } from '../../components/TextLink/TextLink';
 import { TrustPanel } from '../../components/TrustNote/TrustNote';
 import { detailMeta } from '../../lib/feed';
+import { httpUrl } from '../../lib/externalUrl';
 import { useAppLink } from '../../lib/useAppLink';
 import type { FeedModel } from './model';
+import { HEADING } from './focus';
 import { DetailTop, FitSection, hasFitSection, LiveRegion } from './parts';
 import styles from './OpportunityPhone.module.css';
 
@@ -33,6 +35,8 @@ export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }
   }
 
   const saved = model.saved.has(item.id);
+  // Only http(s) links to the original notice; anything else renders no link.
+  const original = httpUrl(item.detail.originalUrl);
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -53,21 +57,27 @@ export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }
         <TrustPanel state={item.detail.trust.state} tone="stone">
           {item.detail.trust.phone}
         </TrustPanel>
-        <TextLink spacing="block" href={item.detail.originalUrl} target="_blank" rel="noopener noreferrer">
-          Read the original notice
-        </TextLink>
+        {original && (
+          <TextLink spacing="block" href={original} target="_blank" rel="noopener noreferrer">
+            Read the original notice
+          </TextLink>
+        )}
       </main>
 
       <div className={styles.actions} role="group" aria-label="Actions">
         <Button size="large" aria-pressed={saved} onClick={() => model.toggleSaved(item.id)}>
-          {saved ? 'Saved to shortlist' : 'Save to shortlist'}
+          Save to shortlist
         </Button>
         <Button
           size="large"
           variant="secondary"
           onClick={() => {
+            // Back on the feed, focus lands on the row that followed this one (or the heading).
+            const rows = model.items.filter((i) => !i.hideOnPhone);
+            const index = rows.indexOf(item);
+            const next = rows[index + 1] ?? rows[index - 1];
             model.dismiss(item.id);
-            navigate(`/${search}`);
+            navigate(`/${search}`, { state: { focusRow: next && next !== item ? next.id : HEADING } });
           }}
         >
           Not for me

@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { setNowForTests } from '../../lib/now';
 import { renderAt, setViewport } from './testUtils';
@@ -44,4 +44,66 @@ test('state cards take the list position on the phone too', () => {
   renderAt('/?fixture=reference&state=checking');
   expect(within(screen.getByRole('region', { name: 'Feed status' })).getByRole('status')).toHaveTextContent('Checking 8 sources');
   expect(within(screen.getByRole('region', { name: 'Opportunities' })).getAllByRole('link')).toHaveLength(5);
+});
+
+const phoneRows = () => within(screen.getByRole('region', { name: 'Opportunities' })).getAllByRole('link');
+const press = (key: string, init: KeyboardEventInit = {}) => act(() => void fireEvent.keyDown(window, { key, ...init }));
+
+test('J and K move focus through the phone list, stopping at the ends', () => {
+  renderAt('/?fixture=reference');
+  press('j');
+  expect(document.activeElement).toBe(phoneRows()[0]);
+  press('j');
+  press('j');
+  expect(document.activeElement).toBe(phoneRows()[2]);
+  press('k');
+  expect(document.activeElement).toBe(phoneRows()[1]);
+  for (let i = 0; i < 10; i++) press('j');
+  expect(document.activeElement).toBe(phoneRows().at(-1));
+  press('K');
+  expect(document.activeElement).toBe(phoneRows().at(-2));
+});
+
+test('S saves the focused row; X removes it and focus moves to the next row', () => {
+  renderAt('/?fixture=reference');
+  press('j');
+  press('s');
+  expect(screen.getAllByRole('status').some((s) => s.textContent === 'Saved to shortlist: Logistics, transport and warehousing support')).toBe(true);
+  press('x');
+  expect(phoneRows()).toHaveLength(4);
+  expect(screen.queryByText('Logistics, transport and warehousing support')).toBeNull();
+  expect(document.activeElement).toBe(phoneRows()[0]);
+  expect(phoneRows()[0]).toHaveTextContent('ABH Summit');
+});
+
+test('S and X do nothing when no row has focus', () => {
+  renderAt('/?fixture=reference');
+  press('s');
+  press('x');
+  expect(phoneRows()).toHaveLength(5);
+});
+
+test('keys are ignored with a modifier held or while typing (phone)', () => {
+  renderAt('/?fixture=reference');
+  press('j', { ctrlKey: true });
+  press('j', { metaKey: true });
+  press('j', { altKey: true });
+  expect(document.activeElement).toBe(document.body);
+  press('j');
+  press('x', { shiftKey: true });
+  const input = document.createElement('input');
+  document.body.appendChild(input);
+  act(() => void fireEvent.keyDown(input, { key: 'x' }));
+  input.remove();
+  expect(phoneRows()).toHaveLength(5);
+});
+
+test('dismissing the last phone row moves focus to the heading', () => {
+  renderAt('/?fixture=reference');
+  fireEvent.click(screen.getByRole('button', { name: 'Investments' }));
+  expect(phoneRows()).toHaveLength(1);
+  press('j');
+  press('x');
+  expect(screen.queryByRole('region', { name: 'Opportunities' })).toBeNull();
+  expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 }));
 });

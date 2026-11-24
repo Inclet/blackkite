@@ -10,6 +10,8 @@ const checks: [string, { width: number; height: number }, string, string, number
   ['trust panel body (slate on stone)', { width: 390, height: 844 }, '/o/wfp-logistics?fixture=reference', 'text=Found on Job in Rwanda', 4.5],
   ['inactive tab (slate on white)', { width: 390, height: 844 }, '/?fixture=reference', 'nav >> text=Calendar', 4.5],
   ['closed row title (slate on white)', { width: 1440, height: 900 }, '/?fixture=edge-cases', 'text=Invitation for bids', 4.5],
+  ['sign-in confirm body (slate on mist)', { width: 390, height: 844 }, '/auth/confirm#token=abc', 'text=Press the button to finish', 4.5],
+  ['sign-in confirm heading (graphite on mist)', { width: 1440, height: 900 }, '/auth/confirm#token=abc', 'h1', 4.5],
   ['source down title (alert text on white)', { width: 1440, height: 900 }, '/?fixture=reference&state=source-down', 'text=We could not reach BNR today', 4.5],
 ];
 

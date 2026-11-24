@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { Button } from '../../components/Button/Button';
 import { Card } from '../../components/Card/Card';
@@ -13,14 +13,15 @@ import { Wordmark } from '../../components/Wordmark/Wordmark';
 import type { FeedItem } from '../../fixtures/types';
 import { detailMeta, feedSummary, greeting, isClosed, nextDigest, pillFor } from '../../lib/feed';
 import { rowSubtitle } from '../../lib/subtitle';
+import { httpUrl } from '../../lib/externalUrl';
 import { useAppLink } from '../../lib/useAppLink';
 import type { FeedModel } from './model';
 import { DetailTop, FilterChips, FitSection, hasFitSection, LiveRegion } from './parts';
+import { HEADING, rowId } from './focus';
 import { useFeedKeys } from './useFeedKeys';
 import { useStateCard } from './useStateCard';
 import styles from './FeedDesktop.module.css';
 
-export const rowId = (id: string) => `row-${id}`;
 
 export const NAV = [
   { label: 'Feed', to: '/' },
@@ -46,14 +47,31 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
 
   const select = (id: string, replace = true) => navigate(`/o/${id}${search}`, { replace });
 
+  // Where focus goes once a dismissal has re-rendered: a row id, or the heading when the list is empty.
+  const pendingFocus = useRef<string | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
   const dismissSelected = () => {
     if (!selected) return;
     const index = items.indexOf(selected);
     const next = items[index + 1] ?? items[index - 1];
+    // If focus is on the row being removed (or already lost), it follows the selection.
+    const active = document.activeElement;
+    const row = document.getElementById(rowId(selected.id));
+    if (!active || active === document.body || row?.contains(active)) pendingFocus.current = next ? next.id : HEADING;
     model.dismiss(selected.id);
     if (next) select(next.id);
     else navigate(`/${search}`, { replace: true });
   };
+
+  useEffect(() => {
+    const target = pendingFocus.current;
+    if (!target) return;
+    if (target !== HEADING && target !== selected?.id) return;
+    pendingFocus.current = null;
+    if (target === HEADING) headingRef.current?.focus();
+    else document.getElementById(rowId(target))?.focus();
+  });
 
   useFeedKeys({
     onNext: () => {
@@ -102,7 +120,9 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
       <main className={styles.main}>
         <div className={styles.head}>
           <div className={styles.greet}>
-            <h1 className={styles.h1}>{greeting(feed.user.name)}</h1>
+            <h1 ref={headingRef} tabIndex={-1} className={styles.h1}>
+              {greeting(feed.user.name)}
+            </h1>
             <div className={styles.summary}>{feedSummary(items)}</div>
           </div>
           <div className={styles.checked}>
@@ -163,6 +183,8 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
 
 function DetailPane({ item, model, onDismiss }: { item: FeedItem; model: FeedModel; onDismiss: () => void }) {
   const saved = model.saved.has(item.id);
+  // Only http(s) links to the original notice; anything else renders no link.
+  const original = httpUrl(item.detail.originalUrl);
   const headingId = `detail-${item.id}`;
   return (
     <Card as="article" padding="24px" gap={16} aria-labelledby={headingId}>
@@ -183,14 +205,16 @@ function DetailPane({ item, model, onDismiss }: { item: FeedItem; model: FeedMod
       </TrustPanel>
       <div className={styles.actions}>
         <Button aria-pressed={saved} onClick={() => model.toggleSaved(item.id)}>
-          {saved ? 'Saved to shortlist' : 'Save to shortlist'}
+          Save to shortlist
         </Button>
         <Button variant="secondary" onClick={onDismiss}>
           Not for me
         </Button>
-        <TextLink href={item.detail.originalUrl} target="_blank" rel="noopener noreferrer">
-          Read the original
-        </TextLink>
+        {original && (
+          <TextLink href={original} target="_blank" rel="noopener noreferrer">
+            Read the original
+          </TextLink>
+        )}
       </div>
     </Card>
   );

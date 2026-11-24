@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { reference } from '../../fixtures/reference';
 import { setNowForTests } from '../../lib/now';
 import { renderAt, setViewport } from './testUtils';
 
@@ -63,11 +64,13 @@ test('J and K move the selection, update the pane and the URL, and stop at the e
 test('S saves and unsaves the selected item', () => {
   renderAt('/?fixture=reference');
   press('s');
-  expect(within(pane()).getByRole('button', { name: 'Saved to shortlist' })).toHaveAttribute('aria-pressed', 'true');
+  // One label; aria-pressed carries the state.
+  expect(within(pane()).getByRole('button', { name: 'Save to shortlist' })).toHaveAttribute('aria-pressed', 'true');
+  expect(within(pane()).queryByRole('button', { name: 'Saved to shortlist' })).toBeNull();
   expect(screen.getByRole('status', { name: '' })).toHaveTextContent('Saved to shortlist: Logistics, transport and warehousing support');
   expect(rows()).toHaveLength(6);
   press('s');
-  expect(within(pane()).getByRole('button', { name: 'Save to shortlist' })).toBeInTheDocument();
+  expect(within(pane()).getByRole('button', { name: 'Save to shortlist' })).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('X removes the selected row and selects the next one', () => {
@@ -78,6 +81,32 @@ test('X removes the selected row and selects the next one', () => {
   expect(current()).toHaveTextContent('ABH Summit');
   expect(router.state.location.pathname).toBe('/o/abh-summit');
   expect(screen.getByText('Five things worth a look.')).toBeInTheDocument();
+});
+
+test('X on the focused row moves focus to the newly selected row', () => {
+  renderAt('/?fixture=reference');
+  act(() => current()!.focus());
+  press('x');
+  expect(current()).toHaveTextContent('ABH Summit');
+  expect(document.activeElement).toBe(current());
+});
+
+test('X with focus elsewhere leaves focus where it is', () => {
+  renderAt('/?fixture=reference');
+  const save = within(pane()).getByRole('button', { name: 'Save to shortlist' });
+  act(() => save.focus());
+  press('x');
+  expect(document.activeElement).toBe(within(pane()).getByRole('button', { name: 'Save to shortlist' }));
+});
+
+test('dismissing the last row moves focus to the page heading', () => {
+  renderAt('/?fixture=reference');
+  fireEvent.click(screen.getByRole('button', { name: 'Investments' }));
+  expect(rows()).toHaveLength(1);
+  act(() => current()!.focus());
+  press('x');
+  expect(screen.queryByRole('region', { name: 'Opportunities' })).toBeNull();
+  expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 }));
 });
 
 test('the Not for me button does the same as X', () => {
@@ -166,4 +195,23 @@ test('edge cases: long title, missing deadline, not scored, closed', () => {
   expect(list().getByText('Closed 23 Nov')).toHaveClass('plain');
   expect(rows().at(-1)).toHaveClass('closed');
   expect(rows()[0]).toHaveClass('new');
+});
+
+test.each(['javascript:alert(1)', 'data:text/html,hi', '/relative'])('an original notice URL of %s renders no link', (url) => {
+  const item = reference.feed.items.find((i) => i.id === 'wfp-logistics')!;
+  const was = item.detail.originalUrl;
+  item.detail.originalUrl = url;
+  try {
+    renderAt('/?fixture=reference');
+    expect(within(pane()).queryByRole('link', { name: 'Read the original' })).toBeNull();
+  } finally {
+    item.detail.originalUrl = was;
+  }
+});
+
+test('an https original notice is linked, in a new tab without a referrer', () => {
+  renderAt('/?fixture=reference');
+  const a = within(pane()).getByRole('link', { name: 'Read the original' });
+  expect(a).toHaveAttribute('href', 'https://www.jobinrwanda.com/jobs/tender');
+  expect(a).toHaveAttribute('rel', 'noopener noreferrer');
 });
