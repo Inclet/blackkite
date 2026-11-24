@@ -64,6 +64,39 @@ test('J and K move focus through the phone list, stopping at the ends', () => {
   expect(document.activeElement).toBe(phoneRows().at(-2));
 });
 
+/** Several keys in one tick: none of them re-render in between. */
+const pressAll = (...keys: string[]) => act(() => keys.forEach((key) => fireEvent.keyDown(window, { key })));
+
+test('J then K in the same tick returns focus to the starting row', () => {
+  renderAt('/?fixture=reference');
+  press('j');
+  press('j');
+  expect(document.activeElement).toBe(phoneRows()[1]);
+  pressAll('j', 'k');
+  expect(document.activeElement).toBe(phoneRows()[1]);
+});
+
+test('X then K in the same tick does not return to the removed row', () => {
+  renderAt('/?fixture=reference');
+  const before = phoneRows().map((r) => r.textContent);
+  press('j');
+  press('j');
+  pressAll('x', 'k');
+  // Row 1 removed, focus moved to the old row 2, then K moved to row 0.
+  expect(phoneRows()).toHaveLength(4);
+  expect(document.activeElement).toBe(phoneRows()[0]);
+  expect(document.activeElement!.textContent).toBe(before[0]);
+});
+
+test('X twice in the same tick removes two rows and focus lands after them', () => {
+  renderAt('/?fixture=reference');
+  const before = phoneRows().map((r) => r.textContent);
+  press('j');
+  pressAll('x', 'x');
+  expect(phoneRows()).toHaveLength(3);
+  expect(document.activeElement!.textContent).toBe(before[2]);
+});
+
 test('S saves the focused row; X removes it and focus moves to the next row', () => {
   renderAt('/?fixture=reference');
   press('j');

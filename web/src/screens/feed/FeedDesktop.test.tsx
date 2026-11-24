@@ -61,6 +61,38 @@ test('J and K move the selection, update the pane and the URL, and stop at the e
   expect(current()).toHaveTextContent('develoPPP Ventures, cohort 6');
 });
 
+/** Several keys in one tick: none of them re-render in between. */
+const pressAll = (...keys: string[]) => act(() => keys.forEach((key) => fireEvent.keyDown(window, { key })));
+
+test('J then K in the same tick returns to the starting row', () => {
+  const router = renderAt('/o/abh-summit?fixture=reference');
+  expect(current()).toHaveTextContent('ABH Summit');
+  pressAll('j', 'k');
+  expect(current()).toHaveTextContent('ABH Summit');
+  expect(router.state.location.pathname).toBe('/o/abh-summit');
+  pressAll('j', 'j', 'k');
+  expect(rows().indexOf(current()!)).toBe(2);
+});
+
+test('X then J in the same tick moves on from the newly selected row', () => {
+  renderAt('/?fixture=reference');
+  const before = rows().map((r) => r.textContent);
+  pressAll('x', 'j');
+  // Logistics removed, ABH selected by X, then J moves to the row after ABH.
+  expect(rows()).toHaveLength(5);
+  expect(current()!.textContent).toBe(before[2]);
+});
+
+test('X then K in the same tick does not return to the removed row', () => {
+  renderAt('/o/abh-summit?fixture=reference');
+  const before = rows().map((r) => r.textContent);
+  pressAll('x', 'k');
+  expect(rows()).toHaveLength(5);
+  expect(current()!.textContent).toBe(before[0]);
+  pressAll('x', 'x');
+  expect(rows()).toHaveLength(3);
+});
+
 test('S saves and unsaves the selected item', () => {
   renderAt('/?fixture=reference');
   press('s');

@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { reference } from '../../fixtures/reference';
 import { setNowForTests } from '../../lib/now';
@@ -42,6 +42,23 @@ test('save toggles; not for me returns to a feed without the item', () => {
   expect(within(screen.getByRole('region', { name: 'Opportunities' })).getAllByRole('link')).toHaveLength(4);
   // Focus lands on the row that followed the dismissed one.
   expect(document.activeElement).toHaveTextContent('ABH Summit');
+});
+
+test('the focus hint is used once: back and forward do not refocus that row', async () => {
+  const router = renderAt('/?fixture=reference');
+  fireEvent.click(screen.getByRole('link', { name: /Logistics, transport/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Not for me' }));
+  expect(document.activeElement).toHaveTextContent('ABH Summit');
+  // The navigation state is cleared once used, on the same history entry.
+  expect(router.state.location.pathname).toBe('/');
+  expect(router.state.location.search).toBe('?fixture=reference');
+  expect(router.state.location.state).toBeNull();
+  await act(() => router.navigate(-1));
+  expect(router.state.location.pathname).toBe('/o/wfp-logistics');
+  await act(() => router.navigate(1));
+  expect(router.state.location.pathname).toBe('/');
+  expect(router.state.location.state).toBeNull();
+  expect(document.activeElement).toBe(document.body);
 });
 
 test('an unknown id says so and links back', () => {
