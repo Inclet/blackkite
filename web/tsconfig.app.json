@@ -13,6 +13,8 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "paths": { "@design/*": ["../design/*"] },
     "noEmit": true,
     "types": ["vite/client", "vite-plugin-pwa/client"]
   },
