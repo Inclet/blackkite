@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     # Public URL that magic links point at (the web app, which proxies /auth to the API)
     public_base_url: str = "http://localhost:8000"
-    # Where /auth/verify redirects after a successful sign-in
+    # Where the confirm page sends the browser after POST /auth/verify succeeds
     after_login_url: str = "/"
 
     # Sessions and tokens

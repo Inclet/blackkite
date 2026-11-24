@@ -2,8 +2,8 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 
 from blackkite.auth import service
 from blackkite.auth.deps import CurrentUser, DbDep, SettingsDep, get_link_limiter
@@ -11,7 +11,7 @@ from blackkite.auth.ratelimit import LinkRequestLimiter
 from blackkite.auth.tokens import hash_token
 from blackkite.db.models import Session
 from blackkite.delivery.mail import MailTransport, get_mail_transport
-from blackkite.routes.schemas import EmailIn, Message, UserOut
+from blackkite.routes.schemas import EmailIn, Message, TokenIn, UserOut, VerifyOut
 
 router = APIRouter()
 
@@ -41,15 +41,26 @@ def request_link(
     return Message(detail=LINK_SENT)
 
 
-@router.get("/auth/verify")
-def verify(token: Annotated[str, Query(max_length=200)], db: DbDep, settings: SettingsDep) -> Response:
-    user = service.consume_token(db, token)
+@router.post("/auth/verify", response_model=VerifyOut)
+def verify(body: TokenIn, request: Request, db: DbDep, settings: SettingsDep) -> Response:
+    """Spend a sign-in or invite token and start a session (decision 17).
+
+    Called by the web confirm page (/auth/confirm) when the person presses
+    "Continue to sign in". There is no GET: opening the emailed link must not spend
+    the token, and a token in a request body stays out of access logs. JSON only,
+    so a cross-site form cannot post here without a CORS preflight.
+    """
+    ctype = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if ctype != "application/json":
+        raise HTTPException(415, "Send the token as JSON.")
+    user = service.consume_token(db, body.token)
     if user is None:
         db.commit()  # keep the token spent even if sign-in fails
-        return JSONResponse({"detail": INVALID_LINK}, status_code=400)
+        return JSONResponse({"detail": INVALID_LINK}, status_code=400,
+                            headers={"Cache-Control": "no-store"})
     raw = service.create_session(db, settings, user)
     db.commit()
-    resp = RedirectResponse(settings.after_login_url, status_code=303)
+    resp = JSONResponse({"redirect": settings.after_login_url})
     resp.set_cookie(
         settings.session_cookie_name,
         raw,

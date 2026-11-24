@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from fastapi.testclient import TestClient
 
 from blackkite.db.models import Invite, LoginToken, Session, User
-from tests.conftest import make_user, sign_in, token_from_mail
+from tests.conftest import make_user, sign_in, token_from_mail, verify
 
 ADMIN = "admin@example.com"
 MEMBER = "member@example.com"
@@ -76,8 +76,8 @@ def test_invite_accept_via_invite_link(app, admin_client, db, outbox):
     token = token_from_mail(mail.text)
 
     invitee = _new_client(app)
-    r = invitee.get("/auth/verify", params={"token": token}, follow_redirects=False)
-    assert r.status_code == 303
+    r = verify(invitee, token)
+    assert r.status_code == 200
     me = invitee.get("/me").json()
     assert me["email"] == "new@example.com" and me["role"] == "member"
 
@@ -86,7 +86,7 @@ def test_invite_accept_via_invite_link(app, admin_client, db, outbox):
     assert str(invite.accepted_user_id) == me["id"]
     assert admin_client.get("/admin/invites").json()[0]["status"] == "accepted"
     # The invite link works once.
-    again = _new_client(app).get("/auth/verify", params={"token": token}, follow_redirects=False)
+    again = verify(_new_client(app), token)
     assert again.status_code == 400
     assert db.scalar(sa.select(sa.func.count()).select_from(User)) == 2
 
@@ -107,7 +107,7 @@ def test_expired_invite_cannot_sign_in(app, admin_client, db, outbox):
     c = _new_client(app)
     assert c.post("/auth/request-link", json={"email": "new@example.com"}).status_code == 202
     assert len(outbox.outbox) == n  # no link for an expired invite
-    assert c.get("/auth/verify", params={"token": token}, follow_redirects=False).status_code == 400
+    assert verify(c, token).status_code == 400
     assert admin_client.get("/admin/invites").json()[0]["status"] == "expired"
 
 
@@ -116,7 +116,7 @@ def test_deleted_invite_link_stops_working(app, admin_client, db, outbox):
     token = token_from_mail(outbox.outbox[-1].text)
     assert admin_client.delete(f"/admin/invites/{invite_id}").status_code == 204
     assert admin_client.delete(f"/admin/invites/{invite_id}").status_code == 404
-    r = _new_client(app).get("/auth/verify", params={"token": token}, follow_redirects=False)
+    r = verify(_new_client(app), token)
     assert r.status_code == 400
 
 
@@ -137,7 +137,7 @@ def test_reinvite_replaces_pending_invite(admin_client, db, outbox):
     admin_client.post("/admin/invites", json={"email": "new@example.com"})
     assert db.scalar(sa.select(sa.func.count()).select_from(Invite)) == 1
     c = TestClient(admin_client.app, base_url="https://testserver")
-    assert c.get("/auth/verify", params={"token": old}, follow_redirects=False).status_code == 400
+    assert verify(c, old).status_code == 400
 
 
 def test_list_users(admin_client, db):
@@ -165,7 +165,7 @@ def test_deactivation_kills_sessions_and_links(app, admin_client, db, outbox):
     assert db.scalar(sa.select(sa.func.count()).select_from(LoginToken)
                      .where(LoginToken.user_id == member.id, LoginToken.used_at.is_(None))) == 0
     c = _new_client(app)
-    assert c.get("/auth/verify", params={"token": pending}, follow_redirects=False).status_code == 400
+    assert verify(c, pending).status_code == 400
     n = len(outbox.outbox)
     assert c.post("/auth/request-link", json={"email": MEMBER}).status_code == 202
     assert len(outbox.outbox) == n
@@ -190,8 +190,8 @@ def test_second_requested_link_after_acceptance_signs_in_same_member(app, admin_
     first = token_from_mail(outbox.outbox[-1].text)
     c.post("/auth/request-link", json={"email": "new@example.com"})
     second = token_from_mail(outbox.outbox[-1].text)
-    assert c.get("/auth/verify", params={"token": first}, follow_redirects=False).status_code == 303
+    assert verify(c, first).status_code == 200
     other = _new_client(app)
-    assert other.get("/auth/verify", params={"token": second}, follow_redirects=False).status_code == 303
+    assert verify(other, second).status_code == 200
     assert other.get("/me").json()["email"] == "new@example.com"
     assert db.scalar(sa.select(sa.func.count()).select_from(User)) == 2

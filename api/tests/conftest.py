@@ -147,7 +147,7 @@ def client(app) -> Iterator[TestClient]:
 
 # --- helpers ----------------------------------------------------------------------
 
-LINK_RE = re.compile(r"https://testserver/auth/verify\?token=\S+")
+LINK_RE = re.compile(r"https://testserver/auth/confirm\?token=\S+")
 
 
 def token_from_mail(text: str) -> str:
@@ -170,6 +170,11 @@ def sign_in(client: TestClient, outbox: MemoryTransport, email: str) -> TestClie
     assert r.status_code == 202, r.text
     assert len(outbox.outbox) == n + 1, "no mail sent"
     token = token_from_mail(outbox.outbox[-1].text)
-    r = client.get("/auth/verify", params={"token": token}, follow_redirects=False)
-    assert r.status_code == 303, r.text
+    r = verify(client, token)
+    assert r.status_code == 200, r.text
     return client
+
+
+def verify(client: TestClient, token: str):
+    """What the web confirm page does when the person presses Continue."""
+    return client.post("/auth/verify", json={"token": token})

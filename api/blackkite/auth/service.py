@@ -24,8 +24,13 @@ def normalise_email(email: str) -> str:
     return email.strip().lower()
 
 
-def verify_url(settings: Settings, token: str) -> str:
-    return f"{settings.public_base_url.rstrip('/')}/auth/verify?{urlencode({'token': token})}"
+def confirm_url(settings: Settings, token: str) -> str:
+    """The emailed link: a web page that asks the person to continue (decision 17).
+
+    Opening it spends nothing, so mail scanners that fetch links cannot use the
+    token up. Only the page's POST /auth/verify spends it.
+    """
+    return f"{settings.public_base_url.rstrip('/')}/auth/confirm?{urlencode({'token': token})}"
 
 
 def find_user_by_email(db: DB, email: str) -> User | None:
@@ -73,7 +78,7 @@ def issue_login_link(db: DB, settings: Settings, email: str) -> Mail | None:
         subject="Your Blackkite sign-in link",
         text=(
             "Use this link to sign in to Blackkite. It works once and expires in "
-            f"{settings.login_token_minutes} minutes.\n\n{verify_url(settings, token)}\n\n"
+            f"{settings.login_token_minutes} minutes.\n\n{confirm_url(settings, token)}\n\n"
             "If you did not ask for it, ignore this email."
         ),
     )
@@ -175,7 +180,7 @@ def create_invite(db: DB, settings: Settings, email: str, invited_by: User) -> N
         text=(
             "You have been invited to Blackkite, a tool that finds opportunities in Rwanda.\n\n"
             f"Accept the invitation and sign in (link works once, expires in "
-            f"{settings.invite_days} days):\n\n{verify_url(settings, token)}\n\n"
+            f"{settings.invite_days} days):\n\n{confirm_url(settings, token)}\n\n"
             "If the link has expired, request a sign-in link with this address while "
             "the invitation is still open, or ask for a new invitation."
         ),

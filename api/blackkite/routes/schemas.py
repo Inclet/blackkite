@@ -3,11 +3,19 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class EmailIn(BaseModel):
     email: EmailStr
+
+
+class TokenIn(BaseModel):
+    token: str = Field(min_length=1, max_length=200)
+
+
+class VerifyOut(BaseModel):
+    redirect: str
 
 
 class Message(BaseModel):
