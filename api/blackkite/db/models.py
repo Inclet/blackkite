@@ -23,8 +23,10 @@ ROLES = ("member", "admin")
 USER_STATUSES = ("active", "deactivated")
 PROFILE_TYPES = ("business", "personal")
 DIGEST_CHANNELS = ("email", "telegram")  # spec 8: email first, Telegram second
-DIGEST_FREQUENCIES = ("weekly",)  # spec names only weekly; see open questions
-WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+# Decision 18: weekly on Monday, or off. No other frequencies or weekdays in v1;
+# adding one later is a CHECK swap (see enum() in db/base.py).
+DIGEST_FREQUENCIES = ("weekly", "off")
+DIGEST_DAYS = ("mon",)
 SOURCE_KINDS = ("original", "publisher", "aggregator", "news", "community")
 SOURCE_STATUSES = ("suggested", "testing", "active", "paused", "retired")
 COLLECTOR_TYPES = (
@@ -182,9 +184,11 @@ class DigestSetting(Base):
     channel: Mapped[str] = mapped_column(enum(*DIGEST_CHANNELS, name="channel"), nullable=False)
     address: Mapped[str] = mapped_column(sa.String(320), nullable=False)
     frequency: Mapped[str] = mapped_column(
-        enum(*DIGEST_FREQUENCIES, name="frequency"), nullable=False
+        enum(*DIGEST_FREQUENCIES, name="frequency"), nullable=False, server_default="weekly"
     )
-    day: Mapped[str | None] = mapped_column(enum(*WEEKDAYS, name="day"))
+    day: Mapped[str] = mapped_column(
+        enum(*DIGEST_DAYS, name="day"), nullable=False, server_default="mon"
+    )
     alert_threshold: Mapped[int | None] = mapped_column(sa.SmallInteger)
     # NULL means "the streams of the user's profiles".
     streams: Mapped[list[str] | None] = mapped_column(ARRAY(sa.String(32)))

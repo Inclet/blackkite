@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from blackkite.config import EMBEDDING_DIM
 from blackkite.db.models import (
     PER_USER_TABLES,
+    DigestSetting,
     Opportunity,
     Profile,
     Source,
@@ -116,4 +117,37 @@ def test_user_email_unique_case_insensitive(db):
     make_user(db, "Case@example.com")
     with pytest.raises(IntegrityError):
         make_user(db, "case@example.com")
+    db.rollback()
+
+
+# --- Decision 18: digest weekly on Monday, or off ------------------------------------
+
+
+def test_digest_defaults_to_weekly_monday(db):
+    u = make_user(db, "d@example.com")
+    db.add(DigestSetting(user_id=u.id, channel="email", address="d@example.com"))
+    db.commit()
+    d = db.scalar(sa.select(DigestSetting).where(DigestSetting.user_id == u.id))
+    assert (d.frequency, d.day) == ("weekly", "mon")
+
+
+def test_digest_can_be_off(db):
+    u = make_user(db, "d@example.com")
+    db.add(DigestSetting(user_id=u.id, channel="email", address="d@example.com", frequency="off"))
+    db.commit()
+
+
+@pytest.mark.parametrize("sql", [
+    "UPDATE digest_setting SET frequency = 'daily'",
+    "UPDATE digest_setting SET frequency = 'monthly'",
+    "UPDATE digest_setting SET day = 'tue'",
+    "UPDATE digest_setting SET day = NULL",
+])
+def test_digest_schedule_limited_to_v1(db, sql):
+    u = make_user(db, "d@example.com")
+    db.add(DigestSetting(user_id=u.id, channel="email", address="d@example.com"))
+    db.commit()
+    with pytest.raises(IntegrityError):
+        db.execute(sa.text(sql))
+        db.flush()
     db.rollback()

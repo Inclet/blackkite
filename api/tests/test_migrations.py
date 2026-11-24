@@ -51,3 +51,28 @@ def test_schema_has_every_spec_table():
         "session", "login_token",
     }
     assert spec == set(Base.metadata.tables)
+
+
+def _exec(url: str, sql: str, **params):
+    eng = sa.create_engine(url)
+    try:
+        with eng.begin() as c:
+            r = c.execute(sa.text(sql), params)
+            return r.all() if r.returns_rows else None
+    finally:
+        eng.dispose()
+
+
+def test_0002_moves_digest_days_to_monday_and_downgrade_drops_off(make_database):
+    url = make_database("bk_migr")
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0001")
+    _exec(url, "INSERT INTO \"user\" (email) VALUES ('a@example.com'), ('b@example.com')")
+    _exec(url, """INSERT INTO digest_setting (user_id, channel, address, frequency, day)
+                  SELECT id, 'email', email, 'weekly', CASE WHEN email LIKE 'a%' THEN 'fri' END
+                  FROM "user" """)
+    command.upgrade(cfg, "0002")
+    assert _exec(url, "SELECT DISTINCT frequency, day FROM digest_setting") == [("weekly", "mon")]
+    _exec(url, "UPDATE digest_setting SET frequency = 'off' WHERE address = 'b@example.com'")
+    command.downgrade(cfg, "0001")
+    assert _exec(url, "SELECT address FROM digest_setting") == [("a@example.com",)]
