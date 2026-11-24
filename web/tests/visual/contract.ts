@@ -14,7 +14,7 @@ export const PIXELMATCH_THRESHOLD = 0.1;
 /** Maximum share of differing pixels (of the viewport area) for a pass: 0.5 %. */
 export const PASS_MAX_DIFF_RATIO = 0.005;
 
-/** Required layout-shift sum, for both the reference and the built page. */
+/** Required layout-shift sum for the built page. The reference value is reported, not judged (owner ruling 16). */
 export const MAX_LAYOUT_SHIFT = 0;
 
 /** The clock both pages see. Kigali, Tuesday afternoon. */
