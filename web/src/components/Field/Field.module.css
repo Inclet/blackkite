@@ -1,0 +1,38 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.input {
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 1px solid var(--bk-stone-300);
+  border-radius: var(--bk-radius-control);
+  background: var(--bk-white);
+  color: var(--bk-graphite);
+  font-family: var(--bk-font);
+  font-size: 15px;
+  width: 100%;
+}
+
+.input:focus-visible {
+  outline: none;
+  box-shadow: var(--bk-focus-ring);
+}
+
+.invalid {
+  border: 1.5px solid var(--bk-alert);
+}
+
+.error {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bk-alert-text);
+}
