@@ -19,3 +19,4 @@ Answers to the Phase 0 questions, 2026-11-24. Conflict numbers refer to `PLAN.md
 | 13 | Production email | Pluggable transport now; provider chosen before Phase 4. Dev mail goes to Mailpit only. |
 | 14 | Models | `claude-haiku-5-5` for extraction and scoring; **`claude-opus-5-5` for digest write-ups**. Names in config. |
 | 15 | First admin | The owner's Claude account email. Kept out of the repo: the seed reads `BK_FIRST_ADMIN_EMAIL` from the environment. |
+| 16 | Layout shift in the visual harness | Only the built page must have zero layout shift. The reference pages shift slightly when Google's Figtree swaps in (font-display: swap); that value is reported, not judged. Threshold, viewports and pass mark unchanged. |
