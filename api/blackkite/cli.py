@@ -60,6 +60,25 @@ def seed_sources() -> None:
         typer.echo(f"  {name}")
 
 
+@app.command("digest-preview")
+def digest_preview(
+    fixture: str = typer.Option("reference", help="Fixture name (see delivery/fixtures)."),
+    out: Path = typer.Option(..., help="HTML file to write; kite.png goes beside it."),
+) -> None:
+    """Write the digest email inside its preview chrome, plus the logo PNG."""
+    from blackkite.delivery.digest import render_digest_preview
+    from blackkite.delivery.fixtures.digest_reference import FIXTURES
+    from blackkite.delivery.logo import kite_png
+
+    if fixture not in FIXTURES:
+        typer.echo(f"error: unknown fixture {fixture!r}; known: {', '.join(FIXTURES)}", err=True)
+        raise typer.Exit(1)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(render_digest_preview(FIXTURES[fixture], logo_src="kite.png"), "utf-8")
+    (out.parent / "kite.png").write_bytes(kite_png())
+    typer.echo(f"wrote {out} and {out.parent / 'kite.png'}")
+
+
 def main() -> None:
     app()
 
