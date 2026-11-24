@@ -23,8 +23,10 @@ ROLES = ("member", "admin")
 USER_STATUSES = ("active", "deactivated")
 PROFILE_TYPES = ("business", "personal")
 DIGEST_CHANNELS = ("email", "telegram")  # spec 8: email first, Telegram second
-DIGEST_FREQUENCIES = ("weekly",)  # spec names only weekly; see open questions
-WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+# Decision 18: weekly on Monday, or off. No other frequencies or weekdays in v1;
+# adding one later is a CHECK swap (see enum() in db/base.py).
+DIGEST_FREQUENCIES = ("weekly", "off")
+DIGEST_DAYS = ("mon",)
 SOURCE_KINDS = ("original", "publisher", "aggregator", "news", "community")
 SOURCE_STATUSES = ("suggested", "testing", "active", "paused", "retired")
 COLLECTOR_TYPES = (
@@ -50,6 +52,7 @@ PER_USER_TABLES = (
     "source_suggestion",
     "user_source_mute",
     "user_opportunity",
+    "user_opportunity_score",
     "digest_log",
     "session",
 )
@@ -182,9 +185,11 @@ class DigestSetting(Base):
     channel: Mapped[str] = mapped_column(enum(*DIGEST_CHANNELS, name="channel"), nullable=False)
     address: Mapped[str] = mapped_column(sa.String(320), nullable=False)
     frequency: Mapped[str] = mapped_column(
-        enum(*DIGEST_FREQUENCIES, name="frequency"), nullable=False
+        enum(*DIGEST_FREQUENCIES, name="frequency"), nullable=False, server_default="weekly"
     )
-    day: Mapped[str | None] = mapped_column(enum(*WEEKDAYS, name="day"))
+    day: Mapped[str] = mapped_column(
+        enum(*DIGEST_DAYS, name="day"), nullable=False, server_default="mon"
+    )
     alert_threshold: Mapped[int | None] = mapped_column(sa.SmallInteger)
     # NULL means "the streams of the user's profiles".
     streams: Mapped[list[str] | None] = mapped_column(ARRAY(sa.String(32)))
@@ -432,18 +437,47 @@ class Award(Base):
 
 
 class UserOpportunity(Base):
+    """A user's state for one opportunity, across all their profiles (decision 19).
+
+    Saving, dismissing, acting, done and the note apply to the opportunity for this
+    user, whichever profile surfaced it. Per-profile scores live in
+    UserOpportunityScore. No row means `unseen`.
+    """
+
     __tablename__ = "user_opportunity"
+    __table_args__ = (
+        sa.UniqueConstraint("user_id", "opportunity_id"),
+        sa.Index("ix_user_opportunity_user_id_state", "user_id", "state"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = _user_fk()
+    opportunity_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("opportunity.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    state: Mapped[str] = mapped_column(
+        enum(*USER_OPPORTUNITY_STATES, name="state"), nullable=False, server_default="unseen"
+    )
+    dismiss_reason: Mapped[str | None] = mapped_column(sa.Text)
+    note: Mapped[str | None] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
+class UserOpportunityScore(Base):
+    """Score of one opportunity against one of the user's profiles (spec 7)."""
+
+    __tablename__ = "user_opportunity_score"
     __table_args__ = (
         sa.UniqueConstraint("user_id", "opportunity_id", "profile_id"),
         # The profile must belong to the same user.
         sa.ForeignKeyConstraint(
             ["profile_id", "user_id"],
             ["profile.id", "profile.user_id"],
-            name="fk_user_opportunity_profile_owner",
+            name="fk_user_opportunity_score_profile_owner",
             ondelete="CASCADE",
         ),
         sa.CheckConstraint("score IS NULL OR score BETWEEN 0 AND 100", name="score_range"),
-        sa.Index("ix_user_opportunity_user_id_state", "user_id", "state"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -455,11 +489,6 @@ class UserOpportunity(Base):
     score: Mapped[int | None] = mapped_column(sa.SmallInteger)
     score_breakdown: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     score_reason: Mapped[str | None] = mapped_column(sa.Text)
-    state: Mapped[str] = mapped_column(
-        enum(*USER_OPPORTUNITY_STATES, name="state"), nullable=False, server_default="unseen"
-    )
-    dismiss_reason: Mapped[str | None] = mapped_column(sa.Text)
-    note: Mapped[str | None] = mapped_column(sa.Text)
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 

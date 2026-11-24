@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from blackkite.auth.tokens import hash_token
 from blackkite.db.models import LoginToken, Session
-from tests.conftest import make_user, sign_in, token_from_mail
+from tests.conftest import make_user, sign_in, token_from_mail, verify
 
 
 def _request(client, email):
@@ -16,7 +16,7 @@ def _request(client, email):
 
 
 def _verify(client, token):
-    return client.get("/auth/verify", params={"token": token}, follow_redirects=False)
+    return verify(client, token)
 
 
 def test_happy_path(client, db, outbox):
@@ -35,7 +35,7 @@ def test_happy_path(client, db, outbox):
     assert timedelta(minutes=14) < life <= timedelta(minutes=15, seconds=5)
 
     r = _verify(client, token)
-    assert r.status_code == 303
+    assert r.status_code == 200
     me = client.get("/me")
     assert me.status_code == 200
     assert me.json()["email"] == "member@example.com"
@@ -46,7 +46,7 @@ def test_token_is_single_use(client, db, outbox):
     make_user(db, "member@example.com")
     _request(client, "member@example.com")
     token = token_from_mail(outbox.outbox[0].text)
-    assert _verify(client, token).status_code == 303
+    assert _verify(client, token).status_code == 200
     other = TestClient(client.app, base_url="https://testserver")
     r = _verify(other, token)
     assert r.status_code == 400
@@ -152,3 +152,78 @@ def test_rate_limit_per_ip(client, settings):
              for i in range(settings.link_rate_per_ip_per_hour + 1)]
     assert codes[-1] == 429
     assert set(codes[:-1]) == {202}
+
+
+# --- Decision 17: the emailed link opens a confirm page; only POST spends ----------
+
+
+def test_link_points_at_confirm_page(client, db, outbox):
+    make_user(db, "member@example.com")
+    _request(client, "member@example.com")
+    assert "https://testserver/auth/confirm?token=" in outbox.outbox[0].text
+    assert "/auth/verify" not in outbox.outbox[0].text
+
+
+def test_verify_returns_redirect_json(client, db, outbox, settings):
+    make_user(db, "member@example.com")
+    _request(client, "member@example.com")
+    r = _verify(client, token_from_mail(outbox.outbox[0].text))
+    assert r.status_code == 200
+    assert r.json() == {"redirect": "/"}
+    assert r.headers["cache-control"] == "no-store"
+    assert settings.session_cookie_name in r.headers["set-cookie"]
+
+
+def test_get_verify_spends_nothing(client, db, outbox):
+    """A mail scanner fetching the old-style URL must not use the token up."""
+    make_user(db, "member@example.com")
+    _request(client, "member@example.com")
+    token = token_from_mail(outbox.outbox[0].text)
+    r = client.get("/auth/verify", params={"token": token}, follow_redirects=False)
+    assert r.status_code == 405
+    assert "set-cookie" not in r.headers
+    assert db.scalar(sa.select(LoginToken.used_at)) is None
+    assert _verify(client, token).status_code == 200
+
+
+def test_head_and_query_string_post_spend_nothing(client, db, outbox):
+    make_user(db, "member@example.com")
+    _request(client, "member@example.com")
+    token = token_from_mail(outbox.outbox[0].text)
+    assert client.head("/auth/verify", params={"token": token}).status_code == 405
+    # Token in the query string instead of the body: rejected, not spent.
+    assert client.post("/auth/verify", params={"token": token}).status_code == 422
+    db.expire_all()
+    assert db.scalar(sa.select(LoginToken.used_at)) is None
+
+
+def test_verify_requires_json(client, db, outbox):
+    """A cross-site HTML form cannot post a token (login CSRF) without a preflight."""
+    make_user(db, "member@example.com")
+    _request(client, "member@example.com")
+    token = token_from_mail(outbox.outbox[0].text)
+    for headers, content in (
+        ({"content-type": "text/plain"}, f'{{"token": "{token}"}}'),
+        ({"content-type": "application/x-www-form-urlencoded"}, f"token={token}"),
+    ):
+        r = client.post("/auth/verify", headers=headers, content=content)
+        assert r.status_code in (415, 422), r.text
+        assert "set-cookie" not in r.headers
+    db.expire_all()
+    assert db.scalar(sa.select(LoginToken.used_at)) is None
+    assert _verify(client, token).status_code == 200
+
+
+def test_invite_link_points_at_confirm_page(app, db, outbox):
+    from tests.conftest import make_user as mk
+
+    mk(db, "admin@example.com", role="admin")
+    c = sign_in(TestClient(app, base_url="https://testserver"), outbox, "admin@example.com")
+    assert c.post("/admin/invites", json={"email": "new@example.com"}).status_code == 201
+    text = outbox.outbox[-1].text
+    assert "https://testserver/auth/confirm?token=" in text
+    token = token_from_mail(text)
+    invitee = TestClient(app, base_url="https://testserver")
+    assert invitee.get("/auth/verify", params={"token": token}).status_code == 405
+    assert _verify(invitee, token).status_code == 200
+    assert invitee.get("/me").json()["email"] == "new@example.com"

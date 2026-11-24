@@ -9,10 +9,12 @@ from sqlalchemy.exc import IntegrityError
 from blackkite.config import EMBEDDING_DIM
 from blackkite.db.models import (
     PER_USER_TABLES,
+    DigestSetting,
     Opportunity,
     Profile,
     Source,
     UserOpportunity,
+    UserOpportunityScore,
 )
 from tests.conftest import make_user
 
@@ -53,9 +55,40 @@ def test_organisation_short_is_nullable(engine):
     assert cols["organisation_short"]["nullable"] is True
 
 
-def test_user_opportunity_unique_per_user_opportunity_profile(engine):
-    uniques = sa.inspect(engine).get_unique_constraints("user_opportunity")
+def test_user_opportunity_state_unique_per_user_and_opportunity(engine):
+    """Decision 19: one state row per (user, opportunity), across all profiles."""
+    insp = sa.inspect(engine)
+    uniques = insp.get_unique_constraints("user_opportunity")
+    assert [u["column_names"] for u in uniques] == [["user_id", "opportunity_id"]]
+    assert "profile_id" not in {c["name"] for c in insp.get_columns("user_opportunity")}
+
+
+def test_user_opportunity_score_unique_per_profile(engine):
+    uniques = sa.inspect(engine).get_unique_constraints("user_opportunity_score")
     assert any(u["column_names"] == ["user_id", "opportunity_id", "profile_id"] for u in uniques)
+
+
+def test_state_shared_across_profiles_scores_kept_per_profile(db):
+    alice = make_user(db, "alice@example.com")
+    p1 = Profile(user_id=alice.id, name="Ironji-Trade", type="business")
+    p2 = Profile(user_id=alice.id, name="AI lab", type="business")
+    o = Opportunity(stream="tender", title="t")
+    db.add_all([p1, p2, o])
+    db.commit()
+    db.add_all([
+        UserOpportunityScore(user_id=alice.id, opportunity_id=o.id, profile_id=p1.id, score=80),
+        UserOpportunityScore(user_id=alice.id, opportunity_id=o.id, profile_id=p2.id, score=40),
+        UserOpportunity(user_id=alice.id, opportunity_id=o.id, state="dismissed"),
+    ])
+    db.commit()
+    db.add(UserOpportunity(user_id=alice.id, opportunity_id=o.id, state="saved"))
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()
+    db.add(UserOpportunityScore(user_id=alice.id, opportunity_id=o.id, profile_id=p1.id))
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()
 
 
 def _source(**kw):
@@ -99,14 +132,14 @@ def test_private_opportunity_needs_owner(db):
     db.rollback()
 
 
-def test_user_opportunity_profile_must_belong_to_same_user(db):
+def test_score_profile_must_belong_to_same_user(db):
     alice = make_user(db, "alice@example.com")
     bob = make_user(db, "bob@example.com")
     p = Profile(user_id=bob.id, name="p", type="business")
     o = Opportunity(stream="tender", title="t")
     db.add_all([p, o])
     db.commit()
-    db.add(UserOpportunity(user_id=alice.id, opportunity_id=o.id, profile_id=p.id))
+    db.add(UserOpportunityScore(user_id=alice.id, opportunity_id=o.id, profile_id=p.id))
     with pytest.raises(IntegrityError):
         db.commit()
     db.rollback()
@@ -116,4 +149,37 @@ def test_user_email_unique_case_insensitive(db):
     make_user(db, "Case@example.com")
     with pytest.raises(IntegrityError):
         make_user(db, "case@example.com")
+    db.rollback()
+
+
+# --- Decision 18: digest weekly on Monday, or off ------------------------------------
+
+
+def test_digest_defaults_to_weekly_monday(db):
+    u = make_user(db, "d@example.com")
+    db.add(DigestSetting(user_id=u.id, channel="email", address="d@example.com"))
+    db.commit()
+    d = db.scalar(sa.select(DigestSetting).where(DigestSetting.user_id == u.id))
+    assert (d.frequency, d.day) == ("weekly", "mon")
+
+
+def test_digest_can_be_off(db):
+    u = make_user(db, "d@example.com")
+    db.add(DigestSetting(user_id=u.id, channel="email", address="d@example.com", frequency="off"))
+    db.commit()
+
+
+@pytest.mark.parametrize("sql", [
+    "UPDATE digest_setting SET frequency = 'daily'",
+    "UPDATE digest_setting SET frequency = 'monthly'",
+    "UPDATE digest_setting SET day = 'tue'",
+    "UPDATE digest_setting SET day = NULL",
+])
+def test_digest_schedule_limited_to_v1(db, sql):
+    u = make_user(db, "d@example.com")
+    db.add(DigestSetting(user_id=u.id, channel="email", address="d@example.com"))
+    db.commit()
+    with pytest.raises(IntegrityError):
+        db.execute(sa.text(sql))
+        db.flush()
     db.rollback()

@@ -60,6 +60,34 @@ def seed_sources() -> None:
         typer.echo(f"  {name}")
 
 
+@app.command("digest-preview")
+def digest_preview(
+    fixture: str = typer.Option("reference", help="Fixture name (see delivery/fixtures)."),
+    out: Path = typer.Option(..., help="HTML file to write."),
+    logo_src: str = typer.Option("kite.png", help="src of the logo <img> in the page."),
+    logo_out: Path | None = typer.Option(None, help="Where to write kite.png (default: beside --out)."),
+) -> None:
+    """Write the digest email inside its preview chrome, plus the logo PNG.
+
+    The committed web preview is generated with:
+      bk digest-preview --fixture reference --out ../web/public/digest/preview.html
+        --logo-src /digest/preview/kite.png --logo-out ../web/public/digest/preview/kite.png
+    """
+    from blackkite.delivery.digest import render_digest_preview
+    from blackkite.delivery.fixtures.digest_reference import FIXTURES
+    from blackkite.delivery.logo import kite_png
+
+    if fixture not in FIXTURES:
+        typer.echo(f"error: unknown fixture {fixture!r}; known: {', '.join(FIXTURES)}", err=True)
+        raise typer.Exit(1)
+    logo_path = logo_out or out.parent / "kite.png"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    logo_path.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(render_digest_preview(FIXTURES[fixture], logo_src=logo_src), "utf-8")
+    logo_path.write_bytes(kite_png())
+    typer.echo(f"wrote {out} and {logo_path}")
+
+
 def main() -> None:
     app()
 

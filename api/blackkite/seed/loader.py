@@ -64,6 +64,7 @@ def bootstrap(db: DB, email: str | None) -> BootstrapResult:
                 channel=digest["channel"],
                 address=email,
                 frequency=digest["frequency"],
+                day="mon",  # decision 18: weekly on Monday by default
             )
         )
         result.created_digest = True

@@ -14,5 +14,9 @@ RUN useradd --system --uid 10001 bk
 USER bk
 EXPOSE 8000
 # Applies migrations, then serves. --proxy-headers so rate limits see the client IP
-# behind the VPS reverse proxy.
-CMD ["sh", "-c", "bk migrate && uvicorn blackkite.app:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]
+# behind the VPS reverse proxy. Forwarded headers are trusted only from the peer
+# addresses in BK_FORWARDED_ALLOW_IPS (comma-separated; default 127.0.0.1). Never
+# set it to '*': any client could then forge X-Forwarded-For and dodge the per-IP
+# limit. The proxy must overwrite X-Forwarded-For, not append to it.
+ENV BK_FORWARDED_ALLOW_IPS=127.0.0.1
+CMD ["sh", "-c", "bk migrate && exec uvicorn blackkite.app:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=\"${BK_FORWARDED_ALLOW_IPS:-127.0.0.1}\""]

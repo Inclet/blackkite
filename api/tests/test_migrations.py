@@ -48,6 +48,64 @@ def test_schema_has_every_spec_table():
         "user", "invite", "profile", "digest_setting", "source", "source_run",
         "source_suggestion", "user_source_mute", "opportunity", "opportunity_source",
         "document", "change_event", "award", "user_opportunity", "digest_log",
+        "user_opportunity_score",  # decision 19: scores per profile, state per user
         "session", "login_token",
     }
     assert spec == set(Base.metadata.tables)
+
+
+def _exec(url: str, sql: str, **params):
+    eng = sa.create_engine(url)
+    try:
+        with eng.begin() as c:
+            r = c.execute(sa.text(sql), params)
+            return r.all() if r.returns_rows else None
+    finally:
+        eng.dispose()
+
+
+def test_0002_moves_digest_days_to_monday_and_downgrade_drops_off(make_database):
+    url = make_database("bk_migr")
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0001")
+    _exec(url, "INSERT INTO \"user\" (email) VALUES ('a@example.com'), ('b@example.com')")
+    _exec(url, """INSERT INTO digest_setting (user_id, channel, address, frequency, day)
+                  SELECT id, 'email', email, 'weekly', CASE WHEN email LIKE 'a%' THEN 'fri' END
+                  FROM "user" """)
+    command.upgrade(cfg, "0002")
+    assert _exec(url, "SELECT DISTINCT frequency, day FROM digest_setting") == [("weekly", "mon")]
+    _exec(url, "UPDATE digest_setting SET frequency = 'off' WHERE address = 'b@example.com'")
+    command.downgrade(cfg, "0001")
+    assert _exec(url, "SELECT address FROM digest_setting") == [("a@example.com",)]
+
+
+def test_0003_splits_state_from_scores_and_back(make_database):
+    url = make_database("bk_migr")
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0002")
+    _exec(url, "INSERT INTO \"user\" (email) VALUES ('a@example.com')")
+    _exec(url, """INSERT INTO profile (user_id, name, type)
+                  SELECT id, n, 'business' FROM "user", unnest(ARRAY['p1', 'p2']) n""")
+    _exec(url, "INSERT INTO opportunity (stream, title) VALUES ('tender', 't')")
+    # Two profiles scored the same opportunity; the later row was dismissed.
+    _exec(url, """INSERT INTO user_opportunity
+                    (user_id, opportunity_id, profile_id, score, state, note, updated_at)
+                  SELECT u.id, o.id, p.id,
+                         CASE p.name WHEN 'p1' THEN 80 ELSE 40 END,
+                         CASE p.name WHEN 'p1' THEN 'saved' ELSE 'dismissed' END,
+                         CASE p.name WHEN 'p1' THEN 'call them' ELSE 'too small' END,
+                         CASE p.name WHEN 'p1' THEN now() - interval '1 day' ELSE now() END
+                  FROM "user" u, opportunity o, profile p""")
+    command.upgrade(cfg, "0003")
+    assert _exec(url, "SELECT state, note FROM user_opportunity") == [
+        ("dismissed", "call them\n\ntoo small")
+    ]
+    assert _exec(url, """SELECT p.name, s.score FROM user_opportunity_score s
+                         JOIN profile p ON p.id = s.profile_id ORDER BY p.name""") == [
+        ("p1", 80), ("p2", 40)
+    ]
+    command.downgrade(cfg, "0002")
+    assert _exec(url, """SELECT p.name, uo.score, uo.state FROM user_opportunity uo
+                         JOIN profile p ON p.id = uo.profile_id ORDER BY p.name""") == [
+        ("p1", 80, "dismissed"), ("p2", 40, "dismissed")
+    ]

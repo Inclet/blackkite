@@ -55,7 +55,7 @@ def test_bootstrap_creates_admin_profiles_and_digest(db):
     assert profiles["Personal"].data["ticket_range_rwf"] is None
 
     d = db.scalar(sa.select(DigestSetting).where(DigestSetting.user_id == user.id))
-    assert (d.channel, d.frequency, d.address) == ("email", "weekly", FIRST_ADMIN)
+    assert (d.channel, d.frequency, d.day, d.address) == ("email", "weekly", "mon", FIRST_ADMIN)
 
 
 def test_bootstrap_is_idempotent(db):
