@@ -1,0 +1,57 @@
+.item {
+  display: flex;
+  align-items: center;
+  color: var(--bk-graphite);
+  font-weight: 500;
+  text-decoration: none;
+  transition: color var(--bk-quick) var(--bk-ease);
+}
+
+/* The boards' global rule: a:hover is slate. */
+.item:hover {
+  color: var(--bk-slate);
+}
+
+.item:focus-visible {
+  outline: none;
+  box-shadow: var(--bk-focus-ring);
+}
+
+.current {
+  font-weight: 600;
+}
+
+.side {
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: var(--bk-radius-control);
+  font-size: 15px;
+}
+
+.side.current {
+  background: var(--bk-stone-100);
+}
+
+.tab {
+  min-height: 48px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--bk-slate);
+  border-radius: var(--bk-radius-control);
+}
+
+.tab.current {
+  color: var(--bk-graphite);
+}
+
+.indicator {
+  width: 20px;
+  height: 3px;
+}
+
+.current .indicator {
+  border-radius: 2px;
+  background: var(--bk-graphite);
+}
