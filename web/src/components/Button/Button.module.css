@@ -1,0 +1,47 @@
+.button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--bk-radius-control);
+  font-family: var(--bk-font);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color var(--bk-quick) var(--bk-ease);
+}
+
+.button:focus-visible,
+.force-focus {
+  outline: none;
+  box-shadow: var(--bk-focus-ring);
+}
+
+.primary {
+  background: var(--bk-graphite);
+  color: var(--bk-white);
+  font-weight: 600;
+}
+
+.primary:hover:enabled,
+.primary.force-hover {
+  background: var(--bk-graphite-hover);
+}
+
+.secondary {
+  border: 1px solid var(--bk-stone-300);
+  background: var(--bk-white);
+  color: var(--bk-graphite);
+  font-weight: 500;
+}
+
+/* Not drawn on the boards: a quiet fill on hover. */
+.secondary:hover:enabled {
+  background: var(--bk-stone-100);
+}
+
+.button:disabled {
+  border: 0;
+  background: var(--bk-stone-200);
+  color: var(--bk-slate);
+  font-weight: 600;
+  cursor: default;
+}
