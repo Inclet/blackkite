@@ -13,6 +13,7 @@ export interface SwitchProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
 export function Switch({ checked, onChange, label, className, onClick, ...rest }: SwitchProps) {
   return (
     <button
+      {...rest}
       type="button"
       role="switch"
       aria-checked={checked}
@@ -22,7 +23,6 @@ export function Switch({ checked, onChange, label, className, onClick, ...rest }
         onClick?.(e);
         onChange?.(!checked);
       }}
-      {...rest}
     >
       <span className={styles.thumb} />
     </button>

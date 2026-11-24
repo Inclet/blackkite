@@ -17,3 +17,10 @@ test('an error marks the input invalid and describes it', () => {
   expect(input).toHaveAttribute('aria-describedby', 'trucks-error');
   expect(input).toHaveAccessibleDescription('Use a number, such as 100.');
 });
+
+test('callers cannot override aria-invalid or aria-describedby', () => {
+  render(<Field id="t" label="Trucks" error="Use a number." aria-invalid={false} aria-describedby="elsewhere" />);
+  const input = screen.getByLabelText('Trucks');
+  expect(input).toHaveAttribute('aria-invalid', 'true');
+  expect(input).toHaveAttribute('aria-describedby', 't-error');
+});
