@@ -1,0 +1,43 @@
+.switch {
+  position: relative;
+  width: 48px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--bk-radius-pill);
+  /* Off is not drawn on the boards. */
+  background: var(--bk-stone-300);
+  padding: 3px;
+  display: flex;
+  justify-content: flex-start;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background-color var(--bk-quick) var(--bk-ease);
+}
+
+.on {
+  background: var(--bk-graphite);
+  justify-content: flex-end;
+}
+
+.switch:focus-visible {
+  outline: none;
+  box-shadow: var(--bk-focus-ring);
+}
+
+/* Invisible hit area, 44px high. */
+.switch::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: var(--bk-tap-min);
+  transform: translateY(-50%);
+}
+
+.thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bk-white);
+}

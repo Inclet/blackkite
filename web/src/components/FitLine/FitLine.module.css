@@ -1,0 +1,26 @@
+.compact {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.muted {
+  color: var(--bk-slate);
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.word {
+  font-weight: 600;
+}
+
+.reason {
+  color: var(--bk-slate);
+}

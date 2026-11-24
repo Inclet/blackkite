@@ -1,0 +1,7 @@
+/* Design tokens come straight from the approved design/tokens.css (via the @design alias). */
+@import '@design/tokens.css';
+
+body {
+  margin: 0;
+  font-family: var(--bk-font);
+}

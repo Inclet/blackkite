@@ -1,0 +1,36 @@
+.link {
+  position: relative;
+  color: var(--bk-graphite);
+  font-size: 14px;
+  font-weight: 500;
+  transition: color var(--bk-quick) var(--bk-ease);
+}
+
+.link:hover {
+  color: var(--bk-slate);
+}
+
+.link:focus-visible {
+  outline: none;
+  border-radius: 2px;
+  box-shadow: var(--bk-focus-ring);
+}
+
+/* Invisible hit area: at least 44px high, visible pixels unchanged. */
+.link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: max(100%, var(--bk-tap-min));
+  transform: translateY(-50%);
+}
+
+.inline {
+  padding: 12px 6px;
+}
+
+.stacked {
+  padding: 8px 0;
+}
