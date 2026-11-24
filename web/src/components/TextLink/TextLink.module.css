@@ -16,15 +16,16 @@
   box-shadow: var(--bk-focus-ring);
 }
 
-/* Invisible hit area: at least 44px high, visible pixels unchanged. */
+/* Invisible hit area: at least 44px high and 44px wide, centred; visible pixels unchanged. */
 .link::after {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 50%;
   top: 50%;
+  width: 100%;
+  min-width: var(--bk-tap-min);
   height: max(100%, var(--bk-tap-min));
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
 }
 
 .inline {
