@@ -10,6 +10,7 @@ const ROUTES = [
   '/?fixture=reference&state=nothing-new',
   '/?fixture=reference&state=first-visit',
   '/?fixture=reference&state=source-down',
+  '/auth/confirm#token=abc',
 ];
 
 for (const width of WIDTHS) {
@@ -25,7 +26,7 @@ for (const width of WIDTHS) {
       expect(scrollWidth, 'no horizontal page scroll').toBeLessThanOrEqual(innerWidth);
 
       const boxes = await interactiveBoxes(page);
-      expect(boxes.length).toBeGreaterThan(3);
+      expect(boxes.length).toBeGreaterThanOrEqual(route.startsWith('/auth/confirm') ? 1 : 4);
       for (const b of boxes) {
         // Where the board draws a control smaller, an invisible ::after layer must cover 44px (decision 2).
         expect(Math.max(b.h, b.hitH), `${b.label} is at least 44px tall`).toBeGreaterThanOrEqual(43.5);

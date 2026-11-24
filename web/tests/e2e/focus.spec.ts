@@ -4,10 +4,12 @@ import { open } from './helpers';
 // --bk-focus-ring: 0 0 0 2px #FFFFFF, 0 0 0 4px #2B2A28, as getComputedStyle serialises it.
 const FOCUS_RING = 'rgb(255, 255, 255) 0px 0px 0px 2px, rgb(43, 42, 40) 0px 0px 0px 4px';
 
-for (const [name, size, route] of [
-  ['desktop feed', { width: 1440, height: 900 }, '/?fixture=reference'],
-  ['phone feed', { width: 390, height: 844 }, '/?fixture=reference'],
-  ['phone opportunity', { width: 390, height: 844 }, '/o/wfp-logistics?fixture=reference'],
+// The last number is the fewest Tab stops the page must have (the confirm page has one button).
+for (const [name, size, route, minStops] of [
+  ['desktop feed', { width: 1440, height: 900 }, '/?fixture=reference', 4],
+  ['phone feed', { width: 390, height: 844 }, '/?fixture=reference', 4],
+  ['phone opportunity', { width: 390, height: 844 }, '/o/wfp-logistics?fixture=reference', 4],
+  ['sign-in confirm', { width: 390, height: 844 }, '/auth/confirm#token=abc', 1],
 ] as const) {
   test(`${name}: every Tab stop shows the double focus ring`, async ({ page }) => {
     await page.setViewportSize(size);
@@ -37,6 +39,6 @@ for (const [name, size, route] of [
         )
         .toBe(FOCUS_RING);
     }
-    expect(seen.length).toBeGreaterThanOrEqual(4);
+    expect(seen.length).toBeGreaterThanOrEqual(minStops);
   });
 }

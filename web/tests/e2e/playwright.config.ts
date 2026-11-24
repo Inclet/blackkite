@@ -1,3 +1,4 @@
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
@@ -5,6 +6,24 @@ import { defineConfig, devices } from '@playwright/test';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(here, '../..');
 const PORT = 4318;
+
+/** A free local port. */
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address() as net.AddressInfo;
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+// The preview server proxies the API paths here; auth.spec.ts listens on it with a stub API.
+// Chosen once in the main process; workers inherit it through the environment.
+process.env.BK_E2E_API_PORT ??= String(await freePort());
+export const API_ORIGIN = `http://127.0.0.1:${process.env.BK_E2E_API_PORT}`;
 
 /** End-to-end checks (keyboard, reflow, focus, contrast, motion). Separate from the frozen visual harness. */
 export default defineConfig({
@@ -35,5 +54,6 @@ export default defineConfig({
     timeout: 120_000,
     stdout: 'ignore',
     stderr: 'pipe',
+    env: { ...(process.env as Record<string, string>), BK_API_ORIGIN: API_ORIGIN },
   },
 });
