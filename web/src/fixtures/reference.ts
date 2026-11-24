@@ -1,4 +1,4 @@
-import type { Fixture } from './types';
+import type { FeedItem, Fixture } from './types';
 
 /**
  * Reference content, word for word from design/reference/*.html.
@@ -80,4 +80,149 @@ export const reference: Fixture = {
       },
     ],
   },
+  feed: {
+    user: { name: 'Clet' },
+    sources: { checked: 8, when: 'this morning' },
+    digest: { channel: 'email' },
+    items: referenceItems(),
+  },
 };
+
+/**
+ * The six items on feed-desktop.html, in board order. Row text and the WFP
+ * detail pane are word for word from the boards; detail content for the other
+ * five items is not on any board (listed for design review).
+ */
+export function referenceItems(): FeedItem[] {
+  return [
+    {
+      id: 'wfp-logistics',
+      stream: 'tender',
+      title: 'Logistics, transport and warehousing support',
+      organisation: 'World Food Programme',
+      fit: 'strong',
+      deadline: '2026-11-30', // 6 days left
+      detail: {
+        profile: 'Ironji-Trade',
+        location: 'Kigali',
+        reasons: [
+          'It asks for transport, warehousing and logistics support, which you offer.',
+          'It is in Rwanda, where your network of more than 1,000 trucks operates.',
+        ],
+        toCheck: "To check: WFP's transport call in May asked for vehicle logbooks, so this one may require an owned fleet.",
+        trust: {
+          state: 'unconfirmed',
+          desktop:
+            "Found on Job in Rwanda, posted 9 Nov. We have not matched it to a notice on WFP's own site yet, so check the date there before you act.",
+          phone: "Found on Job in Rwanda, posted 9 Nov. Check the date on WFP's own site before you act.",
+        },
+        originalUrl: 'https://www.jobinrwanda.com/jobs/tender',
+      },
+    },
+    {
+      id: 'abh-summit',
+      stream: 'event',
+      title: 'ABH Summit and Grand Finale',
+      organisation: "Africa's Business Heroes",
+      fit: null,
+      topic: 'Startups and investors',
+      venue: 'Kigali Convention Centre',
+      deadline: null,
+      eventDates: { start: '2026-12-01', end: '2026-12-02' }, // "1 to 2 Dec", outlined (decision 23)
+      detail: {
+        profile: 'Personal',
+        location: 'Kigali Convention Centre',
+        reasons: ['It is about startups and investors, one of your event topics.'],
+        trust: {
+          state: 'confirmed',
+          desktop: 'Dates and venue match the organiser’s own event page.',
+          phone: 'Dates and venue match the organiser’s own page.',
+        },
+        originalUrl: 'https://africabusinessheroes.org/',
+      },
+    },
+    {
+      id: 't2s-call',
+      stream: 'funding',
+      title: 'Transition to Scale research and innovation call',
+      organisation: 'National Council for Science and Technology',
+      organisationShort: 'NCST',
+      fit: 'possible',
+      deadline: '2026-12-07', // 13 days left
+      detail: {
+        profile: 'AI lab',
+        location: 'Kigali',
+        reasons: ['It funds applied research and innovation, which may cover AI and data work.'],
+        toCheck: 'To check: the call may be open only to research institutions.',
+        trust: {
+          state: 'confirmed',
+          desktop: 'Matched to the call on NCST’s own site.',
+          phone: 'Matched to the call on NCST’s own site.',
+        },
+        originalUrl: 'https://www.ncst.gov.rw/',
+      },
+    },
+    {
+      id: 'horizon-tyres',
+      stream: 'tender',
+      title: 'Tenders for tyres and vehicle spare parts',
+      organisation: 'Horizon Logistics',
+      fit: 'possible',
+      deadline: '2026-12-23', // 29 days left
+      detail: {
+        profile: 'Ironji-Trade',
+        location: 'Kigali',
+        reasons: ['It is a transport buyer, but it asks for supplies rather than freight services.'],
+        trust: {
+          state: 'unconfirmed',
+          desktop: 'Found on The New Times jobs and tenders. We have not matched it to a notice from Horizon Logistics yet.',
+          phone: 'Found on The New Times jobs and tenders. Check with Horizon Logistics before you act.',
+        },
+        originalUrl: 'https://jobs.newtimes.co.rw/',
+      },
+    },
+    {
+      id: 'developpp-6',
+      stream: 'funding',
+      title: 'develoPPP Ventures, cohort 6',
+      organisation: 'develoPPP',
+      fit: 'good',
+      topFlag: 'Needs matching funds',
+      deadline: '2026-12-31', // 37 days left
+      hideOnPhone: true, // decision 4
+      detail: {
+        profile: 'Ironji-Trade',
+        location: 'Rwanda',
+        reasons: ['It backs growing companies in Africa that want to scale a proven business.'],
+        toCheck: 'To check: it needs matching funds from your side.',
+        trust: {
+          state: 'confirmed',
+          desktop: 'Matched to the call on the programme’s own site.',
+          phone: 'Matched to the call on the programme’s own site.',
+        },
+        originalUrl: 'https://www.developpp.de/',
+      },
+    },
+    {
+      id: 'tbond-5y',
+      stream: 'investment',
+      title: 'Five-year treasury bond',
+      organisation: 'National Bank of Rwanda',
+      fit: null,
+      note: 'trading on the RSE',
+      deadline: null,
+      noDeadlineText: 'No deadline',
+      detail: {
+        profile: 'Personal',
+        location: 'Rwanda Stock Exchange',
+        reasons: [],
+        trust: {
+          state: 'confirmed',
+          desktop: 'Listed in the bond market table on the RSE’s own site.',
+          phone: 'Listed on the RSE’s own site.',
+        },
+        originalUrl: 'https://www.rse.rw/',
+      },
+    },
+  ];
+}
