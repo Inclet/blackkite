@@ -1,0 +1,27 @@
+.orbit {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ring {
+  position: absolute;
+  border: 1px solid #E7E5E0;
+  border-radius: 50%;
+}
+
+.spin {
+  position: absolute;
+  inset: 0;
+  animation-name: bk-orbit;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes bk-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin { animation: none; }
+}
