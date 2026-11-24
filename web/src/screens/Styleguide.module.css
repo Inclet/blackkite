@@ -1,0 +1,184 @@
+/* The two styleguide boards. Values copied from design/reference/foundations.html and components.html. */
+
+.board {
+  width: 1440px;
+  height: 1000px;
+  box-sizing: border-box;
+  padding: 44px 56px;
+  background: #F6F5F2;
+  color: #2B2A28;
+  font-family: var(--bk-font);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.board strong {
+  font-weight: 600;
+}
+
+.two,
+.three,
+.four {
+  display: grid;
+  gap: 24px;
+}
+
+.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px; }
+
+.grow { flex-grow: 1; }
+
+.note {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #5F5D59;
+}
+
+.slate { color: #5F5D59; }
+.slate13 { font-size: 13px; color: #5F5D59; }
+.slateNumbers { font-size: 13px; color: #5F5D59; font-variant-numeric: tabular-nums; }
+.start { justify-self: start; }
+
+/* Foundations: logo */
+.logoRow { display: flex; align-items: center; gap: 36px; }
+.logoSide { display: flex; flex-direction: column; gap: 18px; }
+.lockup { display: flex; align-items: center; gap: 10px; }
+.marks { display: flex; align-items: flex-end; gap: 22px; }
+.mark { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.caption { font-size: 12px; color: #5F5D59; }
+
+.favicon,
+.appIcon {
+  background: #2B2A28;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.favicon { width: 32px; height: 32px; border-radius: 8px; }
+.appIcon { width: 56px; height: 56px; border-radius: 14px; }
+
+/* Foundations: signature (board-only demo motion, decision 9) */
+.signatureRow { display: flex; align-items: center; gap: 36px; }
+
+.dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.signatureText {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.dropped {
+  background: #F6F5F2;
+  border: 1px solid #E7E5E0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  animation: bk-drop 5s ease-out infinite;
+}
+
+.glide {
+  animation: bk-glide 7s ease-in-out infinite alternate;
+}
+
+@keyframes bk-glide {
+  from { transform: rotate(-18deg) translateY(2px); }
+  to { transform: rotate(-14deg) translateY(-2px); }
+}
+
+@keyframes bk-drop {
+  0% { transform: translateY(-10px); opacity: 0; }
+  18% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glide,
+  .dropped { animation: none; }
+}
+
+/* Foundations: colour */
+.board .colours {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 380px;
+  gap: 40px;
+}
+
+.neutrals { display: flex; flex-direction: column; gap: 9px; }
+.swatchRow { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+
+.swatch,
+.swatchOutlined {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
+
+.swatchOutlined {
+  border: 1px solid #D6D3CD;
+  box-sizing: border-box;
+}
+
+.swatchName { width: 76px; }
+
+.streams { display: flex; flex-direction: column; gap: 10px; }
+
+.streamGrid {
+  display: grid;
+  grid-template-columns: 150px 30px 30px 30px minmax(0, 1fr) 150px;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.bar { height: 30px; border-radius: 6px; }
+
+.urgency { display: flex; flex-direction: column; gap: 12px; }
+.pills { display: flex; gap: 8px; flex-wrap: wrap; }
+.trustLabel { margin-top: 6px; }
+.trust { display: flex; flex-direction: column; gap: 8px; }
+.alertRow { display: flex; align-items: center; gap: 10px; font-size: 13px; margin-top: 4px; }
+
+/* Foundations: type, space, motion, voice */
+.four { grid-template-columns: 1.25fr 0.9fr 1fr 1.1fr; flex-grow: 1; }
+.display { font-size: 32px; line-height: 38px; font-weight: 600; letter-spacing: -0.02em; }
+.title { font-size: 24px; line-height: 30px; font-weight: 600; letter-spacing: -0.015em; }
+.heading { font-size: 19px; line-height: 26px; font-weight: 600; }
+.body { font-size: 15px; line-height: 24px; }
+.label { font-size: 13px; line-height: 18px; font-weight: 500; }
+.numbers { font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 500; }
+.space { display: flex; align-items: flex-end; gap: 8px; }
+.shapes { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
+.shape { width: 56px; height: 36px; border: 1.5px solid #2B2A28; }
+.board .prose { font-size: 14px; line-height: 1.45; }
+
+/* Components board */
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.wrap8 { display: flex; gap: 8px; flex-wrap: wrap; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+
+.switchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.switchText { display: flex; flex-direction: column; gap: 2px; }
+.switchLabel { font-size: 14px; font-weight: 500; }
+.feedLabel { padding-bottom: 6px; }
+.fitLines { display: flex; flex-direction: column; gap: 9px; }
+.flagsLabel { padding-top: 6px; }
+.states { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; flex-grow: 1; }

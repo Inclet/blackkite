@@ -11,11 +11,17 @@ test.each([
   ['/', 'Feed'],
   ['/o/wfp-logistics', 'Opportunity'],
   ['/digest/preview', 'Digest preview'],
-  ['/styleguide/foundations', 'Styleguide: foundations'],
-  ['/styleguide/components', 'Styleguide: components'],
 ])('%s renders its screen', (url, name) => {
   renderAt(url);
   expect(screen.getByText(new RegExp(`^${name} \\(placeholder`))).toBeInTheDocument();
+});
+
+test.each([
+  ['/styleguide/foundations?fixture=reference', 'Neutrals · everything structural'],
+  ['/styleguide/components?fixture=reference', 'Feed row · built for scanning, and its awkward cases'],
+])('%s renders its board', (url, text) => {
+  renderAt(url);
+  expect(screen.getByText(text)).toBeInTheDocument();
 });
 
 test('?fixture=reference selects the reference fixture', () => {
