@@ -182,7 +182,8 @@ export function visualTest(name: string): void {
       result.diffRatio = diffPixels / totalPixels;
       result.pass =
         result.diffRatio <= PASS_MAX_DIFF_RATIO &&
-        ref.capture.layoutShift <= MAX_LAYOUT_SHIFT &&
+        // Owner ruling 2026-11-24 (docs/decisions.md #16): only the built page's layout
+        // shift decides pass/fail. The reference's own font-swap shift is reported, not judged.
         built.capture.layoutShift <= MAX_LAYOUT_SHIFT &&
         ref.capture.stable &&
         built.capture.stable;
@@ -196,7 +197,6 @@ export function visualTest(name: string): void {
     const pct = ((result.diffRatio ?? 1) * 100).toFixed(2);
     expect.soft(result.reference?.stable, 'reference screenshots 500 ms apart must be identical').toBe(true);
     expect.soft(result.built?.stable, 'built screenshots 500 ms apart must be identical').toBe(true);
-    expect.soft(result.reference?.layoutShift, 'reference layout-shift sum').toBe(MAX_LAYOUT_SHIFT);
     expect.soft(result.built?.layoutShift, 'built layout-shift sum').toBe(MAX_LAYOUT_SHIFT);
     expect(result.diffRatio!, `${vp.name}: ${pct}% of pixels differ (pass mark ${PASS_MAX_DIFF_RATIO * 100}%)`).toBeLessThanOrEqual(
       PASS_MAX_DIFF_RATIO,
