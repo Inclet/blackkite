@@ -1,15 +1,20 @@
 import { useState } from 'react';
+import { AccountButton } from '../components/AccountButton/AccountButton';
+import { BackLink } from '../components/BackLink/BackLink';
 import { Button } from '../components/Button/Button';
+import { DeadlinePill } from '../components/DeadlinePill/DeadlinePill';
+import { NavItem } from '../components/NavItem/NavItem';
+import { TrustPanel } from '../components/TrustNote/TrustNote';
 import { Card, CardLabel } from '../components/Card/Card';
 import { FeedRow } from '../components/FeedRow/FeedRow';
 import { Field } from '../components/Field/Field';
 import { FilterChip } from '../components/FilterChip/FilterChip';
-import { FitLine } from '../components/FitLine/FitLine';
+import { FitLine, FitReason } from '../components/FitLine/FitLine';
 import { Flag } from '../components/Flag/Flag';
 import { StateCard, type StateKind } from '../components/StateCard/StateCard';
 import { Switch } from '../components/Switch/Switch';
 import { Tag } from '../components/Tag/Tag';
-import { TextLink } from '../components/TextLink/TextLink';
+import { TextButton, TextLink } from '../components/TextLink/TextLink';
 import { reference } from '../fixtures/reference';
 import { useFixture } from '../lib/fixture';
 import { STREAMS } from '../lib/streams';
@@ -28,6 +33,7 @@ export function StyleguideComponents() {
   const [alerts, setAlerts] = useState(true);
   const { amount, trucks, alerts: alertsField } = content.fields;
   return (
+    <>
     <main className={styles.board}>
       <div className={styles.three}>
         <Card label="Buttons" gap={14}>
@@ -106,5 +112,66 @@ export function StyleguideComponents() {
         ))}
       </div>
     </main>
+    <Phase2Variants />
+    </>
+  );
+}
+
+/**
+ * Variants added in Phase 2 for the feed and opportunity screens. They sit below
+ * the 1000px board area, so the board screenshot is unchanged.
+ */
+function Phase2Variants() {
+  const wfp = reference.feed.items[0]!;
+  return (
+    <section className={styles.variants} aria-labelledby="sg-variants">
+      <h2 id="sg-variants" className={styles.variantsTitle}>
+        Screen variants · below the board
+      </h2>
+      <div className={styles.split}>
+        <Card label="Feed row · list (desktop) and phone" gap={12}>
+          <Card padding="8px">
+            <FeedRow layout="list" href="#sg" selected stream="tender" title={wfp.title} subtitle="Strong fit · World Food Programme" fit="strong" deadline={{ deadline: wfp.deadline }} />
+            <FeedRow layout="list" href="#sg" stream="event" title="ABH Summit and Grand Finale" subtitle="Startups and investors · Kigali Convention Centre" fit={null} deadline={{ event: { start: '2026-12-01', end: '2026-12-02' } }} />
+          </Card>
+          <Card padding="4px 12px" style={{ maxWidth: 366 }}>
+            <FeedRow layout="phone" href="#sg" stream="funding" title="Transition to Scale research and innovation call" subtitle="Possible fit · NCST" fit="possible" deadline={{ deadline: '2026-12-07' }} />
+            <FeedRow layout="phone" href="#sg" stream="investment" title="Five-year treasury bond" subtitle="National Bank of Rwanda" fit={null} deadline={{ deadline: null, emptyText: 'No deadline' }} />
+          </Card>
+          <div className={styles.wrap8}>
+            <DeadlinePill deadline="2026-11-30" size="small" />
+            <DeadlinePill event={{ start: '2026-12-01', end: '2026-12-02' }} size="small" />
+            <DeadlinePill deadline="2026-12-23" size="small" />
+            <DeadlinePill event={{ start: '2026-11-25' }} />
+          </div>
+        </Card>
+        <Card label="Detail pane pieces" gap={12}>
+          <FitLine level="strong" variant="heading" reason="why this matched" />
+          {wfp.detail.reasons.map((r) => (
+            <FitReason key={r}>{r}</FitReason>
+          ))}
+          <Flag variant="note">{wfp.detail.toCheck}</Flag>
+          <TrustPanel state="unconfirmed" tone="mist">{wfp.detail.trust.desktop}</TrustPanel>
+          <TrustPanel state="unconfirmed" tone="stone">{wfp.detail.trust.phone}</TrustPanel>
+          <TrustPanel state="conflict" tone="mist">Two sources give different closing dates.</TrustPanel>
+          <TextLink spacing="block" href="#sg">Read the original notice</TextLink>
+          <TextButton spacing="stacked">See all sources</TextButton>
+          <div className={styles.fields}>
+            <Button size="large">Save to shortlist</Button>
+            <Button size="large" variant="secondary">Not for me</Button>
+          </div>
+        </Card>
+      </div>
+      <Card label="Navigation" gap={12}>
+        <div className={styles.row}>
+          <NavItem variant="side" href="#sg" current>Feed</NavItem>
+          <NavItem variant="side" href="#sg">Shortlist</NavItem>
+          <NavItem variant="tab" href="#sg" current>Feed</NavItem>
+          <NavItem variant="tab" href="#sg">More</NavItem>
+          <AccountButton name="Clet" />
+          <BackLink href="#sg">Feed</BackLink>
+        </div>
+      </Card>
+    </section>
   );
 }

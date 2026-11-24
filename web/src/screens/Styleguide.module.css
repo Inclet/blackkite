@@ -5,8 +5,8 @@
   height: 1000px;
   box-sizing: border-box;
   padding: 44px 56px;
-  background: #F6F5F2;
-  color: #2B2A28;
+  background: var(--bk-mist);
+  color: var(--bk-graphite);
   font-family: var(--bk-font);
   display: flex;
   flex-direction: column;
@@ -33,12 +33,12 @@
 .note {
   font-size: 13px;
   line-height: 1.5;
-  color: #5F5D59;
+  color: var(--bk-slate);
 }
 
-.slate { color: #5F5D59; }
-.slate13 { font-size: 13px; color: #5F5D59; }
-.slateNumbers { font-size: 13px; color: #5F5D59; font-variant-numeric: tabular-nums; }
+.slate { color: var(--bk-slate); }
+.slate13 { font-size: 13px; color: var(--bk-slate); }
+.slateNumbers { font-size: 13px; color: var(--bk-slate); font-variant-numeric: tabular-nums; }
 .start { justify-self: start; }
 
 /* Foundations: logo */
@@ -47,11 +47,11 @@
 .lockup { display: flex; align-items: center; gap: 10px; }
 .marks { display: flex; align-items: flex-end; gap: 22px; }
 .mark { display: flex; flex-direction: column; gap: 6px; align-items: center; }
-.caption { font-size: 12px; color: #5F5D59; }
+.caption { font-size: 12px; color: var(--bk-slate); }
 
 .favicon,
 .appIcon {
-  background: #2B2A28;
+  background: var(--bk-graphite);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -79,8 +79,8 @@
 }
 
 .dropped {
-  background: #F6F5F2;
-  border: 1px solid #E7E5E0;
+  background: var(--bk-mist);
+  border: 1px solid var(--bk-stone-200);
   border-radius: 8px;
   padding: 10px 12px;
   font-size: 13px;
@@ -126,7 +126,7 @@
 }
 
 .swatchOutlined {
-  border: 1px solid #D6D3CD;
+  border: 1px solid var(--bk-stone-300);
   box-sizing: border-box;
 }
 
@@ -160,7 +160,7 @@
 .numbers { font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 500; }
 .space { display: flex; align-items: flex-end; gap: 8px; }
 .shapes { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
-.shape { width: 56px; height: 36px; border: 1.5px solid #2B2A28; }
+.shape { width: 56px; height: 36px; border: 1.5px solid var(--bk-graphite); }
 .board .prose { font-size: 14px; line-height: 1.45; }
 
 /* Components board */
@@ -182,3 +182,23 @@
 .fitLines { display: flex; flex-direction: column; gap: 9px; }
 .flagsLabel { padding-top: 6px; }
 .states { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; flex-grow: 1; }
+
+/* Phase 2 variants, below the 1440x1000 board area (not part of the board screenshot). */
+.variants {
+  width: 1440px;
+  box-sizing: border-box;
+  padding: 0 56px 44px;
+  background: var(--bk-mist);
+  color: var(--bk-graphite);
+  font-family: var(--bk-font);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.variantsTitle {
+  margin: 0;
+  font-size: 19px;
+  line-height: 26px;
+  font-weight: 600;
+}

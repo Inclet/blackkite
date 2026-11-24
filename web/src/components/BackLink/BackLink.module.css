@@ -1,0 +1,22 @@
+.link {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--bk-graphite);
+  text-decoration: none;
+  transition: color var(--bk-quick) var(--bk-ease);
+}
+
+.link:hover {
+  color: var(--bk-slate);
+}
+
+.link:focus-visible {
+  outline: none;
+  border-radius: var(--bk-radius-control);
+  box-shadow: var(--bk-focus-ring);
+}

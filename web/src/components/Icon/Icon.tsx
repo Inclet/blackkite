@@ -52,7 +52,8 @@ export function Icon({ name, size = 16, stroke = 'currentColor', strokeWidth = 1
       {...a11y}
       viewBox="0 0 16 16"
       className={className}
-      style={{ width: size, height: size, ...style }}
+      // stroke also as a CSS property so var(--bk-*) values resolve.
+      style={{ width: size, height: size, stroke, ...style }}
       fill="none"
       stroke={stroke}
       strokeWidth={strokeWidth}

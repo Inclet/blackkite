@@ -17,11 +17,11 @@ export interface OrbitSpec {
 /** The three orbits drawn on the boards. */
 export const ORBITS = {
   /** Foundations board, signature demo (board-only motion, decision 9). */
-  signature: { size: 150, rings: [0, 28, 56], ringColor: '#E7E5E0', duration: '14s', kite: { left: 54, top: -14, width: 42, height: 28 } },
+  signature: { size: 150, rings: [0, 28, 56], ringColor: 'var(--bk-stone-200)', duration: '14s', kite: { left: 54, top: -14, width: 42, height: 28 } },
   /** Components board, "State · checking". */
-  checking: { size: 72, rings: [0, 22], ringColor: '#E7E5E0', duration: '6s', kite: { left: 21, top: -10, width: 30, height: 20 } },
+  checking: { size: 72, rings: [0, 22], ringColor: 'var(--bk-stone-200)', duration: '6s', kite: { left: 21, top: -10, width: 30, height: 20 } },
   /** Feed header, beside "8 sources checked this morning". */
-  feed: { size: 28, rings: [0], ringColor: '#D6D3CD', duration: 'var(--bk-orbit)', kite: { left: 5, top: -6, width: 18, height: 12 } },
+  feed: { size: 28, rings: [0], ringColor: 'var(--bk-stone-300)', duration: 'var(--bk-orbit)', kite: { left: 5, top: -6, width: 18, height: 12 } },
 } satisfies Record<string, OrbitSpec>;
 
 export interface KiteOrbitProps {

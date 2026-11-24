@@ -1,0 +1,31 @@
+/* Not on any board (decision 17). Tokens only. */
+.page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: var(--bk-mist);
+  color: var(--bk-graphite);
+  font-family: var(--bk-font);
+  display: flex;
+  justify-content: center;
+  padding: var(--bk-space-7) var(--bk-space-5);
+}
+
+.panel {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-space-4);
+}
+
+.h1 {
+  margin: 0;
+  font: var(--bk-title);
+  letter-spacing: -0.015em;
+}
+
+.body {
+  margin: 0;
+  font: var(--bk-body);
+  color: var(--bk-slate);
+}

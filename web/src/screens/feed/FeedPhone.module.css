@@ -1,0 +1,83 @@
+/* Values copied from design/reference/feed-phone.html. */
+
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  background: var(--bk-mist);
+  color: var(--bk-graphite);
+  font-family: var(--bk-font);
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px 6px;
+}
+
+.lockup {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+}
+
+.greet {
+  padding: 10px 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.summary {
+  font-size: 15px;
+  color: var(--bk-slate);
+}
+
+/* 4px of extra room above (taken back by the margin) so the focus ring is not clipped by the scroller. */
+.chips {
+  display: flex;
+  gap: 8px;
+  padding: 4px 20px 14px;
+  margin-top: -4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex-shrink: 0;
+}
+
+.card {
+  margin: 0 12px;
+}
+
+.tabs {
+  margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  background: var(--bk-white);
+  border-top: 1px solid var(--bk-stone-200);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 6px 8px 10px;
+}

@@ -1,0 +1,19 @@
+.button {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--bk-stone-300);
+  border-radius: 50%;
+  background: var(--bk-white);
+  color: var(--bk-graphite);
+  font-family: var(--bk-font);
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.button:focus-visible {
+  outline: none;
+  box-shadow: var(--bk-focus-ring);
+}

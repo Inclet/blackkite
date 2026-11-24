@@ -20,12 +20,12 @@ export function Field({ label, error, id, className, type = 'text', ...rest }: F
         {label}
       </label>
       <input
+        {...rest}
         id={inputId}
         type={type}
         className={cx(styles.input, error && styles.invalid)}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
-        {...rest}
       />
       {error && (
         <div id={errorId} className={styles.error}>

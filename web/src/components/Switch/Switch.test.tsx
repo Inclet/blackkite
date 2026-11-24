@@ -16,3 +16,9 @@ test('off state', () => {
   render(<Switch checked={false} label="Urgent alerts" />);
   expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
 });
+
+test('callers cannot override the switch ARIA state', () => {
+  render(<Switch checked={false} label="Urgent alerts" {...({ 'aria-checked': true, role: 'button' } as object)} />);
+  const sw = screen.getByRole('switch', { name: 'Urgent alerts' });
+  expect(sw).toHaveAttribute('aria-checked', 'false');
+});

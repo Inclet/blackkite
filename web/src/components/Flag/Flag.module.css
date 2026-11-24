@@ -5,3 +5,11 @@
   font-size: 13px;
   font-weight: 500;
 }
+
+.note {
+  padding: 8px 10px;
+  border-radius: var(--bk-radius-flag);
+  border: 1px dashed var(--bk-slate);
+  font-size: 13px;
+  line-height: 1.45;
+}
