@@ -182,3 +182,23 @@
 .fitLines { display: flex; flex-direction: column; gap: 9px; }
 .flagsLabel { padding-top: 6px; }
 .states { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; flex-grow: 1; }
+
+/* Phase 2 variants, below the 1440x1000 board area (not part of the board screenshot). */
+.variants {
+  width: 1440px;
+  box-sizing: border-box;
+  padding: 0 56px 44px;
+  background: var(--bk-mist);
+  color: var(--bk-graphite);
+  font-family: var(--bk-font);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.variantsTitle {
+  margin: 0;
+  font-size: 19px;
+  line-height: 26px;
+  font-weight: 600;
+}
