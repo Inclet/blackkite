@@ -1,0 +1,35 @@
+{
+  "family": "Figtree",
+  "license": "OFL-1.1 (see OFL.txt)",
+  "cssRequest": "https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&display=swap",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36",
+  "fetchedAt": "2026-11-24T14:56:38.316Z",
+  "cssSha256": "84581946135dfdb4b433d4212cba5c8d10c0d7f6edd6bea5dc0669b940bdd2dc",
+  "note": "google-figtree.css is the Google response with only the src URL prefix https://fonts.gstatic.com/s/figtree/v9/ rewritten to /fonts/. cssSha256 is the hash of the original, unrewritten response.",
+  "files": [
+    {
+      "file": "_Xms-HUzqDCFdgfMm4q9DbZs.woff2",
+      "url": "https://fonts.gstatic.com/s/figtree/v9/_Xms-HUzqDCFdgfMm4q9DbZs.woff2",
+      "subset": "latin-ext",
+      "weights": [
+        400,
+        500,
+        600
+      ],
+      "bytes": 10280,
+      "sha256": "bf7828e2c258cffcfa50a048ee388a36b95bc16b452e8d36fa797635dbe15965"
+    },
+    {
+      "file": "_Xms-HUzqDCFdgfMm4S9DQ.woff2",
+      "url": "https://fonts.gstatic.com/s/figtree/v9/_Xms-HUzqDCFdgfMm4S9DQ.woff2",
+      "subset": "latin",
+      "weights": [
+        400,
+        500,
+        600
+      ],
+      "bytes": 20156,
+      "sha256": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd"
+    }
+  ]
+}
