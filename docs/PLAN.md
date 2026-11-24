@@ -1,6 +1,6 @@
 # Blackkite: Phase 0 plan
 
-Status: **awaiting owner approval**. No application code has been written.
+Status: **questions answered (see `decisions.md`); awaiting go-ahead for Phase 1**. No application code has been written.
 Inputs read in full: `CLAUDE.md` (draft 7), `design/tokens.css`, `design/assets/*`, all six `design/reference/*.html`.
 
 ---
@@ -60,9 +60,9 @@ blackkite/
 | Scheduler | **Challenge:** a single `worker` process using APScheduler with Postgres advisory locks, no Redis/Celery | One VPS, low volume; fewer moving parts. |
 | Auth | Email magic link, server-side session table, HttpOnly cookie | No passwords. OAuth later if wanted. |
 | Email | Dev: Mailpit container (nothing leaves the machine). Prod transport: to be chosen (question Q9) | No real email sent without your go-ahead. |
-| LLM | Claude API; model names in config. Default: `claude-haiku-5-5` for extraction and scoring, `claude-sonnet-5-5` for digest write-ups | |
-| Embeddings | **Gap in spec:** the Claude API has no embedding endpoint. Proposal: local multilingual model (`multilingual-e5-small`, runs on CPU) | Handles English/French/Kinyarwanda text, no extra vendor. Alternative: Voyage AI (Q8). |
-| Search collector | Needs a search API (Q7) | |
+| LLM | Claude API; model names in config. `claude-haiku-5-5` for extraction and scoring, `claude-opus-5-5` for digest write-ups (decided) | |
+| Embeddings | Voyage AI (decided; the Claude API has no embedding endpoint) | Needs `VOYAGE_API_KEY`. |
+| Search collector | Brave Search API (decided) | Needs `BRAVE_API_KEY`. |
 | Headless | Playwright only for `browser_list` and tests, per spec | Pinned to Playwright 1.63 (preinstalled browser). |
 | Python packaging | `uv` | |
 | Tests | pytest (+ testcontainers-style real Postgres), Vitest for components, Playwright for e2e/visual | |
@@ -140,4 +140,4 @@ Token mismatches (reference wins; logged, no ruling needed): many board values a
 
 ## 8. Questions
 
-See the chat message for the list with defaults; answers will be recorded in `docs/decisions.md`.
+Answered 2026-11-24; see `docs/decisions.md`. Still open: the event urgency rule (1) and the subtitle template wording (5).
