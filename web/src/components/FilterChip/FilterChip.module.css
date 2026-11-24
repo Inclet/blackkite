@@ -1,0 +1,71 @@
+.chip {
+  min-height: 44px;
+  padding: 0 14px 0 12px;
+  border: 1px solid var(--bk-stone-200);
+  border-radius: var(--bk-radius-pill);
+  background: var(--bk-white);
+  color: var(--bk-graphite);
+  font-family: var(--bk-font);
+  font-weight: 500;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  transition: background-color var(--bk-quick) var(--bk-ease), border-color var(--bk-quick) var(--bk-ease);
+}
+
+.chip:focus-visible {
+  outline: none;
+  box-shadow: var(--bk-focus-ring);
+}
+
+.unselected:hover {
+  background: var(--bk-stone-100);
+}
+
+.selected {
+  font-weight: 600;
+}
+
+/* All: graphite when selected (feed boards), no icon. */
+.all {
+  display: inline-block;
+  padding: 0 16px;
+}
+
+.all.selected {
+  border: 0;
+  background: var(--bk-graphite);
+  color: var(--bk-white);
+}
+
+/* Not drawn on the boards: unselected All keeps the size of the selected one. */
+.all.unselected {
+  padding: 0 15px;
+}
+
+.tender.selected {
+  border-color: var(--bk-tender-border);
+  background: var(--bk-tender-tint);
+  color: var(--bk-tender-text);
+}
+
+/* Selected investment, funding and event chips are not drawn; they follow the tender pattern with the tint as border. */
+.investment.selected {
+  border-color: var(--bk-investment-tint);
+  background: var(--bk-investment-tint);
+  color: var(--bk-investment-text);
+}
+
+.funding.selected {
+  border-color: var(--bk-funding-tint);
+  background: var(--bk-funding-tint);
+  color: var(--bk-funding-text);
+}
+
+.event.selected {
+  border-color: var(--bk-event-tint);
+  background: var(--bk-event-tint);
+  color: var(--bk-event-text);
+}
