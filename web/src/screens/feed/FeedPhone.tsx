@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useLocation } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { AccountButton } from '../../components/AccountButton/AccountButton';
 import { Card } from '../../components/Card/Card';
 import { FeedRow } from '../../components/FeedRow/FeedRow';
@@ -34,6 +34,7 @@ export function FeedPhone({ model }: { model: FeedModel }) {
   const stateCard = useStateCard(model);
   const showList = model.state !== 'nothing-new' && rows.length > 0;
   const location = useLocation();
+  const navigate = useNavigate();
   const headingRef = useRef<HTMLHeadingElement>(null);
   // "Not for me" on the opportunity page passes the row to focus (or HEADING) in the navigation state.
   const focusTarget = (location.state as { focusRow?: string } | null)?.focusRow;
@@ -42,7 +43,9 @@ export function FeedPhone({ model }: { model: FeedModel }) {
     if (!focusTarget) return;
     const row = focusTarget === HEADING ? null : document.getElementById(rowId(focusTarget));
     (row ?? headingRef.current)?.focus();
-  }, [focusTarget]);
+    // Used once: clear it so back/forward or a remount do not refocus that row.
+    navigate(location.pathname + location.search, { replace: true, state: null });
+  }, [focusTarget, location.pathname, location.search, navigate]);
 
   // Keys read the rows from here: X then another key in the same tick must not see the removed row.
   const liveRows = useLiveList(rows);
