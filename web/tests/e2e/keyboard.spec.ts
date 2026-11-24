@@ -25,7 +25,7 @@ test('J/K move the selection and the URL without a reload; S saves; X removes', 
   await expect(page).toHaveURL(/\/o\/wfp-logistics\?fixture=reference$/);
 
   await page.keyboard.press('s');
-  await expect(page.getByRole('button', { name: 'Saved to shortlist' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Save to shortlist' })).toHaveAttribute('aria-pressed', 'true');
 
   await page.keyboard.press('x');
   await expect(page.locator('[aria-label="Opportunities"] a')).toHaveCount(5);

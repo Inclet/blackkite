@@ -183,7 +183,7 @@ function DetailPane({ item, model, onDismiss }: { item: FeedItem; model: FeedMod
       </TrustPanel>
       <div className={styles.actions}>
         <Button aria-pressed={saved} onClick={() => model.toggleSaved(item.id)}>
-          {saved ? 'Saved to shortlist' : 'Save to shortlist'}
+          Save to shortlist
         </Button>
         <Button variant="secondary" onClick={onDismiss}>
           Not for me

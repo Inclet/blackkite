@@ -63,11 +63,13 @@ test('J and K move the selection, update the pane and the URL, and stop at the e
 test('S saves and unsaves the selected item', () => {
   renderAt('/?fixture=reference');
   press('s');
-  expect(within(pane()).getByRole('button', { name: 'Saved to shortlist' })).toHaveAttribute('aria-pressed', 'true');
+  // One label; aria-pressed carries the state.
+  expect(within(pane()).getByRole('button', { name: 'Save to shortlist' })).toHaveAttribute('aria-pressed', 'true');
+  expect(within(pane()).queryByRole('button', { name: 'Saved to shortlist' })).toBeNull();
   expect(screen.getByRole('status', { name: '' })).toHaveTextContent('Saved to shortlist: Logistics, transport and warehousing support');
   expect(rows()).toHaveLength(6);
   press('s');
-  expect(within(pane()).getByRole('button', { name: 'Save to shortlist' })).toBeInTheDocument();
+  expect(within(pane()).getByRole('button', { name: 'Save to shortlist' })).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('X removes the selected row and selects the next one', () => {

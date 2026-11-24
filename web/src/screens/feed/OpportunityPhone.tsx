@@ -60,7 +60,7 @@ export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }
 
       <div className={styles.actions} role="group" aria-label="Actions">
         <Button size="large" aria-pressed={saved} onClick={() => model.toggleSaved(item.id)}>
-          {saved ? 'Saved to shortlist' : 'Save to shortlist'}
+          Save to shortlist
         </Button>
         <Button
           size="large"

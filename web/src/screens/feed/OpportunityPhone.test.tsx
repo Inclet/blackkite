@@ -31,7 +31,10 @@ test('the opportunity page reads as the board', () => {
 test('save toggles; not for me returns to a feed without the item', () => {
   const router = renderAt('/o/wfp-logistics?fixture=reference');
   fireEvent.click(screen.getByRole('button', { name: 'Save to shortlist' }));
-  expect(screen.getByRole('button', { name: 'Saved to shortlist' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: 'Save to shortlist' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByRole('button', { name: 'Save to shortlist' }));
+  expect(screen.getByRole('button', { name: 'Save to shortlist' })).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(screen.getByRole('button', { name: 'Save to shortlist' }));
   fireEvent.click(screen.getByRole('button', { name: 'Not for me' }));
   expect(router.state.location.pathname).toBe('/');
   expect(screen.queryByText('Logistics, transport and warehousing support')).toBeNull();
