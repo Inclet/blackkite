@@ -52,3 +52,23 @@ test('the phone layout starts below 792px', async ({ page }) => {
   await expect(page.getByRole('article')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Your account' })).toHaveCount(0);
 });
+
+test('phone list: J/K move focus, S saves and X removes the focused row, focus moves on', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, '/?fixture=reference');
+  const rows = page.locator('[aria-label="Opportunities"] a');
+  await expect(rows).toHaveCount(5);
+  await page.keyboard.press('j');
+  await expect(rows.nth(0)).toBeFocused();
+  await page.keyboard.press('j');
+  await page.keyboard.press('k');
+  await expect(rows.nth(0)).toBeFocused();
+  await page.keyboard.press('Control+x');
+  await expect(rows).toHaveCount(5);
+  await page.keyboard.press('s');
+  await expect(page.getByRole('status').filter({ hasText: 'Saved to shortlist: Logistics' })).toHaveCount(1);
+  await page.keyboard.press('x');
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(0)).toContainText('ABH Summit');
+  await expect(rows.nth(0)).toBeFocused();
+});

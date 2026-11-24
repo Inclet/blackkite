@@ -39,6 +39,8 @@ test('save toggles; not for me returns to a feed without the item', () => {
   expect(router.state.location.pathname).toBe('/');
   expect(screen.queryByText('Logistics, transport and warehousing support')).toBeNull();
   expect(within(screen.getByRole('region', { name: 'Opportunities' })).getAllByRole('link')).toHaveLength(4);
+  // Focus lands on the row that followed the dismissed one.
+  expect(document.activeElement).toHaveTextContent('ABH Summit');
 });
 
 test('an unknown id says so and links back', () => {

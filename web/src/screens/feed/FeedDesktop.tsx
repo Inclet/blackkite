@@ -16,14 +16,11 @@ import { rowSubtitle } from '../../lib/subtitle';
 import { useAppLink } from '../../lib/useAppLink';
 import type { FeedModel } from './model';
 import { DetailTop, FilterChips, FitSection, hasFitSection, LiveRegion } from './parts';
+import { HEADING, rowId } from './focus';
 import { useFeedKeys } from './useFeedKeys';
 import { useStateCard } from './useStateCard';
 import styles from './FeedDesktop.module.css';
 
-export const rowId = (id: string) => `row-${id}`;
-
-/** pendingFocus value for "the page heading". Not a valid item id (ids are slugs). */
-export const HEADING = '#heading';
 
 export const NAV = [
   { label: 'Feed', to: '/' },

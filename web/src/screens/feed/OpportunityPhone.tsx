@@ -7,6 +7,7 @@ import { TrustPanel } from '../../components/TrustNote/TrustNote';
 import { detailMeta } from '../../lib/feed';
 import { useAppLink } from '../../lib/useAppLink';
 import type { FeedModel } from './model';
+import { HEADING } from './focus';
 import { DetailTop, FitSection, hasFitSection, LiveRegion } from './parts';
 import styles from './OpportunityPhone.module.css';
 
@@ -66,8 +67,12 @@ export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }
           size="large"
           variant="secondary"
           onClick={() => {
+            // Back on the feed, focus lands on the row that followed this one (or the heading).
+            const rows = model.items.filter((i) => !i.hideOnPhone);
+            const index = rows.indexOf(item);
+            const next = rows[index + 1] ?? rows[index - 1];
             model.dismiss(item.id);
-            navigate(`/${search}`);
+            navigate(`/${search}`, { state: { focusRow: next && next !== item ? next.id : HEADING } });
           }}
         >
           Not for me
