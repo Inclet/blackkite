@@ -30,6 +30,10 @@ packages = ["blackkite"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+filterwarnings = [
+    # Starlette suggests a different HTTP client for TestClient; httpx still works.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
 
 [dependency-groups]
 dev = [
