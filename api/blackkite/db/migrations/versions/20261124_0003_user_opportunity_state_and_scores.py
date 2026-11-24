@@ -5,8 +5,10 @@ note. Scores move to user_opportunity_score, one row per (user, opportunity,
 profile), with the composite FK that keeps the profile inside the same user.
 
 Upgrade: every old row's score moves to user_opportunity_score. Old rows for the
-same (user, opportunity) collapse to the most recently updated one (its state and
-dismiss_reason win); distinct notes are joined so none is lost.
+same (user, opportunity) collapse to one: the most-progressed state wins
+(done > acting > saved > dismissed > unseen), the latest updated_at breaking ties,
+and the kept row's dismiss_reason goes with it. Distinct notes are joined so none
+is lost, oldest first (by the earliest updated_at that carried each), then by text.
 
 Downgrade: each score row becomes an old-style row carrying the user's state and
 note. State rows with no score row cannot be expressed (profile_id was required)
@@ -27,6 +29,16 @@ revision: str = '0003'
 down_revision: str | None = '0002'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+# The one row kept per (user, opportunity) when state rows collapse.
+_KEEP = """
+    SELECT DISTINCT ON (user_id, opportunity_id) id, user_id, opportunity_id
+    FROM user_opportunity
+    ORDER BY user_id, opportunity_id,
+             CASE state WHEN 'done' THEN 4 WHEN 'acting' THEN 3 WHEN 'saved' THEN 2
+                        WHEN 'dismissed' THEN 1 ELSE 0 END DESC,
+             updated_at DESC, id
+"""
 
 
 def upgrade() -> None:
@@ -59,27 +71,23 @@ def upgrade() -> None:
         FROM user_opportunity
     """)
     op.execute("""
-        WITH notes AS (
-            SELECT user_id, opportunity_id,
-                   string_agg(DISTINCT note, E'\\n\\n') AS note
+        WITH distinct_notes AS (
+            SELECT user_id, opportunity_id, note, min(updated_at) AS first_at
             FROM user_opportunity WHERE note IS NOT NULL
+            GROUP BY user_id, opportunity_id, note
+        ), notes AS (
+            SELECT user_id, opportunity_id,
+                   string_agg(note, E'\\n\\n' ORDER BY first_at, note) AS note
+            FROM distinct_notes
             GROUP BY user_id, opportunity_id
-        ), keep AS (
-            SELECT DISTINCT ON (user_id, opportunity_id) id, user_id, opportunity_id
-            FROM user_opportunity
-            ORDER BY user_id, opportunity_id, updated_at DESC, id
-        )
+        ), keep AS (""" + _KEEP + """)
         UPDATE user_opportunity uo SET note = notes.note
         FROM keep JOIN notes USING (user_id, opportunity_id)
         WHERE uo.id = keep.id
     """)
     op.execute("""
         DELETE FROM user_opportunity uo
-        WHERE uo.id NOT IN (
-            SELECT DISTINCT ON (user_id, opportunity_id) id
-            FROM user_opportunity
-            ORDER BY user_id, opportunity_id, updated_at DESC, id
-        )
+        WHERE uo.id NOT IN (SELECT id FROM (""" + _KEEP + """) keep)
     """)
     op.drop_index(op.f('ix_user_opportunity_profile_id'), table_name='user_opportunity')
     op.drop_constraint(op.f('uq_user_opportunity_user_id_opportunity_id_profile_id'), 'user_opportunity', type_='unique')
