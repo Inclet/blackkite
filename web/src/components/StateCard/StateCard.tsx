@@ -2,7 +2,7 @@ import { Button } from '../Button/Button';
 import { Icon } from '../Icon/Icon';
 import { Kite } from '../Kite/Kite';
 import { KiteOrbit, ORBITS } from '../KiteOrbit/KiteOrbit';
-import { TextLink } from '../TextLink/TextLink';
+import { TextButton, TextLink } from '../TextLink/TextLink';
 import styles from './StateCard.module.css';
 
 export type StateKind = 'checking' | 'nothing-new' | 'first-visit' | 'source-down';
@@ -11,7 +11,7 @@ export interface StateCardProps {
   kind: StateKind;
   title: string;
   body: string;
-  /** Link (nothing new, source down) or button (first visit). Checking has none. */
+  /** Link when it has an href, otherwise a button (first visit: the primary button). Checking has none. */
   action?: { label: string; href?: string; onClick?: () => void };
 }
 
@@ -45,10 +45,14 @@ export function StateCard({ kind, title, body, action }: StateCardProps) {
           <div className={styles.buttonRow}>
             <Button onClick={action.onClick}>{action.label}</Button>
           </div>
-        ) : (
-          <TextLink spacing="stacked" href={action.href ?? '#'} onClick={action.onClick}>
+        ) : action.href !== undefined ? (
+          <TextLink spacing="stacked" href={action.href} onClick={action.onClick}>
             {action.label}
           </TextLink>
+        ) : (
+          <TextButton spacing="stacked" onClick={action.onClick}>
+            {action.label}
+          </TextButton>
         ))}
     </div>
   );

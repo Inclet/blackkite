@@ -6,6 +6,18 @@
   transition: color var(--bk-quick) var(--bk-ease);
 }
 
+.button {
+  align-self: flex-start;
+  border: 0;
+  margin: 0;
+  background: none;
+  font-family: inherit;
+  line-height: inherit;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .link:hover {
   color: var(--bk-slate);
 }

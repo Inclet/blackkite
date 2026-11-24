@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { expect, test } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { expect, test, vi } from 'vitest';
 import { StateCard } from './StateCard';
 
 test('checking shows the circling kite as a status', () => {
@@ -21,4 +21,12 @@ test('first visit offers a button', () => {
 test('source down leads with the conflict icon', () => {
   render(<StateCard kind="source-down" title="We could not reach BNR today" body="Bond notices may be a day behind." action={{ label: 'See all sources' }} />);
   expect(screen.getByText('We could not reach BNR today').querySelector('[data-icon="conflict"]')).not.toBeNull();
+});
+
+test('a click-only action is a real button, not a dead link', () => {
+  const onClick = vi.fn();
+  render(<StateCard kind="source-down" title="We could not reach BNR today" body="Bond notices may be a day behind." action={{ label: 'See all sources', onClick }} />);
+  expect(screen.queryByRole('link')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'See all sources' }));
+  expect(onClick).toHaveBeenCalledOnce();
 });

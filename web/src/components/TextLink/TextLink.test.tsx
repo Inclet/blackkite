@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { render, screen } from '@testing-library/react';
 import { expect, test } from 'vitest';
-import { TextLink } from './TextLink';
+import { TextButton, TextLink } from './TextLink';
 
 test('renders a real link with its spacing', () => {
   render(
@@ -24,4 +24,11 @@ test('the invisible hit area is at least 44px wide and high, centred', () => {
   expect(after).toMatch(/height:\s*max\(100%,\s*var\(--bk-tap-min\)\)/);
   expect(after).toMatch(/left:\s*50%/);
   expect(after).toMatch(/transform:\s*translate\(-50%,\s*-50%\)/);
+});
+
+test('TextButton is a button with the link look', () => {
+  render(<TextButton spacing="stacked">See all sources</TextButton>);
+  const b = screen.getByRole('button', { name: 'See all sources' });
+  expect(b).toHaveAttribute('type', 'button');
+  expect(b).toHaveClass('link', 'button', 'stacked');
 });
