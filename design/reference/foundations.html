@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blackkite foundations</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+@keyframes bk-orbit{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes bk-glide{from{transform:rotate(-18deg) translateY(2px)}to{transform:rotate(-14deg) translateY(-2px)}}
+@keyframes bk-drop{0%{transform:translateY(-10px);opacity:0}18%{transform:translateY(0);opacity:1}100%{transform:translateY(0);opacity:1}}
+@media (prefers-reduced-motion: reduce){*{animation:none !important}}
+</style>
+</head>
+<body>
+<div style="width: 1440px; height: 1000px; box-sizing: border-box; padding: 44px 56px; background: #F6F5F2; color: #2B2A28; font-family: 'Figtree', system-ui, sans-serif; display: flex; flex-direction: column; gap: 24px">
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px">
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 24px 28px; display: flex; flex-direction: column; gap: 16px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">Logo</div>
+<div style="display: flex; align-items: center; gap: 36px">
+<svg role="img" aria-label="Blackkite mark" viewBox="0 0 120 80" style="width: 180px; height: 120px; animation: bk-glide 7s ease-in-out infinite alternate"><path d="M60,8 C63,8 65,14 64.5,20 C72,17 80,13 88,14 C99,15.5 110,23 118,34 L112,34 L114,40 L107,36.5 L108,43 L101,37 C91,29 79,27 66,34 C65.5,41 64.5,47 63.5,52 L73,77 L60,66 L47,77 L56.5,52 C55.5,47 54.5,41 54,34 C41,27 29,29 19,37 L12,43 L13,36.5 L6,40 L8,34 L2,34 C10,23 21,15.5 32,14 C40,13 48,17 55.5,20 C55,14 57,8 60,8 Z" fill="#2B2A28"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg aria-hidden="true" viewBox="0 0 120 80" style="width: 63px; height: 42px; transform: rotate(-16deg)"><path d="M60,8 C63,8 65,14 64.5,20 C72,17 80,13 88,14 C99,15.5 110,23 118,34 L112,34 L114,40 L107,36.5 L108,43 L101,37 C91,29 79,27 66,34 C65.5,41 64.5,47 63.5,52 L73,77 L60,66 L47,77 L56.5,52 C55.5,47 54.5,41 54,34 C41,27 29,29 19,37 L12,43 L13,36.5 L6,40 L8,34 L2,34 C10,23 21,15.5 32,14 C40,13 48,17 55.5,20 C55,14 57,8 60,8 Z" fill="#2B2A28"></path></svg>
+<div style="font-weight: 600; font-size: 36px; letter-spacing: -0.025em; line-height: 1">blac<span style="letter-spacing: -0.045em">kk</span>ite</div>
+</div>
+<div style="display: flex; align-items: flex-end; gap: 22px">
+<div style="display: flex; flex-direction: column; gap: 6px; align-items: center">
+<svg aria-hidden="true" viewBox="0 0 120 80" style="width: 48px; height: 32px"><path d="M60,8 C63,8 65,14 64.5,20 C72,17 80,13 88,14 C99,15.5 110,23 118,34 C115,37 108,38.5 101,37 C91,29 79,27 66,34 C65.5,41 64.5,47 63.5,52 L73,77 L60,66 L47,77 L56.5,52 C55.5,47 54.5,41 54,34 C41,27 29,29 19,37 C12,38.5 5,37 2,34 C10,23 21,15.5 32,14 C40,13 48,17 55.5,20 C55,14 57,8 60,8 Z" fill="#2B2A28"></path></svg>
+<div style="font-size: 12px; color: #5F5D59">Small, 32</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; align-items: center">
+<svg aria-hidden="true" viewBox="0 0 120 80" style="width: 30px; height: 20px"><path d="M60,8 C63,8 65,14 64.5,20 C72,17 80,13 88,14 C99,15.5 110,23 118,34 C115,37 108,38.5 101,37 C91,29 79,27 66,34 C65.5,41 64.5,47 63.5,52 L73,77 L60,66 L47,77 L56.5,52 C55.5,47 54.5,41 54,34 C41,27 29,29 19,37 C12,38.5 5,37 2,34 C10,23 21,15.5 32,14 C40,13 48,17 55.5,20 C55,14 57,8 60,8 Z" fill="#2B2A28"></path></svg>
+<div style="font-size: 12px; color: #5F5D59">20</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; align-items: center">
+<div style="width: 32px; height: 32px; border-radius: 8px; background: #2B2A28; display: flex; align-items: center; justify-content: center">
+<svg aria-hidden="true" viewBox="0 0 120 80" style="width: 26px; height: 17px; transform: rotate(-16deg)"><path d="M60,8 C63,8 65,14 64.5,20 C72,17 80,13 88,14 C99,15.5 110,23 118,34 C115,37 108,38.5 101,37 C91,29 79,27 66,34 C65.5,41 64.5,47 63.5,52 L73,77 L60,66 L47,77 L56.5,52 C55.5,47 54.5,41 54,34 C41,27 29,29 19,37 C12,38.5 5,37 2,34 C10,23 21,15.5 32,14 C40,13 48,17 55.5,20 C55,14 57,8 60,8 Z" fill="#F6F5F2"></path></svg>
+</div>
+<div style="font-size: 12px; color: #5F5D59">Favicon</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; align-items: center">
+<div style="width: 56px; height: 56px; border-radius: 14px; background: #2B2A28; display: flex; align-items: center; justify-content: center">
+<svg aria-hidden="true" viewBox="0 0 120 80" style="width: 44px; height: 29px; transform: rotate(-16deg)"><path d="M60,8 C63,8 65,14 64.5,20 C72,17 80,13 88,14 C99,15.5 110,23 118,34 C115,37 108,38.5 101,37 C91,29 79,27 66,34 C65.5,41 64.5,47 63.5,52 L73,77 L60,66 L47,77 L56.5,52 C55.5,47 54.5,41 54,34 C41,27 29,29 19,37 C12,38.5 5,37 2,34 C10,23 21,15.5 32,14 C40,13 48,17 55.5,20 C55,14 57,8 60,8 Z" fill="#F6F5F2"></path></svg>
+</div>
+<div style="font-size: 12px; color: #5F5D59">App icon</div>
+</div>
+</div>
+</div>
+</div>
+<div style="font-size: 13px; line-height: 1.5; color: #5F5D59">Longer forked tail and slimmer, swept wings. The full mark keeps its wingtip feathers; below 40 pixels use the small mark.</div>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 24px 28px; display: flex; flex-direction: column; gap: 16px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">Signature · the kite circles, then drops</div>
+<div style="display: flex; align-items: center; gap: 36px">
+<div style="position: relative; width: 150px; height: 150px; flex-shrink: 0">
+<div style="position: absolute; inset: 0; border: 1px solid #E7E5E0; border-radius: 50%"></div>
+<div style="position: absolute; inset: 28px; border: 1px solid #E7E5E0; border-radius: 50%"></div>
+<div style="position: absolute; inset: 56px; border: 1px solid #E7E5E0; border-radius: 50%"></div>
+<div style="position: absolute; left: 104px; top: 46px; width: 8px; height: 8px; border-radius: 50%; background: #F2A83B"></div>
+<div style="position: absolute; left: 40px; top: 96px; width: 8px; height: 8px; border-radius: 50%; background: #6C7BF2"></div>
+<div style="position: absolute; left: 60px; top: 30px; width: 8px; height: 8px; border-radius: 50%; background: #1FA898"></div>
+<div style="position: absolute; inset: 0; animation: bk-orbit 14s linear infinite">
+<svg aria-hidden="true" viewBox="0 0 120 80" style="position: absolute; left: 54px; top: -14px; width: 42px; height: 28px; transform: rotate(90deg)"><path d="M60,8 C63,8 65,14 64.5,20 C72,17 80,13 88,14 C99,15.5 110,23 118,34 C115,37 108,38.5 101,37 C91,29 79,27 66,34 C65.5,41 64.5,47 63.5,52 L73,77 L60,66 L47,77 L56.5,52 C55.5,47 54.5,41 54,34 C41,27 29,29 19,37 C12,38.5 5,37 2,34 C10,23 21,15.5 32,14 C40,13 48,17 55.5,20 C55,14 57,8 60,8 Z" fill="#2B2A28"></path></svg>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 1.5">
+<div><strong style="font-weight: 600">Scanning.</strong> The kite circles while sources are checked. It replaces every spinner.</div>
+<div><strong style="font-weight: 600">Found.</strong> A new item drops into the list from above, once.</div>
+<div><strong style="font-weight: 600">Quiet.</strong> When nothing is new the kite rests. No empty-state illustration, just the mark and one line.</div>
+<div style="background: #F6F5F2; border: 1px solid #E7E5E0; border-radius: 8px; padding: 10px 12px; font-size: 13px; font-weight: 500; animation: bk-drop 5s ease-out infinite">New this morning: WFP logistics roster</div>
+</div>
+</div>
+</div>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 24px 28px; display: grid; grid-template-columns: 300px minmax(0, 1fr) 380px; gap: 40px">
+
+<div style="display: flex; flex-direction: column; gap: 9px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">Neutrals · everything structural</div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><div style="width: 26px; height: 26px; border-radius: 6px; background: #F6F5F2; border: 1px solid #D6D3CD; box-sizing: border-box"></div><strong style="font-weight: 600; width: 76px">Mist</strong><span style="color: #5F5D59">#F6F5F2 · page</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><div style="width: 26px; height: 26px; border-radius: 6px; background: #FFFFFF; border: 1px solid #D6D3CD; box-sizing: border-box"></div><strong style="font-weight: 600; width: 76px">White</strong><span style="color: #5F5D59">#FFFFFF · cards</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><div style="width: 26px; height: 26px; border-radius: 6px; background: #EFEDE9"></div><strong style="font-weight: 600; width: 76px">Stone 100</strong><span style="color: #5F5D59">#EFEDE9 · quiet fills</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><div style="width: 26px; height: 26px; border-radius: 6px; background: #E7E5E0"></div><strong style="font-weight: 600; width: 76px">Stone 200</strong><span style="color: #5F5D59">#E7E5E0 · borders</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><div style="width: 26px; height: 26px; border-radius: 6px; background: #D6D3CD"></div><strong style="font-weight: 600; width: 76px">Stone 300</strong><span style="color: #5F5D59">#D6D3CD · field borders</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><div style="width: 26px; height: 26px; border-radius: 6px; background: #5F5D59"></div><strong style="font-weight: 600; width: 76px">Slate</strong><span style="color: #5F5D59">#5F5D59 · second text</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><div style="width: 26px; height: 26px; border-radius: 6px; background: #2B2A28"></div><strong style="font-weight: 600; width: 76px">Graphite</strong><span style="color: #5F5D59">#2B2A28 · text, actions</span></div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">Streams · colour plus icon, never colour alone</div>
+<div style="display: grid; grid-template-columns: 150px 30px 30px 30px minmax(0, 1fr) 150px; gap: 10px; align-items: center; font-size: 13px">
+<span style="justify-self: start; display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 5px 11px 5px 9px; border-radius: 999px; background: #FCEFD6; color: #7A5200"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 14px; height: 14px" fill="none" stroke="#7A5200" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M4 2.5h5.5L12 5v8.5H4z M9.5 2.5V5H12 M6 8h4 M6 10.5h4"></path></svg>Tender</span>
+<div style="height: 30px; border-radius: 6px; background: #F2A83B"></div><div style="height: 30px; border-radius: 6px; background: #FCEFD6"></div><div style="height: 30px; border-radius: 6px; background: #7A5200"></div>
+<span style="color: #5F5D59">Marigold · #F2A83B · #FCEFD6 · #7A5200</span>
+<span style="justify-self: start; display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 5px 11px 5px 9px; border-radius: 999px; background: #3B2F14; color: #F6C877"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 14px; height: 14px" fill="none" stroke="#F6C877" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M4 2.5h5.5L12 5v8.5H4z M9.5 2.5V5H12 M6 8h4 M6 10.5h4"></path></svg>Evening</span>
+
+<span style="justify-self: start; display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 5px 11px 5px 9px; border-radius: 999px; background: #DDF3EF; color: #0E5F56"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 14px; height: 14px" fill="none" stroke="#0E5F56" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M2.5 11.5 6 8l2.5 2.5L13.5 5 M10 5h3.5v3.5"></path></svg>Investment</span>
+<div style="height: 30px; border-radius: 6px; background: #1FA898"></div><div style="height: 30px; border-radius: 6px; background: #DDF3EF"></div><div style="height: 30px; border-radius: 6px; background: #0E5F56"></div>
+<span style="color: #5F5D59">Lagoon · #1FA898 · #DDF3EF · #0E5F56</span>
+<span style="justify-self: start; display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 5px 11px 5px 9px; border-radius: 999px; background: #12332F; color: #7FD9CC"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 14px; height: 14px" fill="none" stroke="#7FD9CC" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M2.5 11.5 6 8l2.5 2.5L13.5 5 M10 5h3.5v3.5"></path></svg>Evening</span>
+
+<span style="justify-self: start; display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 5px 11px 5px 9px; border-radius: 999px; background: #FCE4DF; color: #8F2F1F"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 14px; height: 14px" fill="none" stroke="#8F2F1F" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M8 13.5V8 M8 8C8 5.5 6 4 3.5 4 3.5 6.5 5.5 8 8 8z M8 9.5c0-2 1.6-3.5 4.5-3.5 0 2.3-2 3.5-4.5 3.5z"></path></svg>Funding</span>
+<div style="height: 30px; border-radius: 6px; background: #F0705A"></div><div style="height: 30px; border-radius: 6px; background: #FCE4DF"></div><div style="height: 30px; border-radius: 6px; background: #8F2F1F"></div>
+<span style="color: #5F5D59">Coral · #F0705A · #FCE4DF · #8F2F1F</span>
+<span style="justify-self: start; display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 5px 11px 5px 9px; border-radius: 999px; background: #3D211C; color: #F7A898"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 14px; height: 14px" fill="none" stroke="#F7A898" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M8 13.5V8 M8 8C8 5.5 6 4 3.5 4 3.5 6.5 5.5 8 8 8z M8 9.5c0-2 1.6-3.5 4.5-3.5 0 2.3-2 3.5-4.5 3.5z"></path></svg>Evening</span>
+
+<span style="justify-self: start; display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 5px 11px 5px 9px; border-radius: 999px; background: #E5E8FD; color: #333F9E"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 14px; height: 14px" fill="none" stroke="#333F9E" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M3 4h10v9H3z M3 7h10 M5.5 2.5v3 M10.5 2.5v3"></path></svg>Event</span>
+<div style="height: 30px; border-radius: 6px; background: #6C7BF2"></div><div style="height: 30px; border-radius: 6px; background: #E5E8FD"></div><div style="height: 30px; border-radius: 6px; background: #333F9E"></div>
+<span style="color: #5F5D59">Iris · #6C7BF2 · #E5E8FD · #333F9E</span>
+<span style="justify-self: start; display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 5px 11px 5px 9px; border-radius: 999px; background: #232747; color: #AEB7FA"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 14px; height: 14px" fill="none" stroke="#AEB7FA" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M3 4h10v9H3z M3 7h10 M5.5 2.5v3 M10.5 2.5v3"></path></svg>Evening</span>
+</div>
+<div style="font-size: 13px; line-height: 1.5; color: #5F5D59">Each stream has a base for dots, a tint for tags, and a dark shade that is safe for text. Sage is retired: it sat too close to Lagoon.</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">Urgency · by weight, not hue</div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums">
+<span style="padding: 5px 11px; border-radius: 999px; background: #EFEDE9; color: #2B2A28">32 days left</span>
+<span style="padding: 4px 10px; border-radius: 999px; border: 1px solid #2B2A28; color: #2B2A28">12 days left</span>
+<span style="padding: 5px 11px; border-radius: 999px; background: #2B2A28; color: #FFFFFF">6 days left</span>
+<span style="padding: 5px 11px; border-radius: 999px; background: #C4352B; color: #FFFFFF">Closes tomorrow</span>
+</div>
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59; margin-top: 6px">Trust · every item shows where it stands</div>
+<div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 500">
+<span style="display: flex; align-items: center; gap: 7px"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 16px; height: 16px" fill="none" stroke="#2B2A28" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"></circle><path d="M5.5 8.2 7.2 10 10.6 6.3"></path></svg>Confirmed at the source</span>
+<span style="display: flex; align-items: center; gap: 7px; color: #5F5D59"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 16px; height: 16px" fill="none" stroke="#5F5D59" stroke-width="1.5" stroke-dasharray="2.2 2.2"><circle cx="8" cy="8" r="6"></circle></svg>Not yet confirmed at the source</span>
+<span style="display: flex; align-items: center; gap: 7px; color: #A12A21"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 16px; height: 16px" fill="none" stroke="#A12A21" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.8 14 13H2z M8 6.5v3.2 M8 11.3v.2"></path></svg>Sources disagree on the date</span>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px; margin-top: 4px"><div style="width: 26px; height: 26px; border-radius: 6px; background: #C4352B"></div><strong style="font-weight: 600">Alert</strong><span style="color: #5F5D59">#C4352B · errors and last-day deadlines only</span></div>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1.25fr 0.9fr 1fr 1.1fr; gap: 24px; flex-grow: 1">
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">Type · Figtree</div>
+<div style="font-size: 32px; line-height: 38px; font-weight: 600; letter-spacing: -0.02em">Display 32</div>
+<div style="font-size: 24px; line-height: 30px; font-weight: 600; letter-spacing: -0.015em">Title 24</div>
+<div style="font-size: 19px; line-height: 26px; font-weight: 600">Heading 19</div>
+<div style="font-size: 15px; line-height: 24px">Body 15 on a 24 line, at most 70 characters wide.</div>
+<div style="font-size: 13px; line-height: 18px; font-weight: 500">Label 13 · Caption 12 · never smaller</div>
+<div style="font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 500">30 Nov 2026 · FRW 5,000,000</div>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">Space and shape</div>
+<div style="display: flex; align-items: flex-end; gap: 8px">
+<div style="width: 4px; height: 4px; background: #2B2A28"></div>
+<div style="width: 8px; height: 8px; background: #2B2A28"></div>
+<div style="width: 12px; height: 12px; background: #2B2A28"></div>
+<div style="width: 16px; height: 16px; background: #2B2A28"></div>
+<div style="width: 24px; height: 24px; background: #2B2A28"></div>
+<div style="width: 32px; height: 32px; background: #2B2A28"></div>
+<div style="width: 48px; height: 48px; background: #2B2A28"></div>
+</div>
+<div style="font-size: 13px; color: #5F5D59; font-variant-numeric: tabular-nums">4 · 8 · 12 · 16 · 24 · 32 · 48</div>
+<div style="display: flex; gap: 10px; align-items: center; margin-top: 4px">
+<div style="width: 56px; height: 36px; border: 1.5px solid #2B2A28; border-radius: 8px"></div>
+<div style="width: 56px; height: 36px; border: 1.5px solid #2B2A28; border-radius: 14px"></div>
+<div style="width: 56px; height: 36px; border: 1.5px solid #2B2A28; border-radius: 999px"></div>
+</div>
+<div style="font-size: 13px; color: #5F5D59">8 controls · 14 cards · pill tags</div>
+<div style="font-size: 13px; color: #5F5D59">Tap targets at least 44 high.</div>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 1.45">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">Motion</div>
+<div><strong style="font-weight: 600">Quick, 120 ms.</strong> Hover and press.</div>
+<div><strong style="font-weight: 600">Settle, 220 ms.</strong> Items entering, panels opening.</div>
+<div><strong style="font-weight: 600">Glide, 400 ms.</strong> Page changes and the kite.</div>
+<div style="color: #5F5D59">One easing everywhere: fast out, soft landing.</div>
+<div style="color: #5F5D59">With reduced motion on, things fade and nothing moves.</div>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 1.45">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">Voice · plain, warm, specific</div>
+<div><strong style="font-weight: 600">Not for me</strong> <span style="color: #5F5D59">rather than Dismiss</span></div>
+<div><strong style="font-weight: 600">Why this matched</strong> <span style="color: #5F5D59">rather than Relevance score</span></div>
+<div><strong style="font-weight: 600">Found on Job in Rwanda</strong> <span style="color: #5F5D59">rather than Source: aggregator</span></div>
+<div><strong style="font-weight: 600">We could not reach BNR today</strong> <span style="color: #5F5D59">rather than Error 503</span></div>
+<div style="color: #5F5D59">No hype, no exclamation marks. Layouts leave a third more room for Kinyarwanda and French.</div>
+</div>
+
+</div>
+</div>
+</body>
+</html>

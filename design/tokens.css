@@ -1,0 +1,102 @@
+/* Blackkite design tokens, v1 "Calm".
+   Source: the Foundations board. Where a token and a reference page disagree,
+   the reference page in design/reference/ wins; report the mismatch. */
+
+:root {
+  /* Neutrals: everything structural */
+  --bk-mist: #F6F5F2;          /* page */
+  --bk-white: #FFFFFF;         /* cards, fields */
+  --bk-stone-100: #EFEDE9;     /* quiet fills, neutral tags, current nav item */
+  --bk-stone-200: #E7E5E0;     /* borders, dividers */
+  --bk-stone-300: #D6D3CD;     /* field and secondary-button borders */
+  --bk-slate: #5F5D59;         /* secondary text */
+  --bk-graphite: #2B2A28;      /* text, primary actions, logo */
+  --bk-graphite-hover: #45433F;
+
+  /* Alert: errors and last-day deadlines only */
+  --bk-alert: #C4352B;
+  --bk-alert-text: #A12A21;
+
+  /* Streams: base (dots, icons on white), tint (tags, icon tiles), text (on tint).
+     A stream is always shown with its icon or its name, never colour alone. */
+  --bk-tender: #F2A83B;
+  --bk-tender-tint: #FCEFD6;
+  --bk-tender-text: #7A5200;
+  --bk-tender-border: #F2CF8F;   /* selected filter chip outline */
+  --bk-tender-icon: #C98412;     /* icon stroke on white, darker for contrast */
+
+  --bk-investment: #1FA898;
+  --bk-investment-tint: #DDF3EF;
+  --bk-investment-text: #0E5F56;
+
+  --bk-funding: #F0705A;
+  --bk-funding-tint: #FCE4DF;
+  --bk-funding-text: #8F2F1F;
+
+  --bk-event: #6C7BF2;
+  --bk-event-tint: #E5E8FD;
+  --bk-event-text: #333F9E;
+
+  /* Type: Figtree 400, 500, 600 only. Nothing bolder than 600. */
+  --bk-font: 'Figtree', system-ui, sans-serif;
+  --bk-font-email: Helvetica, Arial, sans-serif;   /* digest email: no web fonts */
+
+  --bk-display: 600 32px/38px var(--bk-font);      /* letter-spacing -0.02em */
+  --bk-greeting: 600 28px/34px var(--bk-font);     /* letter-spacing -0.015em */
+  --bk-title: 600 24px/30px var(--bk-font);        /* letter-spacing -0.015em */
+  --bk-title-phone: 600 22px/28px var(--bk-font);  /* letter-spacing -0.015em */
+  --bk-heading: 600 19px/26px var(--bk-font);
+  --bk-row-title: 600 15px/20px var(--bk-font);
+  --bk-body: 400 15px/24px var(--bk-font);         /* max 70 characters wide */
+  --bk-label: 500 13px/18px var(--bk-font);
+  --bk-caption: 500 12px/16px var(--bk-font);      /* never smaller than 12px */
+  /* Dates and amounts: font-variant-numeric: tabular-nums */
+
+  /* Space */
+  --bk-space-1: 4px;
+  --bk-space-2: 8px;
+  --bk-space-3: 12px;
+  --bk-space-4: 16px;
+  --bk-space-5: 24px;
+  --bk-space-6: 32px;
+  --bk-space-7: 48px;
+
+  /* Shape */
+  --bk-radius-flag: 6px;
+  --bk-radius-control: 8px;
+  --bk-radius-tile: 10px;      /* stream icon tiles, list rows, inset panels */
+  --bk-radius-card: 14px;
+  --bk-radius-pill: 999px;
+  --bk-tap-min: 44px;          /* minimum height of anything tappable */
+
+  /* Focus: the same double ring on every control */
+  --bk-focus-ring: 0 0 0 2px #FFFFFF, 0 0 0 4px #2B2A28;
+
+  /* Motion */
+  --bk-quick: 120ms;           /* hover, press */
+  --bk-settle: 220ms;          /* items entering, panels opening */
+  --bk-glide: 400ms;           /* page changes, the kite */
+  --bk-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --bk-orbit: 8s;              /* kite circling: linear, infinite; 6s in the loading state */
+}
+
+/* Evening mode. Only stream tags and a list sample are designed so far.
+   Do not ship evening mode until full screens exist. */
+[data-theme='evening'] {
+  --bk-mist: #1F1F1D;
+  --bk-stone-200: #383735;
+  --bk-slate: #A9A6A0;
+  --bk-graphite: #EDEBE6;
+  --bk-tender-tint: #3B2F14;
+  --bk-tender-text: #F6C877;
+  --bk-investment-tint: #12332F;
+  --bk-investment-text: #7FD9CC;
+  --bk-funding-tint: #3D211C;
+  --bk-funding-text: #F7A898;
+  --bk-event-tint: #232747;
+  --bk-event-text: #AEB7FA;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition-duration: 0.01ms !important; }
+}

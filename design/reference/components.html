@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blackkite components and states</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2B2A28}a:hover{color:#5F5D59}
+@keyframes bk-orbit{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){*{animation:none !important}}
+</style>
+</head>
+<body>
+<div style="width: 1440px; height: 1000px; box-sizing: border-box; padding: 44px 56px; background: #F6F5F2; color: #2B2A28; font-family: 'Figtree', system-ui, sans-serif; display: flex; flex-direction: column; gap: 24px">
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px">
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">Buttons</div>
+<div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+<button type="button" style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 8px; background: #2B2A28; color: #FFFFFF; font-family: 'Figtree', sans-serif; font-weight: 600; font-size: 14px">Save to shortlist</button>
+<button type="button" style="min-height: 44px; padding: 0 18px; border: 1px solid #D6D3CD; border-radius: 8px; background: #FFFFFF; color: #2B2A28; font-family: 'Figtree', sans-serif; font-weight: 500; font-size: 14px">Not for me</button>
+<a href="#" style="font-size: 14px; font-weight: 500; padding: 12px 6px">Read the original</a>
+</div>
+<div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+<button type="button" style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 8px; background: #45433F; color: #FFFFFF; font-family: 'Figtree', sans-serif; font-weight: 600; font-size: 14px">Hover</button>
+<button type="button" style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 8px; background: #2B2A28; color: #FFFFFF; font-family: 'Figtree', sans-serif; font-weight: 600; font-size: 14px; box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px #2B2A28">Keyboard focus</button>
+<button type="button" disabled style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 8px; background: #E7E5E0; color: #5F5D59; font-family: 'Figtree', sans-serif; font-weight: 600; font-size: 14px">Disabled</button>
+</div>
+<div style="font-size: 13px; line-height: 1.5; color: #5F5D59">One dark button per view. Focus always shows a double ring, on every control.</div>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">Filters and tags</div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap">
+<button type="button" aria-pressed="true" style="min-height: 44px; padding: 0 14px 0 12px; border: 1px solid #F2CF8F; border-radius: 999px; background: #FCEFD6; color: #7A5200; font-family: 'Figtree', sans-serif; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 7px"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 15px; height: 15px" fill="none" stroke="#7A5200" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M4 2.5h5.5L12 5v8.5H4z M9.5 2.5V5H12 M6 8h4 M6 10.5h4"></path></svg>Tenders</button>
+<button type="button" aria-pressed="false" style="min-height: 44px; padding: 0 14px 0 12px; border: 1px solid #E7E5E0; border-radius: 999px; background: #FFFFFF; color: #2B2A28; font-family: 'Figtree', sans-serif; font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 7px"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 15px; height: 15px" fill="none" stroke="#1FA898" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M2.5 11.5 6 8l2.5 2.5L13.5 5 M10 5h3.5v3.5"></path></svg>Investments</button>
+<button type="button" aria-pressed="false" style="min-height: 44px; padding: 0 14px 0 12px; border: 1px solid #E7E5E0; border-radius: 999px; background: #FFFFFF; color: #2B2A28; font-family: 'Figtree', sans-serif; font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 7px"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 15px; height: 15px" fill="none" stroke="#F0705A" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M8 13.5V8 M8 8C8 5.5 6 4 3.5 4 3.5 6.5 5.5 8 8 8z M8 9.5c0-2 1.6-3.5 4.5-3.5 0 2.3-2 3.5-4.5 3.5z"></path></svg>Funding</button>
+<button type="button" aria-pressed="false" style="min-height: 44px; padding: 0 14px 0 12px; border: 1px solid #E7E5E0; border-radius: 999px; background: #FFFFFF; color: #2B2A28; font-family: 'Figtree', sans-serif; font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 7px"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 15px; height: 15px" fill="none" stroke="#6C7BF2" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M3 4h10v9H3z M3 7h10 M5.5 2.5v3 M10.5 2.5v3"></path></svg>Events</button>
+</div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap; font-size: 13px; font-weight: 600">
+<span style="padding: 5px 11px; border-radius: 999px; background: #FCEFD6; color: #7A5200">Tender</span>
+<span style="padding: 5px 11px; border-radius: 999px; background: #DDF3EF; color: #0E5F56">Investment</span>
+<span style="padding: 5px 11px; border-radius: 999px; background: #FCE4DF; color: #8F2F1F">Funding</span>
+<span style="padding: 5px 11px; border-radius: 999px; background: #E5E8FD; color: #333F9E">Event</span>
+<span style="padding: 5px 11px; border-radius: 999px; background: #EFEDE9; color: #2B2A28; font-weight: 500">Ironji-Trade</span>
+</div>
+<div style="font-size: 13px; line-height: 1.5; color: #5F5D59">A filter fills with its colour only when selected. Profile tags stay neutral.</div>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">Fields</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="bk-f1" style="font-size: 13px; font-weight: 500">Smallest contract worth bidding</label>
+<input id="bk-f1" type="text" value="FRW 5,000,000" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #D6D3CD; border-radius: 8px; background: #FFFFFF; color: #2B2A28; font-family: 'Figtree', sans-serif; font-size: 15px; width: 100%">
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="bk-f2" style="font-size: 13px; font-weight: 500">Refrigerated trucks</label>
+<input id="bk-f2" type="text" value="about a hundred" aria-invalid="true" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; border: 1.5px solid #C4352B; border-radius: 8px; background: #FFFFFF; color: #2B2A28; font-family: 'Figtree', sans-serif; font-size: 15px; width: 100%">
+<div style="font-size: 12px; font-weight: 500; color: #A12A21">Use a number, such as 100.</div>
+</div>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<div style="font-size: 14px; font-weight: 500">Urgent alerts</div>
+<div style="font-size: 13px; color: #5F5D59">Email me the day a strong fit closes within 5 days.</div>
+</div>
+<button type="button" role="switch" aria-checked="true" aria-label="Urgent alerts" style="width: 48px; height: 28px; border: 0; border-radius: 999px; background: #2B2A28; padding: 3px; display: flex; justify-content: flex-end; flex-shrink: 0"><span style="width: 22px; height: 22px; border-radius: 50%; background: #FFFFFF"></span></button>
+</div>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px">
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 22px 24px 10px; display: flex; flex-direction: column">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59; padding-bottom: 6px">Feed row · built for scanning, and its awkward cases</div>
+
+<div style="display: grid; grid-template-columns: 36px minmax(0, 1fr) 96px 132px; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid #E7E5E0">
+<div style="width: 36px; height: 36px; border-radius: 10px; background: #FCEFD6; display: flex; align-items: center; justify-content: center"><svg role="img" aria-label="Tender" viewBox="0 0 16 16" style="width: 18px; height: 18px" fill="none" stroke="#7A5200" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M4 2.5h5.5L12 5v8.5H4z M9.5 2.5V5H12 M6 8h4 M6 10.5h4"></path></svg></div>
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<div style="font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Logistics, transport and warehousing support</div>
+<div style="font-size: 13px; color: #5F5D59; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">World Food Programme · matches your dry freight and cold chain</div>
+</div>
+<div style="display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500"><span aria-hidden="true" style="display: flex; align-items: flex-end; gap: 2px"><span style="width: 4px; height: 6px; border-radius: 1px; background: #2B2A28"></span><span style="width: 4px; height: 10px; border-radius: 1px; background: #2B2A28"></span><span style="width: 4px; height: 14px; border-radius: 1px; background: #2B2A28"></span></span>Strong</div>
+<div style="justify-self: end; font-size: 13px; font-weight: 600; padding: 5px 11px; border-radius: 999px; background: #2B2A28; color: #FFFFFF; font-variant-numeric: tabular-nums">6 days left</div>
+</div>
+
+<div style="display: grid; grid-template-columns: 36px minmax(0, 1fr) 96px 132px; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid #E7E5E0">
+<div style="width: 36px; height: 36px; border-radius: 10px; background: #FCE4DF; display: flex; align-items: center; justify-content: center"><svg role="img" aria-label="Funding" viewBox="0 0 16 16" style="width: 18px; height: 18px" fill="none" stroke="#8F2F1F" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M8 13.5V8 M8 8C8 5.5 6 4 3.5 4 3.5 6.5 5.5 8 8 8z M8 9.5c0-2 1.6-3.5 4.5-3.5 0 2.3-2 3.5-4.5 3.5z"></path></svg></div>
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<div style="font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Transition to Scale and Uptake of Research and Innovation: call for expressions of interest from eligible applicants</div>
+<div style="font-size: 13px; color: #5F5D59; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">National Council for Science and Technology · long titles cut at one line</div>
+</div>
+<div style="display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500; color: #5F5D59"><span aria-hidden="true" style="display: flex; align-items: flex-end; gap: 2px"><span style="width: 4px; height: 6px; border-radius: 1px; background: #2B2A28"></span><span style="width: 4px; height: 10px; border-radius: 1px; background: #D6D3CD"></span><span style="width: 4px; height: 14px; border-radius: 1px; background: #D6D3CD"></span></span>Possible</div>
+<div style="justify-self: end; font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 999px; border: 1px solid #2B2A28; font-variant-numeric: tabular-nums">13 days left</div>
+</div>
+
+<div style="display: grid; grid-template-columns: 36px minmax(0, 1fr) 96px 132px; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid #E7E5E0">
+<div style="width: 36px; height: 36px; border-radius: 10px; background: #DDF3EF; display: flex; align-items: center; justify-content: center"><svg role="img" aria-label="Investment" viewBox="0 0 16 16" style="width: 18px; height: 18px" fill="none" stroke="#0E5F56" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M2.5 11.5 6 8l2.5 2.5L13.5 5 M10 5h3.5v3.5"></path></svg></div>
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<div style="font-size: 15px; font-weight: 600">Five-year treasury bond</div>
+<div style="font-size: 13px; color: #5F5D59">National Bank of Rwanda · trading on the RSE</div>
+</div>
+<div style="font-size: 13px; color: #5F5D59">Not scored</div>
+<div style="justify-self: end; font-size: 13px; font-weight: 500; color: #5F5D59">No deadline stated</div>
+</div>
+
+<div style="display: grid; grid-template-columns: 36px minmax(0, 1fr) 96px 132px; gap: 14px; align-items: center; padding: 12px 0">
+<div style="width: 36px; height: 36px; border-radius: 10px; background: #EFEDE9; display: flex; align-items: center; justify-content: center"><svg role="img" aria-label="Tender" viewBox="0 0 16 16" style="width: 18px; height: 18px" fill="none" stroke="#5F5D59" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M4 2.5h5.5L12 5v8.5H4z M9.5 2.5V5H12 M6 8h4 M6 10.5h4"></path></svg></div>
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<div style="font-size: 15px; font-weight: 600; color: #5F5D59">Invitation for bids</div>
+<div style="font-size: 13px; color: #5F5D59">Aviation Travel and Logistics Holding · closed items fade and lose their colour</div>
+</div>
+<div style="font-size: 13px; color: #5F5D59"></div>
+<div style="justify-self: end; font-size: 13px; font-weight: 500; color: #5F5D59; font-variant-numeric: tabular-nums">Closed 23 Nov</div>
+</div>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">Fit · always with a reason</div>
+<div style="display: flex; flex-direction: column; gap: 9px; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="display: flex; align-items: flex-end; gap: 2px"><span style="width: 4px; height: 6px; border-radius: 1px; background: #2B2A28"></span><span style="width: 4px; height: 10px; border-radius: 1px; background: #2B2A28"></span><span style="width: 4px; height: 14px; border-radius: 1px; background: #2B2A28"></span></span><strong style="font-weight: 600">Strong</strong><span style="color: #5F5D59">services and eligibility both match</span></div>
+<div style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="display: flex; align-items: flex-end; gap: 2px"><span style="width: 4px; height: 6px; border-radius: 1px; background: #2B2A28"></span><span style="width: 4px; height: 10px; border-radius: 1px; background: #2B2A28"></span><span style="width: 4px; height: 14px; border-radius: 1px; background: #D6D3CD"></span></span><strong style="font-weight: 600">Good</strong><span style="color: #5F5D59">matches, with something to check</span></div>
+<div style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="display: flex; align-items: flex-end; gap: 2px"><span style="width: 4px; height: 6px; border-radius: 1px; background: #2B2A28"></span><span style="width: 4px; height: 10px; border-radius: 1px; background: #D6D3CD"></span><span style="width: 4px; height: 14px; border-radius: 1px; background: #D6D3CD"></span></span><strong style="font-weight: 600">Possible</strong><span style="color: #5F5D59">eligibility unclear</span></div>
+</div>
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59; padding-top: 6px">Flags · things to check before you act</div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap; font-size: 13px; font-weight: 500">
+<span style="padding: 4px 10px; border-radius: 6px; border: 1px dashed #5F5D59">May require owned fleet</span>
+<span style="padding: 4px 10px; border-radius: 6px; border: 1px dashed #5F5D59">Needs Umucyo account</span>
+<span style="padding: 4px 10px; border-radius: 6px; border: 1px dashed #5F5D59">Needs matching funds</span>
+</div>
+<div style="font-size: 13px; line-height: 1.5; color: #5F5D59">The number stays out of the list. People read a word and a reason faster than a score.</div>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; flex-grow: 1">
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">State · checking</div>
+<div style="display: flex; align-items: center; gap: 16px; flex-grow: 1">
+<div style="position: relative; width: 72px; height: 72px; flex-shrink: 0">
+<div style="position: absolute; inset: 0; border: 1px solid #E7E5E0; border-radius: 50%"></div>
+<div style="position: absolute; inset: 22px; border: 1px solid #E7E5E0; border-radius: 50%"></div>
+<div style="position: absolute; inset: 0; animation: bk-orbit 6s linear infinite">
+<svg aria-hidden="true" viewBox="0 0 120 80" style="position: absolute; left: 21px; top: -10px; width: 30px; height: 20px; transform: rotate(90deg)"><path d="M60,8 C63,8 65,14 64.5,20 C72,17 80,13 88,14 C99,15.5 110,23 118,34 C115,37 108,38.5 101,37 C91,29 79,27 66,34 C65.5,41 64.5,47 63.5,52 L73,77 L60,66 L47,77 L56.5,52 C55.5,47 54.5,41 54,34 C41,27 29,29 19,37 C12,38.5 5,37 2,34 C10,23 21,15.5 32,14 C40,13 48,17 55.5,20 C55,14 57,8 60,8 Z" fill="#2B2A28"></path></svg>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 15px; font-weight: 600">Checking 8 sources</div>
+<div style="font-size: 13px; line-height: 1.45; color: #5F5D59">Usually under a minute. Yesterday's list stays on screen meanwhile.</div>
+</div>
+</div>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">State · nothing new</div>
+<div style="display: flex; flex-direction: column; gap: 8px; flex-grow: 1; justify-content: center">
+<svg aria-hidden="true" viewBox="0 0 120 80" style="width: 48px; height: 32px"><path d="M60,8 C63,8 65,14 64.5,20 C72,17 80,13 88,14 C99,15.5 110,23 118,34 C115,37 108,38.5 101,37 C91,29 79,27 66,34 C65.5,41 64.5,47 63.5,52 L73,77 L60,66 L47,77 L56.5,52 C55.5,47 54.5,41 54,34 C41,27 29,29 19,37 C12,38.5 5,37 2,34 C10,23 21,15.5 32,14 C40,13 48,17 55.5,20 C55,14 57,8 60,8 Z" fill="#D6D3CD"></path></svg>
+<div style="font-size: 15px; font-weight: 600">Nothing new since yesterday</div>
+<div style="font-size: 13px; line-height: 1.45; color: #5F5D59">All 8 sources were checked this morning. Your shortlist has 2 items closing this month.</div>
+<a href="#" style="font-size: 14px; font-weight: 500; padding: 8px 0">Open shortlist</a>
+</div>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">State · first visit</div>
+<div style="display: flex; flex-direction: column; gap: 8px; flex-grow: 1; justify-content: center">
+<div style="font-size: 15px; font-weight: 600">Tell Blackkite what you do</div>
+<div style="font-size: 13px; line-height: 1.45; color: #5F5D59">Three questions about your business or interests. Until then you see everything, unranked.</div>
+<div style="display: flex; padding-top: 4px"><button type="button" style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 8px; background: #2B2A28; color: #FFFFFF; font-family: 'Figtree', sans-serif; font-weight: 600; font-size: 14px">Set up a profile</button></div>
+</div>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 12px; font-weight: 500; color: #5F5D59">State · a source is down</div>
+<div style="display: flex; flex-direction: column; gap: 8px; flex-grow: 1; justify-content: center">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: #A12A21"><svg aria-hidden="true" viewBox="0 0 16 16" style="width: 18px; height: 18px" fill="none" stroke="#A12A21" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.8 14 13H2z M8 6.5v3.2 M8 11.3v.2"></path></svg>We could not reach BNR today</div>
+<div style="font-size: 13px; line-height: 1.45; color: #5F5D59">Bond notices may be a day behind. The other 7 sources are up to date.</div>
+<a href="#" style="font-size: 14px; font-weight: 500; padding: 8px 0">See all sources</a>
+</div>
+</div>
+
+</div>
+</div>
+</body>
+</html>
