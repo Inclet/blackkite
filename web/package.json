@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "visual": "playwright test -c tests/visual/playwright.config.ts"
+    "visual": "playwright test -c tests/visual/playwright.config.ts",
+    "e2e": "playwright test -c tests/e2e/playwright.config.ts --trace off"
   },
   "dependencies": {
     "react": "^19.3.1",
