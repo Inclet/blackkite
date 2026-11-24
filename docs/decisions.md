@@ -20,3 +20,11 @@ Answers to the Phase 0 questions, 2026-11-24. Conflict numbers refer to `PLAN.md
 | 14 | Models | `claude-haiku-5-5` for extraction and scoring; **`claude-opus-5-5` for digest write-ups**. Names in config. |
 | 15 | First admin | The owner's Claude account email. Kept out of the repo: the seed reads `BK_FIRST_ADMIN_EMAIL` from the environment. |
 | 16 | Layout shift in the visual harness | Only the built page must have zero layout shift. The reference pages shift slightly when Google's Figtree swaps in (font-display: swap); that value is reported, not judged. Threshold, viewports and pass mark unchanged. |
+| 17 | Sign-in confirm page | Yes. The emailed link opens a "Continue to sign in" page; only its POST spends the token and sets the session. Built from existing components; listed for design review. |
+| 18 | Digest schedule | Weekly on Monday by default, or off. No other frequencies or weekdays in v1. |
+| 19 | Save/dismiss scope | State applies across all of a user's profiles, per (user, opportunity). Scores stay per profile. |
+| 20 | Admins deactivating admins | Allowed. An admin still cannot deactivate themselves. |
+| 21 | Status values | users: active / deactivated; source runs: running / succeeded / failed; source suggestions: suggested / accepted / rejected. |
+| 22 | Contract comment | Comment in contract.ts and the report header updated to match ruling 16. Text only (b57650a). |
+| 23 | Event date pills (resolves 1) | Counted from `event_start`: over 14 days quiet; 7–14 outlined; 6 or fewer solid; the day before or the day of, alert red. |
+| 24 | Row subtitles (resolves 5) | Tender and funding: fit word · organisation, or fit word · top flag when there is one. Event: topic · venue on desktop, venue on phone. Investment: issuer · note on desktop, issuer on phone. Phone uses the short organisation name. |
