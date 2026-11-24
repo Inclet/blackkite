@@ -246,11 +246,75 @@ def test_link_default_is_web_origin_with_fragment_token(monkeypatch):
     assert url.fragment == "token=tok-123"
 
 
-def test_web_base_url_env_and_alias(monkeypatch):
+def test_web_base_url_only_from_bk_web_base_url(monkeypatch):
     from blackkite.config import Settings
 
     monkeypatch.delenv("BK_WEB_BASE_URL", raising=False)
-    monkeypatch.setenv("BK_PUBLIC_BASE_URL", "https://old.example.com")
-    assert Settings(_env_file=None).web_base_url == "https://old.example.com"
+    # Neither the old name nor the unprefixed field name sets it any more.
+    monkeypatch.setenv("BK_PUBLIC_BASE_URL", "https://old-api.example.com")
+    monkeypatch.setenv("web_base_url", "https://unprefixed.example.com")
+    assert Settings(_env_file=None).web_base_url == "http://localhost:5173"
     monkeypatch.setenv("BK_WEB_BASE_URL", "https://app.example.com")
     assert Settings(_env_file=None).web_base_url == "https://app.example.com"
+
+
+def test_old_public_base_url_in_env_file_is_ignored(monkeypatch, tmp_path):
+    from blackkite.config import Settings
+
+    monkeypatch.delenv("BK_WEB_BASE_URL", raising=False)
+    monkeypatch.delenv("BK_PUBLIC_BASE_URL", raising=False)
+    env = tmp_path / ".env"
+    env.write_text("BK_PUBLIC_BASE_URL=https://old-api.example.com\n")
+    assert Settings(_env_file=env).web_base_url == "http://localhost:5173"
+
+
+def test_warns_when_public_base_url_in_environment(monkeypatch, tmp_path, caplog):
+    from blackkite.config import warn_ignored_env
+
+    monkeypatch.setenv("BK_PUBLIC_BASE_URL", "https://old-api.example.com")
+    with caplog.at_level("WARNING", logger="blackkite.config"):
+        assert warn_ignored_env(env_file=None) == ["BK_PUBLIC_BASE_URL"]
+    assert "BK_PUBLIC_BASE_URL is set but ignored; use BK_WEB_BASE_URL" in caplog.text
+
+
+def test_warns_when_public_base_url_in_env_file(monkeypatch, tmp_path, caplog):
+    from blackkite.config import warn_ignored_env
+
+    monkeypatch.delenv("BK_PUBLIC_BASE_URL", raising=False)
+    env = tmp_path / ".env"
+    env.write_text("BK_PUBLIC_BASE_URL=https://old-api.example.com\n")
+    with caplog.at_level("WARNING", logger="blackkite.config"):
+        assert warn_ignored_env(env_file=env) == ["BK_PUBLIC_BASE_URL"]
+    assert "ignored; use BK_WEB_BASE_URL" in caplog.text
+
+
+def test_no_warning_without_public_base_url(monkeypatch, tmp_path, caplog):
+    from blackkite.config import warn_ignored_env
+
+    monkeypatch.delenv("BK_PUBLIC_BASE_URL", raising=False)
+    with caplog.at_level("WARNING", logger="blackkite.config"):
+        assert warn_ignored_env(env_file=tmp_path / "missing.env") == []
+    assert caplog.text == ""
+
+
+def test_app_startup_warns_on_public_base_url(monkeypatch, caplog, settings):
+    from blackkite.app import create_app
+
+    monkeypatch.setenv("BK_PUBLIC_BASE_URL", "https://old-api.example.com")
+    with caplog.at_level("WARNING", logger="blackkite.config"):
+        create_app(settings)
+    assert "BK_PUBLIC_BASE_URL is set but ignored; use BK_WEB_BASE_URL" in caplog.text
+
+
+def test_cli_warns_on_public_base_url(monkeypatch, caplog, tmp_path):
+    from typer.testing import CliRunner
+
+    from blackkite.cli import app as cli
+
+    monkeypatch.setenv("BK_PUBLIC_BASE_URL", "https://old-api.example.com")
+    with caplog.at_level("WARNING", logger="blackkite.config"):
+        result = CliRunner().invoke(
+            cli, ["digest-preview", "--out", str(tmp_path / "p.html")]
+        )
+    assert result.exit_code == 0, result.output
+    assert "BK_PUBLIC_BASE_URL is set but ignored; use BK_WEB_BASE_URL" in caplog.text

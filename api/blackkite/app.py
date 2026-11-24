@@ -3,11 +3,12 @@
 from fastapi import FastAPI
 
 from blackkite.auth.ratelimit import LinkRequestLimiter
-from blackkite.config import Settings, get_settings
+from blackkite.config import Settings, get_settings, warn_ignored_env
 from blackkite.routes import admin, auth
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
+    warn_ignored_env()
     app = FastAPI(title="Blackkite API", version="0.1.0")
     if settings is not None:
         app.dependency_overrides[get_settings] = lambda: settings
