@@ -5,6 +5,7 @@ import { Card } from '../../components/Card/Card';
 import { TextLink } from '../../components/TextLink/TextLink';
 import { TrustPanel } from '../../components/TrustNote/TrustNote';
 import { detailMeta } from '../../lib/feed';
+import { httpUrl } from '../../lib/externalUrl';
 import { useAppLink } from '../../lib/useAppLink';
 import type { FeedModel } from './model';
 import { HEADING } from './focus';
@@ -34,6 +35,8 @@ export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }
   }
 
   const saved = model.saved.has(item.id);
+  // Only http(s) links to the original notice; anything else renders no link.
+  const original = httpUrl(item.detail.originalUrl);
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -54,9 +57,11 @@ export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }
         <TrustPanel state={item.detail.trust.state} tone="stone">
           {item.detail.trust.phone}
         </TrustPanel>
-        <TextLink spacing="block" href={item.detail.originalUrl} target="_blank" rel="noopener noreferrer">
-          Read the original notice
-        </TextLink>
+        {original && (
+          <TextLink spacing="block" href={original} target="_blank" rel="noopener noreferrer">
+            Read the original notice
+          </TextLink>
+        )}
       </main>
 
       <div className={styles.actions} role="group" aria-label="Actions">

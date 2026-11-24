@@ -1,5 +1,6 @@
 import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { reference } from '../../fixtures/reference';
 import { setNowForTests } from '../../lib/now';
 import { renderAt, setViewport } from './testUtils';
 
@@ -47,4 +48,16 @@ test('an unknown id says so and links back', () => {
   renderAt('/o/nope?fixture=reference');
   expect(screen.getByRole('heading', { level: 1, name: 'We could not find that item' })).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Feed' })).toBeInTheDocument();
+});
+
+test('a non-http original notice URL renders no link on the phone', () => {
+  const item = reference.feed.items.find((i) => i.id === 'wfp-logistics')!;
+  const was = item.detail.originalUrl;
+  item.detail.originalUrl = 'javascript:alert(1)';
+  try {
+    renderAt('/o/wfp-logistics?fixture=reference');
+    expect(screen.queryByRole('link', { name: 'Read the original notice' })).toBeNull();
+  } finally {
+    item.detail.originalUrl = was;
+  }
 });

@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { reference } from '../../fixtures/reference';
 import { setNowForTests } from '../../lib/now';
 import { renderAt, setViewport } from './testUtils';
 
@@ -194,4 +195,23 @@ test('edge cases: long title, missing deadline, not scored, closed', () => {
   expect(list().getByText('Closed 23 Nov')).toHaveClass('plain');
   expect(rows().at(-1)).toHaveClass('closed');
   expect(rows()[0]).toHaveClass('new');
+});
+
+test.each(['javascript:alert(1)', 'data:text/html,hi', '/relative'])('an original notice URL of %s renders no link', (url) => {
+  const item = reference.feed.items.find((i) => i.id === 'wfp-logistics')!;
+  const was = item.detail.originalUrl;
+  item.detail.originalUrl = url;
+  try {
+    renderAt('/?fixture=reference');
+    expect(within(pane()).queryByRole('link', { name: 'Read the original' })).toBeNull();
+  } finally {
+    item.detail.originalUrl = was;
+  }
+});
+
+test('an https original notice is linked, in a new tab without a referrer', () => {
+  renderAt('/?fixture=reference');
+  const a = within(pane()).getByRole('link', { name: 'Read the original' });
+  expect(a).toHaveAttribute('href', 'https://www.jobinrwanda.com/jobs/tender');
+  expect(a).toHaveAttribute('rel', 'noopener noreferrer');
 });

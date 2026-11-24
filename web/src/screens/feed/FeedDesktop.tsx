@@ -13,6 +13,7 @@ import { Wordmark } from '../../components/Wordmark/Wordmark';
 import type { FeedItem } from '../../fixtures/types';
 import { detailMeta, feedSummary, greeting, isClosed, nextDigest, pillFor } from '../../lib/feed';
 import { rowSubtitle } from '../../lib/subtitle';
+import { httpUrl } from '../../lib/externalUrl';
 import { useAppLink } from '../../lib/useAppLink';
 import type { FeedModel } from './model';
 import { DetailTop, FilterChips, FitSection, hasFitSection, LiveRegion } from './parts';
@@ -182,6 +183,8 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
 
 function DetailPane({ item, model, onDismiss }: { item: FeedItem; model: FeedModel; onDismiss: () => void }) {
   const saved = model.saved.has(item.id);
+  // Only http(s) links to the original notice; anything else renders no link.
+  const original = httpUrl(item.detail.originalUrl);
   const headingId = `detail-${item.id}`;
   return (
     <Card as="article" padding="24px" gap={16} aria-labelledby={headingId}>
@@ -207,9 +210,11 @@ function DetailPane({ item, model, onDismiss }: { item: FeedItem; model: FeedMod
         <Button variant="secondary" onClick={onDismiss}>
           Not for me
         </Button>
-        <TextLink href={item.detail.originalUrl} target="_blank" rel="noopener noreferrer">
-          Read the original
-        </TextLink>
+        {original && (
+          <TextLink href={original} target="_blank" rel="noopener noreferrer">
+            Read the original
+          </TextLink>
+        )}
       </div>
     </Card>
   );
