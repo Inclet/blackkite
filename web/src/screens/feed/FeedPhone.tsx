@@ -13,6 +13,7 @@ import { useAppLink } from '../../lib/useAppLink';
 import type { FeedModel } from './model';
 import { FilterChips, LiveRegion } from './parts';
 import { HEADING, rowId } from './focus';
+import { useLiveList } from './liveList';
 import { useFeedKeys } from './useFeedKeys';
 import { useStateCard } from './useStateCard';
 import styles from './FeedPhone.module.css';
@@ -34,46 +35,54 @@ export function FeedPhone({ model }: { model: FeedModel }) {
   const showList = model.state !== 'nothing-new' && rows.length > 0;
   const location = useLocation();
   const headingRef = useRef<HTMLHeadingElement>(null);
-  // A row id (or HEADING) to focus after the next render: set by X here, or by
-  // "Not for me" on the opportunity page through the navigation state.
-  const pendingFocus = useRef<string | null>((location.state as { focusRow?: string } | null)?.focusRow ?? null);
+  // "Not for me" on the opportunity page passes the row to focus (or HEADING) in the navigation state.
+  const focusTarget = (location.state as { focusRow?: string } | null)?.focusRow;
 
   useEffect(() => {
-    const target = pendingFocus.current;
-    if (!target) return;
-    pendingFocus.current = null;
-    const row = target === HEADING ? null : document.getElementById(rowId(target));
+    if (!focusTarget) return;
+    const row = focusTarget === HEADING ? null : document.getElementById(rowId(focusTarget));
     (row ?? headingRef.current)?.focus();
-  });
+  }, [focusTarget]);
+
+  // Keys read the rows from here: X then another key in the same tick must not see the removed row.
+  const liveRows = useLiveList(rows);
 
   // The phone list has no selection: the focused row is the current one (decision 6).
-  const focusedIndex = () => rows.findIndex((r) => document.getElementById(rowId(r.id))?.contains(document.activeElement));
-  const focusRow = (i: number) => {
-    const item = rows[i];
+  const focusedIndex = (list: typeof rows) =>
+    list.findIndex((r) => document.getElementById(rowId(r.id))?.contains(document.activeElement));
+  const focusRow = (item: (typeof rows)[number] | undefined) => {
     if (item) document.getElementById(rowId(item.id))?.focus();
   };
+  const listShown = () => model.state !== 'nothing-new' && liveRows.current().length > 0;
 
   useFeedKeys({
     onNext: () => {
-      if (!showList) return;
-      const i = focusedIndex();
-      focusRow(i < 0 ? 0 : Math.min(i + 1, rows.length - 1));
+      if (!listShown()) return;
+      const list = liveRows.current();
+      const i = focusedIndex(list);
+      focusRow(list[i < 0 ? 0 : Math.min(i + 1, list.length - 1)]);
     },
     onPrevious: () => {
-      if (!showList) return;
-      const i = focusedIndex();
-      focusRow(i < 0 ? 0 : Math.max(i - 1, 0));
+      if (!listShown()) return;
+      const list = liveRows.current();
+      const i = focusedIndex(list);
+      focusRow(list[i < 0 ? 0 : Math.max(i - 1, 0)]);
     },
     onSave: () => {
-      const item = rows[focusedIndex()];
+      const list = liveRows.current();
+      const item = list[focusedIndex(list)];
       if (item) model.toggleSaved(item.id);
     },
     onDismiss: () => {
-      const i = focusedIndex();
-      const item = rows[i];
+      const list = liveRows.current();
+      const i = focusedIndex(list);
+      const item = list[i];
       if (!item) return;
-      const next = rows[i + 1] ?? rows[i - 1];
-      pendingFocus.current = next ? next.id : HEADING;
+      const next = list[i + 1] ?? list[i - 1];
+      // Move focus now, while the removed row is still in the DOM, so the next key starts from it.
+      if (next) focusRow(next);
+      else headingRef.current?.focus();
+      liveRows.markDismissed(item.id);
       model.dismiss(item.id);
     },
   });

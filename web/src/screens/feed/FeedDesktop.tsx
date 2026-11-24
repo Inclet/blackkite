@@ -18,6 +18,7 @@ import { useAppLink } from '../../lib/useAppLink';
 import type { FeedModel } from './model';
 import { DetailTop, FilterChips, FitSection, hasFitSection, LiveRegion } from './parts';
 import { HEADING, rowId } from './focus';
+import { useLiveList, useLiveSelection } from './liveList';
 import { useFeedKeys } from './useFeedKeys';
 import { useStateCard } from './useStateCard';
 import styles from './FeedDesktop.module.css';
@@ -35,7 +36,8 @@ export const NAV = [
 export function FeedDesktop({ model, openId }: { model: FeedModel; openId: string | null }) {
   const link = useAppLink();
   const navigate = useNavigate();
-  const { search } = useLocation();
+  const location = useLocation();
+  const { search } = location;
   const { feed } = model.fixture;
   const items = model.items;
 
@@ -45,23 +47,35 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
     requested && items.includes(requested) ? requested : openId && !requested ? undefined : items[0];
   const notFound = openId !== null && !requested;
 
-  const select = (id: string, replace = true) => navigate(`/o/${id}${search}`, { replace });
+  // Keys read the list and selection from here, not from this render: a key pressed
+  // before the last one's navigation has re-rendered must start from where that one went.
+  const liveItems = useLiveList(items);
+  const liveSelection = useLiveSelection(selected?.id ?? null, location.key, location.state);
+  const liveSelected = () => {
+    const id = liveSelection.current();
+    return liveItems.current().find((i) => i.id === id);
+  };
+
+  const select = (id: string) => navigate(`/o/${id}${search}`, { replace: true, state: liveSelection.select(id) });
 
   // Where focus goes once a dismissal has re-rendered: a row id, or the heading when the list is empty.
   const pendingFocus = useRef<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   const dismissSelected = () => {
-    if (!selected) return;
-    const index = items.indexOf(selected);
-    const next = items[index + 1] ?? items[index - 1];
+    const current = liveSelected();
+    if (!current) return;
+    const list = liveItems.current();
+    const index = list.indexOf(current);
+    const next = list[index + 1] ?? list[index - 1];
     // If focus is on the row being removed (or already lost), it follows the selection.
     const active = document.activeElement;
-    const row = document.getElementById(rowId(selected.id));
+    const row = document.getElementById(rowId(current.id));
     if (!active || active === document.body || row?.contains(active)) pendingFocus.current = next ? next.id : HEADING;
-    model.dismiss(selected.id);
+    liveItems.markDismissed(current.id);
+    model.dismiss(current.id);
     if (next) select(next.id);
-    else navigate(`/${search}`, { replace: true });
+    else navigate(`/${search}`, { replace: true, state: liveSelection.select(null) });
   };
 
   useEffect(() => {
@@ -75,16 +89,23 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
 
   useFeedKeys({
     onNext: () => {
-      const i = selected ? items.indexOf(selected) : -1;
-      const next = items[Math.min(i + 1, items.length - 1)];
-      if (next && next !== selected) select(next.id);
+      const list = liveItems.current();
+      const current = liveSelected();
+      const i = current ? list.indexOf(current) : -1;
+      const next = list[Math.min(i + 1, list.length - 1)];
+      if (next && next !== current) select(next.id);
     },
     onPrevious: () => {
-      const i = selected ? items.indexOf(selected) : 0;
-      const prev = items[Math.max(i - 1, 0)];
-      if (prev && prev !== selected) select(prev.id);
+      const list = liveItems.current();
+      const current = liveSelected();
+      const i = current ? list.indexOf(current) : 0;
+      const prev = list[Math.max(i - 1, 0)];
+      if (prev && prev !== current) select(prev.id);
     },
-    onSave: () => selected && model.toggleSaved(selected.id),
+    onSave: () => {
+      const current = liveSelected();
+      if (current) model.toggleSaved(current.id);
+    },
     onDismiss: dismissSelected,
   });
 
