@@ -12,3 +12,8 @@ The reference wins in every case (brief rule).
 | Line heights | Token lines only | 1.45 and 1.5 used for notes |
 | Trust panel | — | `#F6F5F2` on desktop pane, `#EFEDE9` on phone |
 | Digest email | 600 max weight, 14px card radius | `bold` (700), 12px radius (decision 8) |
+| Feed lockups (42 px, 39 px) | icons.json: use kite-full.svg at 40 px and above | Both feed boards use kite-small path data |
+| Phone deadline pill | No token for 12 px | 12 px, padding 4px 10px (3px 9px outlined) |
+| Feed rows and detail pane | Space scale | 6, 7, 10, 14 px gaps/padding; note line height 1.45 |
+| Phone action bar | --bk-tap-min 44 | Buttons 48 px tall at 15 px (a minimum, not a conflict) |
+| Digest item dates | Spec 12: full dates in the email | Board uses short forms ("Closes Mon 30 Nov"); only the issue date is full |
