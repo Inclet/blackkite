@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { setNowForTests } from './now';
-import { daysLeft, deadlineLabel, deadlineWeight, kigaliToday } from './deadline';
+import { daysLeft, deadlineLabel, deadlineWeight, eventLabel, eventWeight, kigaliToday } from './deadline';
 
 beforeEach(() => setNowForTests('2026-11-24T14:00:00+02:00'));
 afterEach(() => setNowForTests(null));
@@ -27,4 +27,23 @@ test.each([
 
 test('closed deadlines read as a short date', () => {
   expect(deadlineLabel('2026-11-23')).toBe('Closed 23 Nov');
+});
+
+test.each([
+  [15, 'quiet'],
+  [14, 'outlined'],
+  [7, 'outlined'],
+  [6, 'solid'],
+  [2, 'solid'],
+  [1, 'alert'],
+  [0, 'alert'],
+  [-1, 'alert'],
+] as const)('event %i days from its start: %s (decision 23)', (days, weight) => {
+  expect(eventWeight(days)).toBe(weight);
+});
+
+test('event labels', () => {
+  expect(eventLabel('2026-12-01', '2026-12-02')).toBe('1 to 2 Dec');
+  expect(eventLabel('2026-12-01')).toBe('1 Dec');
+  expect(eventLabel('2026-11-30', '2026-12-02')).toBe('30 Nov to 2 Dec');
 });
