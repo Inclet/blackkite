@@ -11,7 +11,7 @@ from typing import Any
 import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from blackkite.config import EMBEDDING_DIM
 from blackkite.db.base import Base, created_at, enum, in_list_check, updated_at, uuid_pk
@@ -143,7 +143,6 @@ class Session(Base):
     created_at: Mapped[datetime] = created_at()
     expires_at: Mapped[datetime] = _ts(nullable=False)
 
-    user: Mapped[User] = relationship(lazy="joined")
 
 
 class Profile(Base):
