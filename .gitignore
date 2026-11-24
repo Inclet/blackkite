@@ -9,3 +9,4 @@ web/tests/reports/*
 !web/tests/reports/visual-report.md
 test-results/
 playwright-report/
+.worktrees/
