@@ -7,11 +7,12 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { defaultItems, startStubApi, STUB_COOKIE } from '../e2e/stubApi';
 import dump from './api-schemas.json' with { type: 'json' };
-import { DISMISS_REASON_CODES, withPending } from './pending';
 import { check, type Schema } from './schemaCheck';
 
-// The API track's parallel changes (pending.ts) until api-schemas.json is regenerated.
-const { schemas, applied } = withPending(dump as unknown as { schemas: Record<string, Schema> });
+const schemas = dump.schemas as unknown as Record<string, Schema>;
+// The codes StateIn accepts, read from the dump (src/api/types.ts DISMISS_REASONS must equal these:
+// src/api/requestContract.test.ts checks it).
+const DISMISS_REASON_CODES = (schemas.StateIn?.properties?.dismissReason?.anyOf?.find((s) => s.type === 'string')?.enum ?? []) as string[];
 const opts = { omitIfNone: dump.omitIfNone as Record<string, string[]> };
 const fits = (value: unknown, model: string) => check(value, schemas[model]!, opts);
 
@@ -60,13 +61,16 @@ test('the schema file has every model the web app reads or sends', () => {
   }
 });
 
-test('pending contract patches: each applies only while the dumped file has the old shape', () => {
-  // Remove pending.ts once this list is empty (after `npm run contract:schemas` at merge).
-  if (applied.length) console.info(`contract: pending patches still applied: ${applied.join(', ')}`);
-  const fresh = withPending({ schemas });
-  expect(fresh.applied).toEqual([]);
-  expect(Object.keys(schemas.DigestSettingsIn!.properties!)).not.toContain('alertThreshold');
+test('the dumped contract has the Phase 4 shapes: alertMinFit, provisional, StateIn with the reason codes', () => {
+  const digestIn = Object.keys(schemas.DigestSettingsIn!.properties!);
+  expect(digestIn).toContain('alertMinFit');
+  expect(digestIn).not.toContain('alertThreshold');
+  expect(Object.keys(schemas.DigestSettingsOut!.properties!)).not.toContain('alertThreshold');
   expect(schemas.FeedItem!.required).toContain('provisional');
+  expect(schemas.FeedContent!.$defs!.FeedItem!.required).toContain('provisional');
+  expect(schemas.OpportunityOut!.required).toContain('provisional');
+  expect(schemas.StateIn).toBeDefined();
+  expect(DISMISS_REASON_CODES).toHaveLength(5);
 });
 
 test('GET /api/feed and /api/shortlist', async () => {
