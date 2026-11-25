@@ -20,6 +20,7 @@ from pydantic import BaseModel, SecretStr
 
 from blackkite.collectors import (
     custom,
+    email_ingest,
     forms,
     html_list,
     json_api,
@@ -40,6 +41,7 @@ CONFIG_MODELS: dict[str, type[BaseModel]] = {
     "rss": rss.RssConfig,
     "json_api": json_api.JsonApiConfig,
     "custom": custom.CustomConfig,
+    "email_ingest": email_ingest.EmailIngestConfig,
 }
 _PARSERS: dict[str, Callable[[dict[str, Any]], BaseModel]] = {
     "html_list": html_list.parse_config,
@@ -47,6 +49,7 @@ _PARSERS: dict[str, Callable[[dict[str, Any]], BaseModel]] = {
     "rss": rss.parse_config,
     "json_api": json_api.parse_config,
     "custom": custom.parse_config,
+    "email_ingest": email_ingest.parse_config,
 }
 IMPLEMENTED = tuple(CONFIG_MODELS)
 
@@ -67,9 +70,13 @@ def build_collector(
     *,
     brave_api_key: SecretStr | None = None,
     preview: bool = False,
+    mailbox_factory: Callable[[], email_ingest.Mailbox] | None = None,
 ) -> Collector:
     """A collector for one run. ``preview=True`` for test runs: smallest useful
-    fetch, and nothing written anywhere (no flags set on a mailbox either)."""
+    fetch, and nothing written anywhere (no flags set on a mailbox either).
+
+    ``mailbox_factory`` (email_ingest) defaults to the IMAP inbox named by
+    BK_INGEST_IMAP_*; tests pass fakes."""
     if collector_type == "html_list":
         return html_list.HtmlListCollector(client, preview=preview)
     if collector_type == "search_query":
@@ -80,6 +87,10 @@ def build_collector(
         return json_api.JsonApiCollector(client, preview=preview)
     if collector_type == "custom":
         return custom.CustomCollector(client, preview=preview)
+    if collector_type == "email_ingest":
+        return email_ingest.EmailIngestCollector(
+            mailbox_factory or email_ingest.mailbox_from_env, preview=preview
+        )
     if collector_type in COLLECTOR_TYPES:
         return UnimplementedCollector(collector_type)
     raise CollectorError(f"unknown collector type {collector_type!r}")
