@@ -28,10 +28,17 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-from blackkite.db.models import Opportunity, OpportunitySource, Source, SourceRun
+from blackkite.db.models import (
+    Opportunity,
+    OpportunitySource,
+    Profile,
+    Source,
+    SourceRun,
+)
 from blackkite.pipeline.dates import KIGALI
 from blackkite.pipeline.validate import status_for, trust_state, verification_for
 from blackkite.scoring import service as scoring
+from blackkite.scoring.backfill import clear_requests
 from blackkite.scoring.settings import get_scoring_settings
 from blackkite.seed.loader import bootstrap
 
@@ -366,6 +373,15 @@ def demo_seed(
             )
         )
     db.flush()
+    # Real clock, not ``now``: bootstrap stamps its requests with the real time.
+    started = datetime.now(UTC)
+    pids = list(
+        db.scalars(
+            sa.select(Profile.id).where(
+                Profile.user_id == admin.id, Profile.active.is_(True)
+            )
+        )
+    )
     # Rules only: no model, no embedder, so no keys and no network.
     stats = scoring.score_user(
         db,
@@ -375,6 +391,7 @@ def demo_seed(
         ),
         now=now,
     )
+    clear_requests(db, pids, started)  # scored: the first worker tick need not repeat
     return DemoResult(
         items=len(DEMO_ITEMS),
         sources=len(sources),

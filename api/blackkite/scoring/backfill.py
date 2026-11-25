@@ -17,7 +17,10 @@ What asks for a backfill (member/profiles.py):
   rows are rescored in place, never deleted, so ``created_at`` (the alerts'
   "found today") stays and an old item cannot alert because of an unmute.
 
-A rename or a deactivation asks for nothing. Each request stamps
+A rename or a deactivation asks for nothing. A run outside the worker that
+scores a profile fully (``bk score``, ``bk backfill``, ``bk demo-seed``) clears
+its pending request (``clear_requests``); ``bk bootstrap`` scores nothing, so the
+new profiles' requests stay for the worker. Each request stamps
 ``backfill_requested_at``; the worker runs a profile once the newest stamp is at
 least ``BACKFILL_DEBOUNCE`` old, so a run of quick edits costs one backfill.
 """
@@ -25,6 +28,7 @@ least ``BACKFILL_DEBOUNCE`` old, so a run of quick edits costs one backfill.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 
 import sqlalchemy as sa
@@ -54,6 +58,33 @@ def request_user_rescore(
         .where(Profile.user_id == user_id, Profile.active.is_(True))
         .values(
             backfill_requested_at=now,
+            backfill_attempts=0,
+            updated_at=Profile.updated_at,
+        )
+        .execution_options(synchronize_session=False)
+    ).rowcount
+
+
+def clear_requests(
+    db: Session, profile_ids: Iterable[uuid.UUID], scored_from: datetime
+) -> int:
+    """After a run outside the worker scored these profiles (``bk score``, ``bk
+    backfill``, the demo seed): drop their pending requests stamped at or before
+    ``scored_from`` (when that run started), so the worker does not repeat it. A
+    request that arrived during the run stays. Not an edit: ``updated_at`` stays.
+    Returns how many were cleared; the caller commits."""
+    ids = list(profile_ids)
+    if not ids:
+        return 0
+    return db.execute(
+        sa.update(Profile)
+        .where(
+            Profile.id.in_(ids),
+            Profile.active.is_(True),
+            Profile.backfill_requested_at <= scored_from,
+        )
+        .values(
+            backfill_requested_at=None,
             backfill_attempts=0,
             updated_at=Profile.updated_at,
         )

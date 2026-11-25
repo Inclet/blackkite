@@ -75,3 +75,63 @@ def test_backfill_profile(bk, db, profiles, make_opp):
     db.commit()
     r = bk("backfill", "--profile", str(pid))
     assert r.exit_code == 1 and "not active" in r.output
+
+
+def _pending(db) -> set[str]:
+    db.expire_all()
+    return set(
+        db.scalars(
+            sa.select(Profile.name).where(Profile.backfill_requested_at.is_not(None))
+        )
+    )
+
+
+def test_score_clears_the_users_pending_requests(bk, db, owner, Sessions):
+    from datetime import timedelta
+
+    from blackkite.worker.backfills import run_pending_backfills
+    from tests.scoring.conftest import now
+
+    # Bootstrap scores nothing: its profiles wait for the worker.
+    assert _pending(db) == {"Ironji-Trade", "AI lab", "Personal"}
+    other = Profile(user_id=_other_user(db).id, name="Theirs", type="business")
+    other.backfill_requested_at = sa.func.now()
+    db.add(other)
+    db.commit()
+    assert bk("score", "--user", ADMIN).exit_code == 0
+    assert _pending(db) == {"Theirs"}  # only the scored user's profiles
+    db.expire_all()
+    assert all(
+        p.backfill_attempts == 0
+        for p in db.scalars(sa.select(Profile).where(Profile.user_id == owner.id))
+    )
+    later = lambda: now() + timedelta(minutes=2)
+    assert run_pending_backfills(Sessions, later, deps()) == [other.id]
+
+
+def test_backfill_clears_only_that_profiles_request(bk, db, profiles, make_opp):
+    make_opp(COLD, tags=["service:cold chain transport"])
+    pid = profiles["Ironji-Trade"].id
+    assert bk("backfill", "--profile", str(pid)).exit_code == 0
+    assert _pending(db) == {"AI lab", "Personal"}
+
+
+def test_a_request_made_during_the_run_stays(db, profiles):
+    from datetime import UTC, datetime, timedelta
+
+    from blackkite.scoring.backfill import clear_requests
+
+    ironji, lab = profiles["Ironji-Trade"], profiles["AI lab"]
+    started = datetime.now(UTC)
+    ironji.backfill_requested_at = started + timedelta(seconds=1)  # edited meanwhile
+    lab.backfill_requested_at = started - timedelta(seconds=1)
+    db.commit()
+    assert clear_requests(db, [ironji.id, lab.id], started) == 1
+    db.commit()
+    assert _pending(db) == {"Ironji-Trade", "Personal"}
+
+
+def _other_user(db):
+    from tests.conftest import make_user
+
+    return make_user(db, "other@example.com")

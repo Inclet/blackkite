@@ -397,7 +397,13 @@ def score_cmd(
     user: str = typer.Option(..., "--user", help="User email or id."),
 ) -> None:
     """Match and score every active profile of one user over the open items they can see."""
+    from datetime import UTC, datetime
+
+    import sqlalchemy as sa
+
+    from blackkite.db.models import Profile
     from blackkite.db.session import get_sessionmaker
+    from blackkite.scoring.backfill import clear_requests
     from blackkite.scoring.service import score_user
 
     deps = _scoring_deps()
@@ -406,7 +412,16 @@ def score_cmd(
         if found.status != "active":
             typer.echo(f"error: {found.email} is deactivated", err=True)
             raise typer.Exit(1)
+        started = datetime.now(UTC)
+        pids = list(
+            db.scalars(
+                sa.select(Profile.id).where(
+                    Profile.user_id == found.id, Profile.active.is_(True)
+                )
+            )
+        )
         stats = score_user(db, found.id, deps=deps)
+        clear_requests(db, pids, started)  # the worker need not repeat this run
         db.commit()
     _echo_scoring(deps, stats)
 
@@ -417,9 +432,11 @@ def backfill_cmd(
 ) -> None:
     """Match and score one profile over the currently open items (spec 5 backfill)."""
     import uuid
+    from datetime import UTC, datetime
 
     from blackkite.db.models import Profile
     from blackkite.db.session import get_sessionmaker
+    from blackkite.scoring.backfill import clear_requests
     from blackkite.scoring.service import backfill_profile
 
     try:
@@ -436,7 +453,9 @@ def backfill_cmd(
         if not found.active:
             typer.echo(f"error: profile {found.name!r} is not active", err=True)
             raise typer.Exit(1)
+        started = datetime.now(UTC)
         stats = backfill_profile(db, pid, deps=deps)
+        clear_requests(db, [pid], started)  # the worker need not repeat this run
         db.commit()
     _echo_scoring(deps, stats)
 
