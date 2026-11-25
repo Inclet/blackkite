@@ -424,6 +424,22 @@ def test_suggestion_flow(app, admin, member, db, outbox):
     assert r.status_code == 201, r.text
     sid = r.json()["id"]
     assert r.json()["status"] == "suggested"
+    # The created suggestion comes back whole (the web form shows it at once).
+    created = r.json()
+    assert set(created) == {
+        "id",
+        "url",
+        "note",
+        "status",
+        "createdAt",
+        "reviewedAt",
+        "sourceId",
+    }
+    assert (created["url"], created["note"]) == (
+        "https://calls.example/rw",
+        "Monthly grant calls for Rwanda",
+    )
+    assert member.get("/api/source-suggestions").json() == [created]
     assert (
         member.post(
             "/api/source-suggestions", json={"url": "http://10.0.0.1/"}
