@@ -1,7 +1,8 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { referenceItems } from '../../fixtures/reference';
-import type { FeedContent } from '../../fixtures/types';
+import type { ItemState } from '../../api/types';
+import type { FeedContent, FeedItem } from '../../fixtures/types';
 import { setNowForTests } from '../../lib/now';
 import { mockApi, status } from '../../test/mockApi';
 import { COPY } from '../common/copy';
@@ -21,8 +22,9 @@ afterEach(() => {
 const PROFILE = { id: 'p1', name: 'Ironji-Trade', type: 'business', data: {}, version: 1, active: true };
 
 /** The reference items in a scrambled order: the screen ranks them closing soonest first. */
-function feed(items = referenceItems().reverse()): FeedContent {
-  return { user: { name: 'Clet' }, sources: { checked: 3, when: 'this morning' }, digest: { channel: 'email' }, items };
+function feed(items: (FeedItem & { state?: ItemState })[] = referenceItems().reverse()): FeedContent {
+  // The API always sends the caller's state (contract section 2).
+  return { user: { name: 'Clet' }, sources: { checked: 3, when: 'this morning' }, digest: { channel: 'email' }, items: items.map((i) => ({ state: 'unseen', ...i })) };
 }
 
 function liveApi(overrides: Record<string, unknown> = {}) {
@@ -127,10 +129,26 @@ function liveApiKeepCache() {
   return { on: (k: string, h: unknown) => void table.set(k, h) };
 }
 
-test('saved items from /shortlist start pressed', async () => {
-  liveApi({ 'GET /api/shortlist': [{ ...referenceItems()[0]!, state: 'saved' }] });
+test("the feed item's state is the truth: a saved item starts pressed", async () => {
+  const [first, ...rest] = referenceItems();
+  liveApi({ 'GET /api/feed': feed([{ ...first!, state: 'saved' }, ...rest]) });
   renderAt('/');
   await waitFor(() => expect(saveButton()).toHaveAttribute('aria-pressed', 'true'));
+});
+
+test('acting starts pressed and shows its chip; done is not on the shortlist', async () => {
+  const [first, ...rest] = referenceItems();
+  liveApi({ 'GET /api/feed': feed([{ ...first!, state: 'acting' }, ...rest]) });
+  renderAt('/');
+  await waitFor(() => expect(saveButton()).toHaveAttribute('aria-pressed', 'true'));
+  expect(screen.getByRole('button', { name: 'Acting on it' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('shortlist membership no longer infers saved: an unseen feed item stays unpressed', async () => {
+  liveApi({ 'GET /api/shortlist': [{ ...referenceItems()[0]!, state: 'saved' }] });
+  renderAt('/');
+  await ready();
+  expect(saveButton()).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('save: pressed at once, sent with PUT; S unsaves', async () => {

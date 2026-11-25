@@ -181,7 +181,8 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
   if (method === 'POST' && fullPath === '/auth/logout') return send(res, 204);
   if (!fullPath.startsWith('/api/')) return send(res, 404, { detail: 'Not found' });
   const path = fullPath.slice('/api'.length);
-  const withState = (i: Item) => (s.states[i.id] ? { ...i, state: s.states[i.id] } : i);
+  // Every feed, shortlist and detail item carries the caller's state (contract section 2).
+  const withState = (i: Item) => ({ ...i, state: s.states[i.id] ?? 'unseen' });
   const opp = path.match(/^\/opportunities\/([^/]+)(\/state|\/note)?$/);
   const prof = path.match(/^\/profiles\/([^/]+)$/);
 

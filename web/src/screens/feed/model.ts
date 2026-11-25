@@ -22,7 +22,7 @@ export interface FeedSource {
 
 /** Persistence for live data. Each call is optimistic: the screen changes first, and is undone if it rejects. */
 export interface FeedPersist {
-  /** States known from the server (saved and acting from /shortlist). */
+  /** States known from the server (each feed item's `state`). */
   initial: Readonly<Record<string, ItemState>>;
   setState: (item: FeedItem, state: ItemState) => Promise<unknown>;
 }
@@ -81,7 +81,7 @@ export function useFeedModel(
   const [announcement, setAnnouncement] = useState('');
   const [failed, setFailed] = useState(false);
 
-  // States the server reports later (the shortlist loading after the feed) fill in, never overwrite a local change.
+  // States the server reports later (a reloaded feed) fill in, never overwrite a local change.
   const touched = useRef(new Set<string>());
   const initial = persist?.initial;
   useEffect(() => {
