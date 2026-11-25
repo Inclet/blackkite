@@ -27,7 +27,7 @@ One `user_opportunity_score` row per (user, opportunity, profile). Columns: `sco
 
 ## 2. Member API (member-API track builds, web track consumes)
 
-All JSON in camelCase. Every route requires a session; every query filters by the caller (spec 6) and by `pipeline/visibility.py`.
+All JSON in camelCase. **Every member route below lives under `/api`** (e.g. `GET /api/feed`), so no API path collides with a web page (`/shortlist`, `/profiles` are also screens). `/auth/*` and the earlier `/admin/*` routes keep their paths; `/admin/catalogue` moves to `/api/admin/catalogue`. Every route requires a session; every query filters by the caller (spec 6) and by `pipeline/visibility.py`.
 
 | Route | Returns |
 |---|---|
@@ -38,8 +38,9 @@ All JSON in camelCase. Every route requires a session; every query filters by th
 | `GET/POST/PATCH/DELETE /profiles` | the caller's profiles; editing triggers a backfill (spec 5). |
 | `GET/PUT /digest-settings` | channel email, frequency weekly\|off, day mon, alertThreshold, streams (decision 18). |
 | `GET /shortlist` | saved/acting items, `FeedItem[]`, soonest first. |
+| `PATCH /me`, `GET /me/export`, `DELETE /me` | name for the greeting; data export; account deletion (spec 10). |
 
-Field mapping for `FeedItem`: `fit` = fit_word, or `"not-scored"` when no score row exists for a scorable stream, or null for events/investments/closed; `topFlag` = first flag label, sent only when `fit` is "good" (feed boards: develoPPP "Good fit · needs matching funds"; WFP is Strong with a flag and shows the organisation); `detail.reasons` = reasons; `detail.toCheck` = first flag's `to_check`; `detail.trust.state` = `evidence._trust` (confirmed/unconfirmed/conflict); `detail.trust.desktop` / `.phone` = the two copy templates the web fixtures already use, filled from the source names and dates; `deadline` = Kigali date of deadline_at.
+Field mapping for `FeedItem`: `state` = the caller's state for the item ("unseen"|"saved"|"dismissed"|"acting"|"done"), always sent on feed, shortlist and detail items; `fit` = fit_word, or `"not-scored"` when no score row exists for a scorable stream, or null for events/investments/closed; `topFlag` = first flag label, sent only when `fit` is "good" (feed boards: develoPPP "Good fit · needs matching funds"; WFP is Strong with a flag and shows the organisation); `detail.reasons` = reasons; `detail.toCheck` = first flag's `to_check`; `detail.trust.state` = `evidence._trust` (confirmed/unconfirmed/conflict); `detail.trust.desktop` / `.phone` = the two copy templates the web fixtures already use, filled from the source names and dates; `deadline` = Kigali date of deadline_at.
 
 ## 3. Digest (member-API track)
 
