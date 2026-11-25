@@ -359,7 +359,7 @@ def test_search_query_source_flows_into_the_same_pipeline(db, web, model, tmp_pa
     assert web.paths(JOBS) == ["/robots.txt", "/tenders/solar-pumps"]
     assert "/tenders/vaccine-transport" not in web.paths(JOBS)  # merged: not enriched
     assert pumps.verification == "unverified"
-    assert trust_state(pumps.verification, pumps.evidence) == "not_confirmed"
+    assert trust_state(pumps.verification, pumps.evidence) == "unconfirmed"
     assert int(pumps.value_amount) == 45_000_000 and pumps.value_currency == "RWF"
     assert (
         pumps.evidence["value_amount"]["snippet"] == "Estimated budget: RWF 45,000,000"

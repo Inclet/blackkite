@@ -25,9 +25,9 @@ Verification and trust (spec 6, spec 12):
 
 UI trust state, stored in ``evidence["_trust"]`` and given by ``trust_state()``:
 
-* ``disagree`` ("sources disagree"): the sources' deadlines conflicted;
+* ``conflict`` ("sources disagree"): the sources' deadlines conflicted;
 * ``confirmed`` ("confirmed at the source"): verified_original and no conflict;
-* ``not_confirmed`` ("not yet confirmed"): everything else, including every
+* ``unconfirmed`` ("not yet confirmed"): everything else, including every
   aggregator_only item (spec 10: never present one as confirmed).
 """
 
@@ -46,7 +46,8 @@ EVENT_PAST = timedelta(days=365)
 EVENT_FUTURE = timedelta(days=730)
 CLOSING_SOON = timedelta(days=7)
 
-TrustState = Literal["confirmed", "not_confirmed", "disagree"]
+# Same names as the web app's TrustState (web/src/components/TrustNote/TrustNote.tsx).
+TrustState = Literal["confirmed", "unconfirmed", "conflict"]
 FINAL_STATUSES = ("awarded", "cancelled")
 
 
@@ -144,7 +145,7 @@ def verification_for(links: Iterable[tuple[bool, str]]) -> str:
 
 def trust_state(verification: str, evidence: dict[str, Any] | None) -> TrustState:
     if evidence and evidence.get("_deadline_conflict"):
-        return "disagree"
+        return "conflict"
     if verification == "verified_original":
         return "confirmed"
-    return "not_confirmed"
+    return "unconfirmed"

@@ -94,7 +94,7 @@ def test_verification_and_trust_states():
     )
     assert verification_for([]) == "unverified"
     assert trust_state("verified_original", {}) == "confirmed"
-    assert trust_state("aggregator_only", {}) == "not_confirmed"
-    assert trust_state("unverified", {"_deadline_conflict": False}) == "not_confirmed"
-    assert trust_state("verified_original", {"_deadline_conflict": True}) == "disagree"
-    assert trust_state("aggregator_only", {"_deadline_conflict": True}) == "disagree"
+    assert trust_state("aggregator_only", {}) == "unconfirmed"
+    assert trust_state("unverified", {"_deadline_conflict": False}) == "unconfirmed"
+    assert trust_state("verified_original", {"_deadline_conflict": True}) == "conflict"
+    assert trust_state("aggregator_only", {"_deadline_conflict": True}) == "conflict"

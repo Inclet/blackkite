@@ -71,8 +71,8 @@ def test_aggregator_then_original_near_duplicate_becomes_one_record(
     assert (r1.items_found, r1.items_new) == (1, 1)
     [opp] = opps(db)
     assert opp.verification == "aggregator_only"
-    assert trust_state(opp.verification, opp.evidence) == "not_confirmed"
-    assert opp.evidence["_trust"] == "not_confirmed"
+    assert trust_state(opp.verification, opp.evidence) == "unconfirmed"
+    assert opp.evidence["_trust"] == "unconfirmed"
 
     later = NOW + timedelta(hours=6)
     r2 = ingest(
@@ -245,7 +245,7 @@ def test_conflicting_deadlines_keep_the_originals_and_flag_review(
     assert opp.evidence["deadline_at"]["rule"] == "original"
     assert opp.needs_review is True
     assert "deadline_conflict" in codes(opp)
-    assert opp.evidence["_trust"] == "disagree"
+    assert opp.evidence["_trust"] == "conflict"
     # The change of deadline is history.
     [ce] = db.scalars(
         sa.select(ChangeEvent).where(ChangeEvent.field == "deadline_at")
@@ -288,7 +288,7 @@ def test_conflict_without_an_original_keeps_the_earliest(db, make_source, deps):
     assert opp.deadline_at.astimezone(UTC).date().isoformat() == "2026-12-09"
     assert opp.evidence["deadline_at"]["rule"] == "earliest"
     assert opp.verification == "unverified"
-    assert opp.evidence["_trust"] == "disagree"
+    assert opp.evidence["_trust"] == "conflict"
 
 
 def test_three_trust_states(db, make_source, deps):
@@ -347,12 +347,12 @@ def test_three_trust_states(db, make_source, deps):
     )
     assert (
         by_title["Annual supply of laboratory reagents"].evidence["_trust"]
-        == "not_confirmed"
+        == "unconfirmed"
     )
     assert by_title["Annual supply of laboratory reagents"].verification == "unverified"
     assert (
         by_title["Consultancy for a feasibility study on rail"].evidence["_trust"]
-        == "not_confirmed"
+        == "unconfirmed"
     )
     assert (
         by_title["Consultancy for a feasibility study on rail"].verification
@@ -852,7 +852,7 @@ def test_extension_on_an_aggregator_only_keeps_the_original_and_flags(
     assert opp.deadline_at.date().isoformat() == "2026-12-14"
     assert opp.evidence["deadline_at"]["rule"] == "original"
     assert opp.evidence["_deadline_conflict"] is True
-    assert opp.evidence["_trust"] == "disagree"
+    assert opp.evidence["_trust"] == "conflict"
     assert {"deadline_changed", "deadline_conflict"} <= codes(opp)
     assert opp.needs_review is True
     [sce] = _source_deadline_events(db, opp)
