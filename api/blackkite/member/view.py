@@ -13,6 +13,10 @@ Scores (contract section 1): one ``user_opportunity_score`` row per profile; a
 row with ``score_breakdown.hard_filtered`` set is never shown. The item's best
 profile is the highest-scoring non-filtered row among the user's active
 profiles. An item whose every row is filtered is left out of lists.
+
+A ``muted_source_only`` row on an item that is no longer carried only by sources
+the user mutes (an unmute the worker has not rescored yet) counts as not scored:
+not filtered, never the best row. So the item shows again at once, unscored.
 """
 
 from __future__ import annotations
@@ -160,6 +164,23 @@ def not_only_muted(user_id: uuid.UUID) -> ColumnElement[bool]:
     return sa.or_(own_private(user_id), unmuted_carrier)
 
 
+MUTED_SOURCE_ONLY = "muted_source_only"
+
+
+def _unmuted(db: Session, user_id: uuid.UUID, opp_ids: Iterable[uuid.UUID]) -> set:
+    """Of ``opp_ids``, the items the user's mutes no longer hide."""
+    ids = list(opp_ids)
+    if not ids:
+        return set()
+    return set(
+        db.scalars(
+            sa.select(Opportunity.id).where(
+                Opportunity.id.in_(ids), not_only_muted(user_id)
+            )
+        )
+    )
+
+
 def get_visible(
     db: Session, user: User, opportunity_id: uuid.UUID
 ) -> Opportunity | None:
@@ -268,13 +289,26 @@ def load_rows(
     scores = _scores(db, user.id, ids)
     states = _states(db, user.id, ids)
     links = _links(db, ids)
+    stale = _unmuted(
+        db,
+        user.id,
+        {
+            oid
+            for oid, rs in scores.items()
+            if any(r.hard_filtered == MUTED_SOURCE_ONLY for r in rs)
+        },
+    )
     out: list[Row] = []
     for o in opps:
         rows = scores.get(o.id, [])
         if profile_id is not None:
             rows = [r for r in rows if r.profile_id == profile_id]
+        pending = False
+        if o.id in stale:  # unmuted since scored: these rows wait for the worker
+            pending = any(r.hard_filtered == MUTED_SOURCE_ONLY for r in rows)
+            rows = [r for r in rows if r.hard_filtered != MUTED_SOURCE_ONLY]
         shown = [r for r in rows if not r.hard_filtered]
-        all_filtered = bool(rows) and not shown
+        all_filtered = bool(rows) and not shown and not pending
         if profile_id is not None and not shown and not keep_filtered:
             continue
         if all_filtered and not keep_filtered:

@@ -955,11 +955,11 @@ def _filtered(db, user, opp):
     return [r.score_breakdown["hard_filtered"] for r in rows]
 
 
-def _worker(Sessions, minutes=2):
+def _worker(Sessions, minutes=2, deps=None):
     from blackkite.worker.backfills import run_pending_backfills
 
     return run_pending_backfills(
-        Sessions, lambda: datetime.now(UTC) + timedelta(minutes=minutes)
+        Sessions, lambda: datetime.now(UTC) + timedelta(minutes=minutes), deps
     )
 
 
@@ -979,12 +979,127 @@ def test_mute_and_unmute_queue_a_rescore_for_the_worker(member, db, Sessions):
     assert _filtered(db, member.user, opp) == ["muted_source_only"]
 
     assert member.delete(f"/api/sources/{src.id}/mute").status_code == 204
-    # Back at once, unscored until the worker runs.
+    # Back at once, unscored until the worker runs; the row is kept, not deleted.
     [item] = member.get("/api/feed").json()["items"]
     assert item["id"] == str(opp.id) and item["fit"] == "not-scored"
-    assert _filtered(db, member.user, opp) == []
-    assert len(_worker(Sessions)) == 1
+    assert _filtered(db, member.user, opp) == ["muted_source_only"]
+    # Due at the next tick, without the debounce.
+    assert len(_worker(Sessions, minutes=0)) == 1
     assert _filtered(db, member.user, opp) == [None]
+
+
+def _score_rows(db, user, opp):
+    from blackkite.db.models import UserOpportunityScore
+
+    db.expire_all()
+    return db.scalars(
+        sa.select(UserOpportunityScore).where(
+            UserOpportunityScore.user_id == user.id,
+            UserOpportunityScore.opportunity_id == opp.id,
+        )
+    ).all()
+
+
+def test_unmute_keeps_rows_so_an_old_item_does_not_alert(
+    member, db, Sessions, settings
+):
+    from blackkite import scoring
+    from blackkite.db.models import AlertLog, DigestSetting
+    from blackkite.delivery.alerts import send_alerts
+    from blackkite.delivery.mail import MemoryTransport
+    from tests import factories as f
+    from tests.scoring.conftest import FakeScoreLLM, judgement
+    from tests.scoring.conftest import deps as score_deps
+
+    now = datetime.now(UTC)
+    src = f.source(db, "Cold Board")
+    opp = f.opportunity(
+        db,
+        "Cold chain transport of vaccines",
+        tags=["service:cold chain"],
+        deadline_at=now + timedelta(days=3),
+        location="Kigali, Rwanda",
+        created_at=now - timedelta(days=3),
+    )
+    f.link(db, opp, src)
+    f.profile(db, member.user, "Cold", services=["cold chain"])
+    db.add(
+        DigestSetting(
+            user_id=member.user.id,
+            channel="email",
+            address=MEMBER,
+            alert_min_fit="good",
+        )
+    )
+    db.commit()
+    assert member.post(f"/api/sources/{src.id}/mute").status_code == 204
+    scoring.score_user(db, member.user.id)
+    [row] = _score_rows(db, member.user, opp)
+    assert row.score_breakdown["hard_filtered"] == "muted_source_only"
+    found = now - timedelta(days=3)  # scored (filtered) when the item came in
+    row.created_at = found
+    db.commit()
+
+    assert member.delete(f"/api/sources/{src.id}/mute").status_code == 204
+    llm = FakeScoreLLM(judgement(fit=0.9, elig=0.9))
+    assert len(_worker(Sessions, minutes=0, deps=score_deps(llm))) == 1
+    [row] = _score_rows(db, member.user, opp)
+    assert row.score_breakdown["hard_filtered"] is None
+    assert row.score_breakdown["fit_word"] == "strong"
+    assert row.created_at == found  # rescored in place
+    out = MemoryTransport()
+    assert send_alerts(db, member.user, settings, out, datetime.now(UTC)) == 0
+    assert out.outbox == [] and db.scalars(sa.select(AlertLog)).all() == []
+    # Control: had the row been (re)created today, the same item would alert.
+    row.created_at = datetime.now(UTC)
+    db.commit()
+    assert send_alerts(db, member.user, settings, out, datetime.now(UTC)) == 1
+
+
+def test_unmute_shows_an_item_whose_other_profiles_are_filtered_at_once(
+    member, db, Sessions
+):
+    """Treasury bond: Personal was muted_source_only, the business profile is
+    stream_not_selected. After the unmute it is in the feed before any rescore."""
+    from blackkite import scoring
+    from tests import factories as f
+
+    now = datetime.now(UTC)
+    src = f.source(db, "Bond Desk", streams=["investment"])
+    opp = f.opportunity(
+        db,
+        "Treasury bond FXD 2026/5",
+        stream="investment",
+        organisation="BNR",
+        deadline_at=now + timedelta(days=10),
+        location="Kigali, Rwanda",
+    )
+    f.link(db, opp, src)
+    f.profile(db, member.user, "Cold", services=["cold chain"])
+    f.profile(
+        db,
+        member.user,
+        "Personal",
+        type="personal",
+        streams=["investment", "event"],
+        instruments=["treasury bonds and bills"],
+    )
+    db.commit()
+    assert member.post(f"/api/sources/{src.id}/mute").status_code == 204
+    scoring.score_user(db, member.user.id)
+    db.commit()
+    assert sorted(
+        r.score_breakdown["hard_filtered"] for r in _score_rows(db, member.user, opp)
+    ) == ["muted_source_only", "stream_not_selected"]
+    assert member.get("/api/feed").json()["items"] == []
+
+    assert member.delete(f"/api/sources/{src.id}/mute").status_code == 204
+    [item] = member.get("/api/feed").json()["items"]
+    assert item["id"] == str(opp.id)
+    assert member.get(f"/api/opportunities/{opp.id}").status_code == 200
+    # Muting again hides it again, rows untouched.
+    assert member.post(f"/api/sources/{src.id}/mute").status_code == 204
+    assert member.get("/api/feed").json()["items"] == []
 
 
 def test_mute_never_scores_in_the_request_and_queues_only_the_caller(

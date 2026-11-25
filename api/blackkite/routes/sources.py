@@ -41,7 +41,7 @@ from blackkite.routes.source_schemas import (
     SuggestionIn,
     SuggestionOut,
 )
-from blackkite.scoring.backfill import clear_muted_rows, request_user_rescore
+from blackkite.scoring.backfill import request_user_rescore
 from blackkite.sources import service
 from blackkite.sources.testrun import PreviewResult, preview_source, transient_source
 
@@ -102,8 +102,9 @@ def mute_source(source_id: uuid.UUID, user: CurrentUser, db: DbDep) -> Response:
 def unmute_source(source_id: uuid.UUID, user: CurrentUser, db: DbDep) -> Response:
     # Works whatever the source's status now, so a mute is never stuck.
     service.unmute(db, user, source_id)
-    clear_muted_rows(db, user.id, source_id)
-    request_user_rescore(db, user.id, datetime.now(UTC))
+    # Rows stay (created_at kept); the feed shows them unscored until the worker's
+    # next tick rescores them.
+    request_user_rescore(db, user.id, datetime.now(UTC), immediate=True)
     db.commit()
     return Response(status_code=204)
 
