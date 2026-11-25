@@ -17,7 +17,9 @@ A custom collector class has:
   fetching only through the guarded ``FetchClient``.
 
 Shipped: ``jsonld_events``, schema.org Event objects from a listing page's
-JSON-LD (spec 4.5: Eventbrite and 10times listing pages carry them).
+JSON-LD (spec 4.5: Eventbrite and 10times listing pages carry them); and
+``demo_fictional``, a no-op for the fictional sources of ``bk demo-seed`` (no
+fetch, no items), so a run of a demo source succeeds instead of failing.
 """
 
 from __future__ import annotations
@@ -281,10 +283,38 @@ class JsonLdEventsCollector:
         return items
 
 
+# --- demo no-op -------------------------------------------------------------------------
+
+
+class NoOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class DemoFictionalCollector:
+    """FICTIONAL demo sources only (``bk demo-seed``). Makes no request and
+    returns no items: the demo catalogue is written by the seed, never collected."""
+
+    name: ClassVar[str] = "demo_fictional"
+    help: ClassVar[str] = (
+        "Demo only: the fictional sources from bk demo-seed. Fetches nothing and "
+        "finds no items."
+    )
+    Options: ClassVar[type[BaseModel]] = NoOptions
+
+    def __init__(
+        self, client: FetchClient, options: NoOptions, *, preview: bool = False
+    ) -> None:
+        self.preview = preview
+
+    def fetch(self, source) -> list[RawItem]:
+        return []
+
+
 # --- the allowlist ----------------------------------------------------------------------
 
 CUSTOM_COLLECTORS: dict[str, type] = {
     JsonLdEventsCollector.name: JsonLdEventsCollector,
+    DemoFictionalCollector.name: DemoFictionalCollector,
 }
 
 

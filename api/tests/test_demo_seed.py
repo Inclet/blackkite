@@ -180,3 +180,22 @@ def test_cli_demo_seed_then_dry_run_digest(cli_env, db):
     r = runner.invoke(cli.app, ["digest", "--user", ADMIN, "--dry-run"])
     assert r.exit_code == 0, r.output
     assert "[Demo]" in r.output
+
+
+def test_demo_sources_have_a_valid_config_and_run_with_no_items(db):
+    """The fictional sources use the allowlisted no-op collector: a forced run
+    succeeds, finds nothing and makes no request."""
+    from blackkite.collectors.registry import validate_config
+    from blackkite.worker import runner
+    from tests.fakes import FakeWeb, make_client
+
+    demo_seed(db, env="dev", admin_email=ADMIN, now=NOW)
+    db.commit()
+    web = FakeWeb()
+    for s in db.scalars(sa.select(Source)).all():
+        assert s.collector_type == "custom"
+        assert validate_config("custom", s.config) == s.config
+        run = runner.run_source(db, s, client=make_client(web), now=lambda: NOW)
+        assert (run.status, run.items_found, run.error) == ("succeeded", 0, None)
+    assert web.requests == []
+    assert count(db, Opportunity) == len(DEMO_ITEMS)

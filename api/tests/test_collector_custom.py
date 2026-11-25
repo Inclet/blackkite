@@ -129,7 +129,8 @@ def test_config_normalised_and_form():
     }
     form = registry.config_form("custom")
     (collector,) = [f for f in form["fields"] if f["name"] == "collector"]
-    assert collector["type"] == "enum" and collector["choices"] == ["jsonld_events"]
+    assert collector["type"] == "enum"
+    assert collector["choices"] == ["demo_fictional", "jsonld_events"]
     assert set(form["collectors"]) == set(custom.CUSTOM_COLLECTORS)
     names = {f["name"] for f in form["collectors"]["jsonld_events"]["fields"]}
     assert {"list_url", "max_items"} <= names
@@ -148,3 +149,13 @@ def test_hostile_jsonld_is_bounded():
     )
     events = custom.find_events(custom.jsonld_nodes(page))
     assert len(events) == 3
+
+
+def test_demo_fictional_is_a_no_op_with_no_options():
+    cfg = {"collector": "demo_fictional", "options": {}}
+    assert validate_config("custom", cfg) == cfg
+    with pytest.raises(ValueError, match="invalid options for demo_fictional"):
+        validate_config("custom", {"collector": "demo_fictional", "options": {"x": 1}})
+    assert (
+        registry.config_form("custom")["collectors"]["demo_fictional"]["fields"] == []
+    )

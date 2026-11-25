@@ -7,9 +7,9 @@ notice is copied. Each demo opportunity carries ``evidence._demo = true`` and is
 linked to one of the two demo sources below; that is how a re-run finds and
 replaces them, and how the "no non-demo opportunities" guard tells them apart.
 
-The demo sources are ``active`` so members see their items, but they cannot be
-collected: collector type ``custom`` with no class (a forced run fails cleanly
-with "not implemented", no network) and a once-a-year schedule. Two succeeded
+The demo sources are ``active`` so members see their items, but they collect
+nothing: collector type ``custom`` with the allowlisted no-op ``demo_fictional``
+(a run succeeds with no items and makes no request) and a once-a-year schedule. Two succeeded
 ``source_run`` rows give them an "ok" health on the sources page.
 
 Scoring is rules-only (no model, no embedder, no API keys): tenders and funding
@@ -45,8 +45,10 @@ from blackkite.seed.loader import bootstrap
 DEMO_MARK = "_demo"
 DEMO_HOST = "https://demo.example.com"
 # A schedule that fires once a year (1 January, 00:00 UTC): the demo sources are
-# never collected in practice, and a forced run fails without a request.
+# never collected in practice, and a forced run finds nothing without a request.
 DEMO_SCHEDULE = "0 0 1 1 *"
+# The allowlisted no-op custom collector for fictional sources (collectors/custom.py).
+DEMO_CONFIG = {"collector": "demo_fictional", "options": {}}
 ACCESS_NOTE = (
     "Fictional demo source created by `bk demo-seed`. Not a real site; never "
     "collected. Delete the demo data by resetting the dev database."
@@ -270,7 +272,7 @@ def _source(db: Session, spec: dict[str, Any], now: datetime) -> Source:
     s.kind = spec["kind"]
     s.streams = ["tender", "investment", "funding", "event"]
     s.collector_type = "custom"
-    s.config = {}
+    s.config = dict(DEMO_CONFIG)
     s.schedule = DEMO_SCHEDULE
     s.access_note = ACCESS_NOTE
     s.status = "active"
