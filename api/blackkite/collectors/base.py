@@ -43,7 +43,13 @@ class RawItem:
 
 class Collector(Protocol):
     """A collector type. ``fetch`` must not raise for ordinary site failures; it raises
-    ``CollectorError`` so the runner can record the failure and move on to the next source."""
+    ``CollectorError`` so the runner can record the failure and move on to the next source.
+
+    Optional: ``after_commit(source) -> None``. When a collector has it, the runner
+    calls it once the run's ingest is committed, and never when the ingest is rolled
+    back. For side effects outside the database that must only happen when the items
+    are safely stored (email_ingest flags processed mail there). A failure in it is
+    logged; the run stays succeeded."""
 
     def fetch(self, source: Source) -> list[RawItem]: ...
 

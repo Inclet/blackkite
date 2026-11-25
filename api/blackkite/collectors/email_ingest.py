@@ -32,9 +32,13 @@ not hide mail from one another; if the server does not accept custom keywords
 ``BODY.PEEK[]`` (reading alone never marks them). A test run (preview) opens the
 folder read-only and flags nothing.
 
-Known gap: flags are set when the collector returns, before the runner commits
-the ingest. If the ingest then fails, those messages are not read again. Closing
-it needs a runner hook after commit (worker/runner.py, another track).
+Flags are set only once the run is safe: ``fetch`` remembers which messages it
+read, and the runner calls ``after_commit(source)`` after it has committed the
+ingest (worker/runner.py). That opens the mailbox again and flags them. If the
+ingest fails and is rolled back, ``after_commit`` is never called and the same
+mail is read again on the next run. If the folder's UIDVALIDITY changed in
+between (the mailbox was rebuilt), nothing is flagged: re-reading is harmless,
+the ingest dedupes, but flagging the wrong messages would hide mail.
 
 Spoofing. Anyone can send mail to the shared inbox with any From. With
 ``require_authenticated`` (default) a message counts only if the receiving
@@ -52,6 +56,7 @@ import email
 import email.policy
 import fnmatch
 import imaplib
+import logging
 import re
 import ssl
 from collections.abc import Callable
@@ -74,6 +79,8 @@ from blackkite.collectors.common import (
     rfc822_to_iso,
     utc_now,
 )
+
+log = logging.getLogger("blackkite.collectors")
 
 MAX_MESSAGE_BYTES = 2_000_000
 MAX_LINKS_PER_MESSAGE = 200
@@ -112,7 +119,9 @@ class ImapSettings(BaseSettings):
 
 
 class Mailbox(Protocol):
-    """The IMAP operations the collector uses (UIDs as strings)."""
+    """The IMAP operations the collector uses (UIDs as strings). A mailbox may
+    also have ``uid_validity() -> str | None`` for the selected folder; without
+    it, UIDs are trusted to be stable between fetch and after_commit."""
 
     def select(self, folder: str, *, readonly: bool) -> None: ...
     def supports_keywords(self) -> bool: ...
@@ -143,6 +152,7 @@ class ImapMailbox:
         except (OSError, imaplib.IMAP4.error) as e:
             raise CollectorError(f"cannot open the ingest mailbox: {e}") from None
         self._keywords = False
+        self._uid_validity: str | None = None
 
     def _ok(self, typ: str, data: Any, what: str) -> Any:
         if typ != "OK":
@@ -161,6 +171,13 @@ class ImapMailbox:
         _, flags = self.imap.response("PERMANENTFLAGS")
         text = b" ".join(f for f in flags or [] if isinstance(f, bytes))
         self._keywords = b"\\*" in text
+        _, validity = self.imap.response("UIDVALIDITY")
+        found = [v for v in validity or [] if isinstance(v, bytes)]
+        self._uid_validity = found[0].decode(errors="replace") if found else None
+
+    def uid_validity(self) -> str | None:
+        """UIDVALIDITY of the selected folder, when the server sent it."""
+        return self._uid_validity
 
     def supports_keywords(self) -> bool:
         return self._keywords
@@ -457,6 +474,8 @@ class EmailIngestCollector:
         self.mailbox_factory = mailbox_factory
         self.preview = preview
         self.now = now
+        # (folder, uids, flag, uid validity) read by fetch, flagged by after_commit.
+        self._pending: tuple[str, list[str], str, str | None] | None = None
 
     def fetch(self, source) -> list[RawItem]:
         cfg = parse_config(source.config or {})
@@ -496,5 +515,36 @@ class EmailIngestCollector:
                     seen.add(item.url)
                     items.append(item)
         if done and not self.preview:
-            box.add_flag(done, flag)
+            self._pending = (cfg.folder, done, flag, _validity(box))
         return items
+
+    def after_commit(self, source) -> None:
+        """Flag the messages the last ``fetch`` read. The runner calls this only
+        after it has committed the run's ingest; never on a rollback."""
+        pending, self._pending = self._pending, None
+        if pending is None or self.preview:
+            return
+        folder, uids, flag, validity = pending
+        box = self.mailbox_factory()
+        try:
+            box.select(folder, readonly=False)
+            now_validity = _validity(box)
+            if validity is not None and now_validity != validity:
+                log.warning(
+                    "source %s: UIDVALIDITY of %s changed (%s -> %s); %d messages "
+                    "left unflagged and will be read again",
+                    getattr(source, "name", source),
+                    folder,
+                    validity,
+                    now_validity,
+                    len(uids),
+                )
+                return
+            box.add_flag(uids, flag)
+        finally:
+            box.logout()
+
+
+def _validity(box: Mailbox) -> str | None:
+    fn = getattr(box, "uid_validity", None)
+    return fn() if callable(fn) else None

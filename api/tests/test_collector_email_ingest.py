@@ -102,12 +102,18 @@ def source(config) -> Source:
     )
 
 
-def collect(box, config, preview=False):
+def collect(box, config, preview=False, commit=True):
+    """One run's collector use: fetch, then (as the runner does once the ingest
+    is committed) after_commit."""
     c = build_collector(
         "email_ingest", None, mailbox_factory=lambda: box, preview=preview
     )
     c.now = lambda: NOW
-    return c.fetch(source(config))
+    src = source(config)
+    items = c.fetch(src)
+    if commit:
+        c.after_commit(src)
+    return items
 
 
 def test_links_mode_items_and_marking():
@@ -262,6 +268,8 @@ class FakeImaplib:
         return "OK", [b"3"]
 
     def response(self, code):
+        if code == "UIDVALIDITY":
+            return code, [b"1700000000"]
         return code, [b"(\\Seen \\Flagged \\*)"]
 
     def uid(self, command, *args):
@@ -288,7 +296,7 @@ def test_imap_mailbox_commands():
     assert imap.args == ("imap.inbox.example", 993, 30.0)
     assert imap.ssl_context.verify_mode.name == "CERT_REQUIRED"
     box.select("INBOX", readonly=True)
-    assert box.supports_keywords()
+    assert box.supports_keywords() and box.uid_validity() == "1700000000"
     assert box.search(["SINCE", "1-Nov-2026"]) == ["4", "9"]
     assert box.size("4") == 1234
     assert box.fetch("4") == b"hello"
@@ -297,3 +305,60 @@ def test_imap_mailbox_commands():
     assert ("uid", "FETCH", "4", "(BODY.PEEK[])") in imap.commands
     assert ("uid", "STORE", "4,9", "+FLAGS.SILENT", "(BkDoneabc)") in imap.commands
     assert ("select", '"INBOX"', True) in imap.commands
+
+
+def test_fetch_alone_flags_nothing_after_commit_flags():
+    box = FakeMailbox({"7": mail(html=HTML)})
+    c = build_collector("email_ingest", None, mailbox_factory=lambda: box)
+    c.now = lambda: NOW
+    src = source({"sender": SENDER})
+    assert c.fetch(src)
+    assert not [x for x in box.calls if x[0] == "flag"] and box.logged_out
+    assert box.flags["7"] == set()
+    box.logged_out = False
+    c.after_commit(src)
+    assert box.flags["7"] == {"BkDone123456781234"} and box.logged_out
+    assert box.calls[-2:] == [
+        ("select", "INBOX", False),
+        ("flag", ("7",), "BkDone123456781234"),
+    ]
+    n = len(box.calls)
+    c.after_commit(src)  # once only
+    assert len(box.calls) == n
+
+
+def test_without_commit_the_same_mail_is_read_again():
+    box = FakeMailbox({"7": mail(html=HTML)})
+    first = collect(box, {"sender": SENDER}, commit=False)
+    assert collect(box, {"sender": SENDER}) == first
+
+
+class ValidityMailbox(FakeMailbox):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.validities = ["1", "2"]
+
+    def select(self, folder, *, readonly):
+        super().select(folder, readonly=readonly)
+        self.current = self.validities.pop(0)
+
+    def uid_validity(self):
+        return self.current
+
+
+def test_uidvalidity_change_leaves_mail_unflagged():
+    box = ValidityMailbox({"7": mail(html=HTML)})
+    assert collect(box, {"sender": SENDER})
+    assert box.flags["7"] == set()
+    assert not [x for x in box.calls if x[0] == "flag"]
+    box2 = ValidityMailbox({"7": mail(html=HTML)})
+    box2.validities = ["5", "5"]
+    collect(box2, {"sender": SENDER})
+    assert box2.flags["7"] == {"BkDone123456781234"}
+
+
+def test_preview_after_commit_is_a_no_op():
+    box = FakeMailbox({"1": mail(html=HTML)})
+    collect(box, {"sender": SENDER}, preview=True)
+    assert [x for x in box.calls if x[0] == "select"] == [("select", "INBOX", True)]
+    assert box.flags["1"] == set()

@@ -264,3 +264,64 @@ def test_bad_config_fails_the_run_with_a_readable_error(ctype, db, recorded):
     assert run.status == "failed"
     assert f"invalid {ctype} config" in run.error
     assert "not implemented" not in run.error
+
+
+def test_email_flags_are_set_only_after_the_ingest_commits(db, world, monkeypatch):
+    web, box = world
+    s = add(db, "email_ingest")
+    seen_at_ingest = []
+
+    def check_then_ingest(session, source, items, **kw):
+        # The ingest runs before the commit: nothing may be flagged yet.
+        seen_at_ingest.append(set(box.flags["1"]))
+        return ingest.IngestResult(items_found=len(items), items_new=len(items))
+
+    monkeypatch.setattr(ingest, "ingest_items", check_then_ingest)
+    run = runner.run_source(db, s, client=make_client(web), now=lambda: NOW)
+    assert run.status == "succeeded"
+    assert seen_at_ingest == [set()]
+    assert box.flags["1"] == {email_ingest.done_keyword(s.id)}
+
+
+def test_email_ingest_rollback_leaves_mail_unflagged(db, world, monkeypatch):
+    web, box = world
+    s = add(db, "email_ingest")
+
+    def failing_ingest(session, source, items, **kw):
+        session.add(Opportunity(stream="tender", title="half-written"))
+        session.flush()
+        raise RuntimeError("extract failed")
+
+    monkeypatch.setattr(ingest, "ingest_items", failing_ingest)
+    run = runner.run_source(db, s, client=make_client(web), now=lambda: NOW)
+    assert run.status == "failed" and "extract failed" in run.error
+    assert box.flags["1"] == set()
+    assert counts(db)["Opportunity"] == 0
+    # The next run reads the same mail again.
+    calls = []
+    monkeypatch.setattr(
+        ingest,
+        "ingest_items",
+        lambda session, source, items, **kw: (
+            calls.append(len(items))
+            or ingest.IngestResult(items_found=len(items), items_new=len(items))
+        ),
+    )
+    again = runner.run_source(
+        db, s, client=make_client(web), now=lambda: NOW + timedelta(hours=1)
+    )
+    assert again.status == "succeeded" and calls == [2]
+    assert box.flags["1"] == {email_ingest.done_keyword(s.id)}
+
+
+def test_a_failing_after_commit_keeps_the_run_succeeded(db, world, recorded):
+    web, box = world
+    s = add(db, "email_ingest")
+
+    def broken(uids, flag):
+        raise OSError("connection reset")
+
+    box.add_flag = broken
+    run = runner.run_source(db, s, client=make_client(web), now=lambda: NOW)
+    assert (run.status, run.items_found, run.error) == ("succeeded", 2, None)
+    assert box.flags["1"] == set()

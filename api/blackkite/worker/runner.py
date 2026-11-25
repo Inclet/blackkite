@@ -4,6 +4,10 @@
 collector, hands the items to ``blackkite.pipeline.ingest.ingest_items``. The
 ingest writes and the run's success are committed together; on any failure the
 ingest work is rolled back and the run is marked failed with the error text.
+Only after that commit does the runner call the collector's optional
+``after_commit(source)`` (side effects outside the database, such as flagging
+processed mail); a rollback never reaches it. A failing ``after_commit`` is
+logged and the run stays succeeded.
 
 The pipeline's fetcher (detail pages and PDFs, enrich stage) is the run's own
 ``FetchClient`` wrapped in ``ClientFetcher`` with the source's rate limit, so
@@ -119,10 +123,23 @@ def run_source(
         run.finished_at = now()
         session.commit()
         return run
+    # Reached only once the ingest and the run's success are committed.
+    after_commit(collector, source)
     score_after_run(session, started_at, source_name=source.name)
     refreshed = session.get(SourceRun, run_id)
     assert refreshed is not None
     return refreshed
+
+
+def after_commit(collector: object, source: Source) -> None:
+    """The collector's post-commit hook, if it has one. Never raises."""
+    hook = getattr(collector, "after_commit", None)
+    if hook is None:
+        return
+    try:
+        hook(source)
+    except Exception:
+        log.exception("source %s: after-commit step failed", source.name)
 
 
 def score_after_run(session: Session, since: datetime, *, source_name: str) -> None:
