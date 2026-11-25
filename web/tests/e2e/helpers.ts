@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { FROZEN_TIME } from '../visual/contract';
+import { STUB_COOKIE, type Seed, type Seen } from './stubApi';
 
 /** Open a route with the contract's frozen clock (Tuesday 24 Nov 2026, 14:00 Kigali). */
 export async function open(page: Page, route: string): Promise<void> {
@@ -72,4 +73,29 @@ export function colours(page: Page, selector: string): Promise<{ fg: number[]; b
     }
     return { fg, bg: [255, 255, 255] };
   });
+}
+
+/**
+ * Give this test its own session on the stub API (stubApi.ts): sets the session
+ * cookie and resets that session's data, optionally with overrides.
+ */
+export async function stubSession(page: Page, id: string, seed: Partial<Seed> = {}): Promise<{ seen: () => Promise<Seen[]> }> {
+  const sid = id.replace(/[^\w-]/g, '_');
+  const res = await fetch(`${stubOrigin()}/__stub/sessions/${sid}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(seed),
+  });
+  if (res.status !== 204) throw new Error(`stub session: ${res.status}`);
+  await page.context().addCookies([{ name: STUB_COOKIE, value: sid, domain: '127.0.0.1', path: '/' }]);
+  return { seen: async () => (await (await fetch(`${stubOrigin()}/__stub/sessions/${sid}/seen`)).json()) as Seen[] };
+}
+
+/** Requests the stub API saw with no session cookie. */
+export async function anonymousSeen(): Promise<Seen[]> {
+  return (await (await fetch(`${stubOrigin()}/__stub/anonymous/seen`)).json()) as Seen[];
+}
+
+function stubOrigin(): string {
+  return `http://127.0.0.1:${process.env.BK_E2E_API_PORT}`;
 }
