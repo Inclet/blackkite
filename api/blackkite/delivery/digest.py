@@ -100,6 +100,9 @@ class DigestItem(_Model):
     date_line: str
     # Trust state when not confirmed, e.g. "not yet confirmed at the source".
     trust_note: str | None = None
+    # The stated value, e.g. "Value: FRW 12,000,000" (spec 8). Not on the board;
+    # the row is left out when None, so the reference render is unchanged.
+    value_line: str | None = None
 
     @property
     def label(self) -> str:
@@ -142,6 +145,10 @@ class DigestView(_Model):
     cta_url: LinkUrl
     more_count: int = Field(ge=0)
     footer: DigestFooter
+    # Saved items closing within 7 days (spec 8). Not on the board; the block is
+    # left out when empty, so the reference render is unchanged.
+    closing_soon: list[DigestItem] = Field(default_factory=list)
+    closing_heading: str = "Closing in 7 days"
 
     @property
     def issue_date_text(self) -> str:
@@ -181,13 +188,25 @@ def _html(view: DigestView, logo_src: str, preview: bool) -> str:
     )
 
 
-def _text(view: DigestView) -> str:
-    lines = [view.heading, "", view.intro, ""]
-    for item in view.items:
+def _text_items(items: list[DigestItem]) -> list[str]:
+    lines: list[str] = []
+    for item in items:
         date_line = item.date_line + (
             f" · {item.trust_note}" if item.trust_note else ""
         )
-        lines += [item.label, item.title, item.summary, date_line, item.url, ""]
+        lines += [item.label, item.title, item.summary]
+        if item.value_line:
+            lines.append(item.value_line)
+        lines += [date_line, item.url, ""]
+    return lines
+
+
+def _text(view: DigestView) -> str:
+    lines = [view.heading, "", view.intro, ""]
+    lines += _text_items(view.items)
+    if view.closing_soon:
+        lines += [view.closing_heading.upper(), ""]
+        lines += _text_items(view.closing_soon)
     lines.append(f"{CTA_LABEL}: {view.cta_url}")
     if view.more_line:
         lines.append(view.more_line)

@@ -322,3 +322,37 @@ def test_fixture_round_trip_needs_placeholder_context():
         DigestView.model_validate(data)
     with allow_placeholder_links():
         assert DigestView.model_validate(data) == REFERENCE
+
+
+# --- value line and the saved-items block (spec 8; not on the board) -----------------
+
+
+def _with_extras():
+    with allow_placeholder_links():
+        first = REFERENCE.items[0].model_copy(
+            update={"value_line": "Value: FRW 12,000,000"}
+        )
+        saved = REFERENCE.items[2].model_copy(update={"title": "Saved call closing"})
+        return REFERENCE.model_copy(
+            update={"items": [first, *REFERENCE.items[1:]], "closing_soon": [saved]}
+        )
+
+
+def test_value_line_and_closing_block_render():
+    view = _with_extras()
+    _, html, text = render_digest(view)
+    words = _parse(html).words()
+    assert "warehousing support World Food Programme" in words
+    assert "Value: FRW 12,000,000 Closes Mon 30 Nov" in words
+    assert "Closing in 7 days FUNDING Saved call closing" in words
+    assert words.index("Closing in 7 days") > words.index("develoPPP Ventures")
+    assert words.index("Closing in 7 days") < words.index("Open your feed")
+    assert "Value: FRW 12,000,000\nCloses Mon 30 Nov" in text
+    assert "CLOSING IN 7 DAYS\n\nFUNDING\nSaved call closing" in text
+
+
+def test_reference_has_neither_extra():
+    assert REFERENCE.closing_soon == []
+    assert all(i.value_line is None for i in REFERENCE.items)
+    _, html, _ = render_digest(REFERENCE)
+    assert "Closing in 7 days" not in html and "Value:" not in html
