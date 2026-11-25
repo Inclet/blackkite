@@ -336,3 +336,20 @@ def test_user_without_a_setting_gets_weekly_to_account_email(db, settings):
     assert send_digest(db, u, settings, out, MONDAY).status == "sent"
     assert out.outbox[0].to == "carol@example.com"
     assert "Good morning, there" in out.outbox[0].text
+
+
+def test_best_profile_is_chosen_among_active_profiles(db, ana, world, settings):
+    old = f.profile(db, ana, "Old")
+    old.active = False
+    both = item(db, ana, world, "Both", 60)  # Ironji-Trade, 60
+    f.score(db, ana, both, old, 100, fit_word="strong")
+    higher = item(db, ana, world, "Higher for Ironji", 80)
+    only_old = item(db, ana, world, "Only the old profile", prof=False)
+    f.score(db, ana, only_old, old, 100, fit_word="strong")
+    db.commit()
+    v = build_digest(db, ana, settings, MONDAY).view
+    assert [(i.title, i.profile_label) for i in v.items] == [
+        ("Higher for Ironji", "Ironji-Trade"),
+        ("Both", "Ironji-Trade"),
+    ]
+    assert higher.id

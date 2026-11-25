@@ -27,6 +27,7 @@ from blackkite.db.models import (
     AlertLog,
     DigestSetting,
     Opportunity,
+    Profile,
     User,
     UserOpportunity,
     UserOpportunityScore,
@@ -64,9 +65,23 @@ def alert_rows(
     if threshold is None:
         return []
     day_start = datetime.combine(kigali_today(now), time(0), KIGALI)
-    scored_today = sa.select(UserOpportunityScore.opportunity_id).where(
-        UserOpportunityScore.user_id == user.id,
-        UserOpportunityScore.created_at >= day_start,
+    # Only active profiles find items (contract section 1: the best profile is
+    # chosen among active profiles; an inactive profile's rows are ignored).
+    scored_today = (
+        sa.select(UserOpportunityScore.opportunity_id)
+        .join(
+            Profile,
+            sa.and_(
+                Profile.id == UserOpportunityScore.profile_id,
+                Profile.user_id == UserOpportunityScore.user_id,
+            ),
+        )
+        .where(
+            UserOpportunityScore.user_id == user.id,
+            Profile.user_id == user.id,
+            Profile.active.is_(True),
+            UserOpportunityScore.created_at >= day_start,
+        )
     )
     q = sa.select(Opportunity).where(
         member_visible(user.id),

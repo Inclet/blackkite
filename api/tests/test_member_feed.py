@@ -747,3 +747,21 @@ def test_opportunity_detail(db, ana, login):
     assert "snippet" not in fields["organisation"]
     # The change from a hidden source is not shown.
     assert [c["field"] for c in d["changes"]] == ["deadline_at"]
+
+
+def test_best_profile_ignores_a_higher_inactive_profile(db, ana, login):
+    src = f.source(db, "Src")
+    live = f.profile(db, ana, "Live")
+    old = f.profile(db, ana, "Old")
+    old.active = False
+    opp = f.opportunity(db, "X", deadline_at=kigali(2026, 12, 10))
+    f.link(db, opp, src)
+    f.score(db, ana, opp, live, 40, fit_word="possible")
+    f.score(db, ana, opp, old, 95, fit_word="good", flags=[{"label": "Value unknown"}])
+    db.commit()
+    c = login(ana.email)
+    [item] = _items(c)
+    assert item["fit"] == "possible" and item["detail"]["profile"] == "Live"
+    assert "topFlag" not in item
+    assert c.get(f"/opportunities/{opp.id}").json()["detail"]["profile"] == "Live"
+    assert _items(c, profile=str(old.id)) == []
