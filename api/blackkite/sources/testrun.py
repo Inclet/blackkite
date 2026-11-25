@@ -9,8 +9,11 @@ same URL guard as scheduled runs, preview limits (first page, first query, at mo
 from __future__ import annotations
 
 import logging
+import threading
 import time
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,6 +25,36 @@ from blackkite.collectors.registry import build_collector
 from blackkite.db.models import Source
 
 log = logging.getLogger("blackkite.sources.testrun")
+
+TEST_RUN_BUSY = "Another test run is in progress; try again in a minute."
+
+
+class TestRunBusy(Exception):
+    """Every test-run slot is taken."""
+
+    __test__ = False  # not a pytest class
+
+
+class TestRunGate:
+    """Caps the test runs in flight in this process (``BK_TEST_RUNS_MAX_CONCURRENT``).
+    Every collector type takes a slot, browser_list (headless Chromium) included.
+    Never waits: when all slots are taken, ``slot()`` raises ``TestRunBusy``."""
+
+    __test__ = False  # not a pytest class
+
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        self._sem = threading.BoundedSemaphore(limit)
+
+    @contextmanager
+    def slot(self) -> Iterator[None]:
+        if not self._sem.acquire(blocking=False):
+            raise TestRunBusy(TEST_RUN_BUSY)
+        try:
+            yield
+        finally:
+            self._sem.release()
+
 
 PREVIEW_ITEMS = 20
 

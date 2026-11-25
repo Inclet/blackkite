@@ -14,6 +14,7 @@ from blackkite.routes import (
     sources,
     unsubscribe,
 )
+from blackkite.sources.testrun import TestRunGate
 
 API_PREFIX = "/api"
 
@@ -33,6 +34,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         per_token=settings.unsubscribe_rate_per_token_per_hour,
         per_ip=settings.unsubscribe_rate_per_ip_per_hour,
     )
+    # Admin test runs in flight at once (every collector type counts).
+    app.state.test_run_gate = TestRunGate(settings.test_runs_max_concurrent)
     app.include_router(auth.router)
     # Every member and admin API route lives under /api so no API path collides
     # with a web page (docs/api-contract.md section 2): admin routes are

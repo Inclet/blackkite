@@ -121,6 +121,13 @@ class Settings(BaseSettings):
     unsubscribe_rate_per_token_per_hour: int = Field(default=10, ge=1)
     unsubscribe_rate_per_ip_per_hour: int = Field(default=300, ge=1)
 
+    # Member source suggestions (spec 4.3): at most this many per user in any
+    # 24 hours; more get 429.
+    suggestions_per_user_per_day: int = Field(default=10, ge=1)
+    # Admin test runs (spec 4.3 step 2), all collector types including
+    # browser_list: at most this many at once in the API process; more get 429.
+    test_runs_max_concurrent: int = Field(default=2, ge=1)
+
     # Mail
     mail_transport: Literal["console", "smtp", "resend"] = "console"
     # Sender. The resend transport requires it to be set explicitly.

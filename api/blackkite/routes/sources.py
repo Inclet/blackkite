@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.exc import IntegrityError
 
 from blackkite.auth.deps import (
@@ -24,7 +24,7 @@ from blackkite.auth.deps import (
 )
 from blackkite.collectors.http import FetchClient, make_fetch_client
 from blackkite.collectors.registry import validate_config
-from blackkite.db.models import Source, SourceRun, SourceSuggestion
+from blackkite.db.models import Source, SourceRun, SourceSuggestion, User
 from blackkite.pipeline.visibility import refresh_verification_for_source
 from blackkite.routes.source_schemas import (
     ORIGINAL_SEARCH_QUERY,
@@ -49,7 +49,13 @@ from blackkite.routes.source_schemas import (
 from blackkite.scoring.backfill import request_user_rescore
 from blackkite.sources import service
 from blackkite.sources.collector_types import collector_type_schemas
-from blackkite.sources.testrun import PreviewResult, preview_source, transient_source
+from blackkite.sources.testrun import (
+    PreviewResult,
+    TestRunBusy,
+    TestRunGate,
+    preview_source,
+    transient_source,
+)
 
 log = logging.getLogger("blackkite.sources")
 
@@ -65,6 +71,17 @@ def get_preview_client_factory(settings: SettingsDep) -> Callable[[], FetchClien
 PreviewClients = Annotated[
     Callable[[], FetchClient], Depends(get_preview_client_factory)
 ]
+
+
+def get_test_run_gate(request: Request) -> TestRunGate:
+    return request.app.state.test_run_gate
+
+
+TestRunGateDep = Annotated[TestRunGate, Depends(get_test_run_gate)]
+
+
+def _too_many_suggestions(limit: int) -> str:
+    return f"You can suggest up to {limit} sources a day. Please try again tomorrow."
 
 
 # --- members -------------------------------------------------------------------------
@@ -118,7 +135,24 @@ def unmute_source(source_id: uuid.UUID, user: CurrentUser, db: DbDep) -> Respons
 @member_router.post(
     "/source-suggestions", status_code=201, response_model=SuggestionOut
 )
-def suggest_source(body: SuggestionIn, user: CurrentUser, db: DbDep) -> SuggestionOut:
+def suggest_source(
+    body: SuggestionIn, user: CurrentUser, db: DbDep, settings: SettingsDep
+) -> SuggestionOut:
+    # Per user, any 24 hours. The user's row is locked so two requests at once
+    # cannot both take the last place.
+    db.execute(sa.select(User.id).where(User.id == user.id).with_for_update())
+    recent = db.scalar(
+        sa.select(sa.func.count())
+        .select_from(SourceSuggestion)
+        .where(
+            SourceSuggestion.user_id == user.id,
+            SourceSuggestion.created_at > sa.func.now() - sa.text("interval '1 day'"),
+        )
+    )
+    limit = settings.suggestions_per_user_per_day
+    if recent >= limit:
+        db.rollback()
+        raise HTTPException(429, _too_many_suggestions(limit))
     s = SourceSuggestion(user_id=user.id, url=body.url, note=body.note)
     db.add(s)
     db.commit()
@@ -381,7 +415,10 @@ def _preview_out(r: PreviewResult) -> PreviewOut:
 
 @admin_router.post("/sources/test-run", response_model=PreviewOut)
 def test_run_unsaved(
-    body: PreviewIn, settings: SettingsDep, clients: PreviewClients
+    body: PreviewIn,
+    settings: SettingsDep,
+    clients: PreviewClients,
+    gate: TestRunGateDep,
 ) -> PreviewOut:
     """Fetch once with an unsaved config; nothing is written anywhere."""
     src = transient_source(
@@ -393,20 +430,35 @@ def test_run_unsaved(
         rate_limit=body.rate_limit,
         status="testing",
     )
-    return _preview_out(
-        preview_source(src, clients(), brave_api_key=settings.brave_api_key)
-    )
+    try:
+        with gate.slot():
+            result = preview_source(
+                src, clients(), brave_api_key=settings.brave_api_key
+            )
+    except TestRunBusy as e:
+        raise HTTPException(429, str(e)) from None
+    return _preview_out(result)
 
 
 @admin_router.post("/sources/{source_id}/test-run", response_model=PreviewOut)
 def test_run_saved(
-    source_id: uuid.UUID, db: DbDep, settings: SettingsDep, clients: PreviewClients
+    source_id: uuid.UUID,
+    db: DbDep,
+    settings: SettingsDep,
+    clients: PreviewClients,
+    gate: TestRunGateDep,
 ) -> PreviewOut:
     """Fetch once with the saved config; no source_run row, no catalogue writes."""
     source = _get_source(db, source_id)
     db.expunge(source)  # nothing the collector does can be flushed back
-    result = preview_source(source, clients(), brave_api_key=settings.brave_api_key)
-    db.rollback()
+    db.rollback()  # no transaction held open while the fetch runs
+    try:
+        with gate.slot():
+            result = preview_source(
+                source, clients(), brave_api_key=settings.brave_api_key
+            )
+    except TestRunBusy as e:
+        raise HTTPException(429, str(e)) from None
     return _preview_out(result)
 
 
