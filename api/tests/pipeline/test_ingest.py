@@ -958,3 +958,27 @@ def test_extension_moves_status_back_to_open(db, make_source, deps):
         ).all()
         assert (ce.old, ce.new) == (old, "open")
         assert "deadline_changed" in codes(opp)
+
+
+def test_multi_stream_source_investment_item_has_no_advice(
+    db, make_source, deps, embedder
+):
+    src = make_source("news", streams=("funding", "investment", "event"))
+    text = "Treasury bond issue: a 5-year bond, coupon 12.5%, auction 9 December 2026."
+    advice = "A five-year bond at 12.5%. Investors should buy before the auction."
+    for stream in (None, "investment"):
+        reply = {"title": q(text), "summary": q(advice, "a 5-year bond")}
+        if stream:
+            reply["stream"] = q(stream, "Treasury bond issue")
+        url = f"https://n.example.org/bond-{stream}"
+        ingest(
+            db,
+            src,
+            [raw(src, url, text)],
+            deps(llm=FakeLLM(reply), embedder=embedder),
+        )
+    found = opps(db)
+    assert len(found) == 2
+    for opp in found:
+        assert opp.summary is None
+        assert "extraction_check" in codes(opp)

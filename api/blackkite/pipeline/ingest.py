@@ -67,7 +67,12 @@ from blackkite.llm.embeddings import Embedder, EmbeddingError
 from blackkite.pipeline.dates import kigali_date, parse_date, parse_extracted_date
 from blackkite.pipeline.dedupe import find_by_url, find_similar
 from blackkite.pipeline.enrich import Enrichment, Fetcher, enrich
-from blackkite.pipeline.extract import Extracted, embedding_text, extract
+from blackkite.pipeline.extract import (
+    Extracted,
+    embedding_text,
+    extract,
+    strip_advice,
+)
 from blackkite.pipeline.normalise import NormalisedItem, normalise
 from blackkite.pipeline.settings import PipelineSettings, get_pipeline_settings
 from blackkite.pipeline.validate import (
@@ -389,6 +394,8 @@ def _ingest_one(
 
     authoritative = created or link.is_original
     if extracted is not None:
+        if opp.stream == "investment":
+            strip_advice(extracted)  # also when the model named another stream
         _apply_extraction(opp, ev, entry, extracted, sid, authoritative, now, review)
 
     if opp.published_at is None and listed_published.value is not None:

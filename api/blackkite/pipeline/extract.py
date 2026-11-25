@@ -347,18 +347,10 @@ def check_reply(
             out.reasons.append("summary copied the source verbatim; removed")
         else:
             out.values["summary"] = summary
-    if out.values.get("stream") == "investment" or (
-        "stream" not in out.values and allowed_streams == ["investment"]
-    ):
-        for name in ("summary", "value_note"):
-            phrase = recommendation_language(out.values.get(name))
-            if phrase:
-                out.values.pop(name)
-                out.evidence.pop(name, None)
-                out.reasons.append(
-                    f"{name} removed: recommendation language ({phrase!r}) "
-                    "in an investment item"
-                )
+    # Investment guard: whenever the item is, or may be, an investment item.
+    stream = out.values.get("stream")
+    if "investment" in allowed_streams and stream in ("investment", None):
+        strip_advice(out)
 
     if out.dropped:
         out.reasons.append(
@@ -366,6 +358,21 @@ def check_reply(
             + ", ".join(sorted(set(out.dropped)))
         )
     return out
+
+
+def strip_advice(out: Extracted) -> None:
+    """Remove summary / value_note that carry recommendation language (spec 1
+    non-goals, spec 10). Idempotent; ingest calls it again for any record filed
+    under ``investment``."""
+    for name in ("summary", "value_note"):
+        phrase = recommendation_language(out.values.get(name))
+        if phrase:
+            out.values.pop(name)
+            out.evidence.pop(name, None)
+            out.reasons.append(
+                f"{name} removed: recommendation language ({phrase!r}) "
+                "in an investment item"
+            )
 
 
 def build_user_message(

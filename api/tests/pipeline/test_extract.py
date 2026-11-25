@@ -167,6 +167,43 @@ def test_factual_investment_summary_is_kept():
     assert check_reply(reply, BOND, ["investment"]).values["summary"] == s
 
 
+ADVICE = "A 5-year bond at 12.5%. Investors should buy before the auction."
+MULTI = ["funding", "investment", "event"]
+
+
+def test_multi_stream_source_unknown_stream_is_policed():
+    reply = ExtractionReply.model_validate(
+        {"summary": q(ADVICE, "a 5-year Treasury bond, coupon 12.5%")}
+    )
+    out = check_reply(reply, BOND, MULTI)
+    assert "summary" not in out.values
+    assert any("recommendation language" in r for r in out.reasons)
+
+
+def test_multi_stream_source_investment_stream_is_policed():
+    reply = ExtractionReply.model_validate(
+        {
+            "stream": q("investment", "Treasury Bond Issue"),
+            "summary": q(ADVICE, "a 5-year Treasury bond, coupon 12.5%"),
+            "value_note": q(
+                "Don't miss the 12.5% coupon", "a 5-year Treasury bond, coupon 12.5%"
+            ),
+        }
+    )
+    out = check_reply(reply, BOND, MULTI)
+    assert "summary" not in out.values and "value_note" not in out.values
+
+
+def test_multi_stream_source_other_stream_is_not_policed():
+    reply = ExtractionReply.model_validate(
+        {
+            "stream": q("event", "Treasury Bond Issue"),
+            "summary": q(ADVICE, "a 5-year Treasury bond, coupon 12.5%"),
+        }
+    )
+    assert "summary" in check_reply(reply, BOND, MULTI).values
+
+
 def test_same_phrase_outside_investment_is_not_policed():
     reply = full_reply(
         summary=q("A good opportunity for carriers. Bids due 30 Nov.", "Lot 2.")
