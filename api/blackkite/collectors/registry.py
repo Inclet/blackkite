@@ -18,7 +18,14 @@ from typing import Any
 
 from pydantic import BaseModel, SecretStr
 
-from blackkite.collectors import forms, html_list, json_api, rss, search_query
+from blackkite.collectors import (
+    custom,
+    forms,
+    html_list,
+    json_api,
+    rss,
+    search_query,
+)
 from blackkite.collectors.base import Collector, CollectorError
 from blackkite.collectors.http import FetchClient
 from blackkite.db.models import COLLECTOR_TYPES
@@ -32,12 +39,14 @@ CONFIG_MODELS: dict[str, type[BaseModel]] = {
     "search_query": search_query.SearchQueryConfig,
     "rss": rss.RssConfig,
     "json_api": json_api.JsonApiConfig,
+    "custom": custom.CustomConfig,
 }
 _PARSERS: dict[str, Callable[[dict[str, Any]], BaseModel]] = {
     "html_list": html_list.parse_config,
     "search_query": search_query.parse_config,
     "rss": rss.parse_config,
     "json_api": json_api.parse_config,
+    "custom": custom.parse_config,
 }
 IMPLEMENTED = tuple(CONFIG_MODELS)
 
@@ -69,6 +78,8 @@ def build_collector(
         return rss.RssCollector(client, preview=preview)
     if collector_type == "json_api":
         return json_api.JsonApiCollector(client, preview=preview)
+    if collector_type == "custom":
+        return custom.CustomCollector(client, preview=preview)
     if collector_type in COLLECTOR_TYPES:
         return UnimplementedCollector(collector_type)
     raise CollectorError(f"unknown collector type {collector_type!r}")
@@ -102,15 +113,21 @@ def config_form(collector_type: str) -> dict[str, Any]:
 
     {"collector_type": "rss", "fields": [{name, type, required, help, default?,
      ...}], "json_schema": {...}}
+
+    For ``custom`` it also has ``collectors``: per allowlisted class, its help
+    line and the fields of its ``options``.
     """
     model = CONFIG_MODELS.get(collector_type)
     if model is None:
         raise ValueError(f"no config form for collector type {collector_type!r}")
-    return {
+    form: dict[str, Any] = {
         "collector_type": collector_type,
         "fields": forms.describe(model),
         "json_schema": model.model_json_schema(),
     }
+    if collector_type == "custom":
+        form["collectors"] = custom.option_forms()
+    return form
 
 
 def config_forms() -> dict[str, dict[str, Any]]:
