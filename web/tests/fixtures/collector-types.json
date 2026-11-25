@@ -1,0 +1,845 @@
+[
+  {
+    "type": "rss",
+    "implemented": true,
+    "schemaSource": "model",
+    "fields": [
+      {
+        "name": "feed_url",
+        "kind": "url",
+        "required": true,
+        "help": "Address of the RSS or Atom feed.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "max_items",
+        "kind": "integer",
+        "required": false,
+        "help": "Read at most this many items per run (1-200).",
+        "default": 50,
+        "options": null,
+        "min": 1.0,
+        "max": 200.0,
+        "fields": null
+      },
+      {
+        "name": "author_as_organisation",
+        "kind": "boolean",
+        "required": false,
+        "help": "Use the item author as the issuing organisation. Only for feeds published by the issuer itself; leave off for news feeds.",
+        "default": false,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      }
+    ]
+  },
+  {
+    "type": "html_list",
+    "implemented": true,
+    "schemaSource": "model",
+    "fields": [
+      {
+        "name": "list_url",
+        "kind": "url",
+        "required": true,
+        "help": "Address of the listing page (page 1).",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "pagination_pattern",
+        "kind": "string",
+        "required": false,
+        "help": "Address of later pages with {page} where the number goes.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "first_page",
+        "kind": "integer",
+        "required": false,
+        "help": "Page number of the first pattern page.",
+        "default": 2,
+        "options": null,
+        "min": 0.0,
+        "max": 1000.0,
+        "fields": null
+      },
+      {
+        "name": "max_pages",
+        "kind": "integer",
+        "required": false,
+        "help": "Pages to read per run, counting list_url as 1.",
+        "default": 1,
+        "options": null,
+        "min": 1.0,
+        "max": 20.0,
+        "fields": null
+      },
+      {
+        "name": "selectors",
+        "kind": "object",
+        "required": true,
+        "help": "Where each field is on the list.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": [
+          {
+            "name": "item",
+            "kind": "string",
+            "required": true,
+            "help": "CSS selector matching one node per listing.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "title",
+            "kind": "selector",
+            "required": true,
+            "help": "Title inside the item. A CSS selector, or {css, attr} to read an attribute.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "link",
+            "kind": "selector",
+            "required": false,
+            "help": "Link to the notice (default: the <a> in or at the title, else in the item). A CSS selector, or {css, attr} to read an attribute.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "date",
+            "kind": "selector",
+            "required": false,
+            "help": "Published date as listed. A CSS selector, or {css, attr} to read an attribute.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "deadline",
+            "kind": "selector",
+            "required": false,
+            "help": "Deadline as listed. A CSS selector, or {css, attr} to read an attribute.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "organisation",
+            "kind": "selector",
+            "required": false,
+            "help": "Issuing organisation. A CSS selector, or {css, attr} to read an attribute.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "snippet",
+            "kind": "selector",
+            "required": false,
+            "help": "Short description text. A CSS selector, or {css, attr} to read an attribute.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          }
+        ]
+      },
+      {
+        "name": "detail",
+        "kind": "object",
+        "required": false,
+        "help": "Optional: follow each link to its detail page.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": [
+          {
+            "name": "selectors",
+            "kind": "object",
+            "required": true,
+            "help": "Selectors applied to each item's detail page; values found there replace the listing's.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": [
+              {
+                "name": "date",
+                "kind": "selector",
+                "required": false,
+                "help": "Published date on the detail page. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "deadline",
+                "kind": "selector",
+                "required": false,
+                "help": "Deadline on the detail page. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "organisation",
+                "kind": "selector",
+                "required": false,
+                "help": "Organisation on the detail page. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "snippet",
+                "kind": "selector",
+                "required": false,
+                "help": "Notice text on the detail page. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              }
+            ]
+          },
+          {
+            "name": "max_items",
+            "kind": "integer",
+            "required": false,
+            "help": "Follow at most this many detail pages per run.",
+            "default": 20,
+            "options": null,
+            "min": 1.0,
+            "max": 50.0,
+            "fields": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "browser_list",
+    "implemented": true,
+    "schemaSource": "model",
+    "fields": [
+      {
+        "name": "list_url",
+        "kind": "url",
+        "required": true,
+        "help": "Address of the listing page (page 1).",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "pagination_pattern",
+        "kind": "string",
+        "required": false,
+        "help": "Address of later pages with {page} where the number goes.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "first_page",
+        "kind": "integer",
+        "required": false,
+        "help": "Page number of the first pattern page.",
+        "default": 2,
+        "options": null,
+        "min": 0.0,
+        "max": 1000.0,
+        "fields": null
+      },
+      {
+        "name": "max_pages",
+        "kind": "integer",
+        "required": false,
+        "help": "Pages to read per run, counting list_url as 1.",
+        "default": 1,
+        "options": null,
+        "min": 1.0,
+        "max": 20.0,
+        "fields": null
+      },
+      {
+        "name": "selectors",
+        "kind": "object",
+        "required": true,
+        "help": "Where each field is on the list.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": [
+          {
+            "name": "item",
+            "kind": "string",
+            "required": true,
+            "help": "CSS selector matching one node per listing.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "title",
+            "kind": "selector",
+            "required": true,
+            "help": "Title inside the item. A CSS selector, or {css, attr} to read an attribute.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "link",
+            "kind": "selector",
+            "required": false,
+            "help": "Link to the notice (default: the <a> in or at the title, else in the item). A CSS selector, or {css, attr} to read an attribute.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "date",
+            "kind": "selector",
+            "required": false,
+            "help": "Published date as listed. A CSS selector, or {css, attr} to read an attribute.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "deadline",
+            "kind": "selector",
+            "required": false,
+            "help": "Deadline as listed. A CSS selector, or {css, attr} to read an attribute.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "organisation",
+            "kind": "selector",
+            "required": false,
+            "help": "Issuing organisation. A CSS selector, or {css, attr} to read an attribute.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "snippet",
+            "kind": "selector",
+            "required": false,
+            "help": "Short description text. A CSS selector, or {css, attr} to read an attribute.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          }
+        ]
+      },
+      {
+        "name": "detail",
+        "kind": "object",
+        "required": false,
+        "help": "Optional: follow each link to its detail page.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": [
+          {
+            "name": "selectors",
+            "kind": "object",
+            "required": true,
+            "help": "Selectors applied to each item's detail page; values found there replace the listing's.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": [
+              {
+                "name": "date",
+                "kind": "selector",
+                "required": false,
+                "help": "Published date on the detail page. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "deadline",
+                "kind": "selector",
+                "required": false,
+                "help": "Deadline on the detail page. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "organisation",
+                "kind": "selector",
+                "required": false,
+                "help": "Organisation on the detail page. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "snippet",
+                "kind": "selector",
+                "required": false,
+                "help": "Notice text on the detail page. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              }
+            ]
+          },
+          {
+            "name": "max_items",
+            "kind": "integer",
+            "required": false,
+            "help": "Follow at most this many detail pages per run.",
+            "default": 20,
+            "options": null,
+            "min": 1.0,
+            "max": 50.0,
+            "fields": null
+          }
+        ]
+      },
+      {
+        "name": "wait_for",
+        "kind": "string",
+        "required": false,
+        "help": "CSS selector to wait for before reading the page (for lists that JavaScript fills in).",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      }
+    ]
+  },
+  {
+    "type": "json_api",
+    "implemented": true,
+    "schemaSource": "model",
+    "fields": [
+      {
+        "name": "endpoint",
+        "kind": "url",
+        "required": true,
+        "help": "Address of the JSON endpoint (GET).",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "params",
+        "kind": "map",
+        "required": false,
+        "help": "Query parameters sent with every request.",
+        "default": {},
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "pagination",
+        "kind": "json",
+        "required": false,
+        "help": "Optional: how to reach later pages (page number or next link). JSON object, one of: mode page: param, start, max_pages; mode next_link: path (required), max_pages.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "mapping",
+        "kind": "object",
+        "required": true,
+        "help": "Where each field is in the response.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": [
+          {
+            "name": "list",
+            "kind": "string",
+            "required": false,
+            "help": "Dotted path, in the whole response, to the array of items. Empty when the response itself is the array.",
+            "default": "",
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "title",
+            "kind": "string",
+            "required": true,
+            "help": "Title. Dotted path into each item (for example buyer.name or tags.0).",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "url",
+            "kind": "url",
+            "required": true,
+            "help": "Link to the notice, or an id for url_template. Dotted path into each item (for example buyer.name or tags.0).",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "url_template",
+            "kind": "string",
+            "required": false,
+            "help": "Build the link from the url value: an address with {value} where the value goes.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "date",
+            "kind": "string",
+            "required": false,
+            "help": "Published date. Dotted path into each item (for example buyer.name or tags.0).",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "deadline",
+            "kind": "string",
+            "required": false,
+            "help": "Deadline. Dotted path into each item (for example buyer.name or tags.0).",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "organisation",
+            "kind": "string",
+            "required": false,
+            "help": "Issuing organisation. Dotted path into each item (for example buyer.name or tags.0).",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "snippet",
+            "kind": "string",
+            "required": false,
+            "help": "Short description (HTML is stripped). Dotted path into each item (for example buyer.name or tags.0).",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "extra",
+            "kind": "map",
+            "required": false,
+            "help": "Other fields to keep: label -> dotted path.",
+            "default": {},
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          }
+        ]
+      },
+      {
+        "name": "max_bytes",
+        "kind": "integer",
+        "required": false,
+        "help": "Largest response accepted, in bytes.",
+        "default": 2000000,
+        "options": null,
+        "min": 1000.0,
+        "max": 5000000.0,
+        "fields": null
+      }
+    ]
+  },
+  {
+    "type": "search_query",
+    "implemented": true,
+    "schemaSource": "model",
+    "fields": [
+      {
+        "name": "queries",
+        "kind": "string_list",
+        "required": true,
+        "help": "Search queries, one request each per run.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "domains",
+        "kind": "string_list",
+        "required": false,
+        "help": "Only keep results from these domains (site: filter).",
+        "default": [],
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "recency_days",
+        "kind": "integer",
+        "required": false,
+        "help": "Only results from roughly the last N days.",
+        "default": null,
+        "options": null,
+        "min": 1.0,
+        "max": 365.0,
+        "fields": null
+      },
+      {
+        "name": "count",
+        "kind": "integer",
+        "required": false,
+        "help": "Results per query (1-20).",
+        "default": 20,
+        "options": null,
+        "min": 1.0,
+        "max": 20.0,
+        "fields": null
+      }
+    ]
+  },
+  {
+    "type": "email_ingest",
+    "implemented": true,
+    "schemaSource": "model",
+    "fields": [
+      {
+        "name": "sender",
+        "kind": "string",
+        "required": true,
+        "help": "Sender address, or a pattern with * and ? (for example *@alerts.example.org).",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "subject_pattern",
+        "kind": "string",
+        "required": false,
+        "help": "Only emails whose subject matches this pattern (* and ?; case-insensitive).",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "parse_mode",
+        "kind": "choice",
+        "required": false,
+        "help": "links: each link in the email is an item. message: one item per email (its subject, and its first matching link).",
+        "default": "links",
+        "options": [
+          "links",
+          "message"
+        ],
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "link_pattern",
+        "kind": "string",
+        "required": false,
+        "help": "Only links matching this pattern (* and ?), for example https://board.example/tender/*.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "min_title_chars",
+        "kind": "integer",
+        "required": false,
+        "help": "links mode: skip links whose text is shorter.",
+        "default": 12,
+        "options": null,
+        "min": 1.0,
+        "max": 100.0,
+        "fields": null
+      },
+      {
+        "name": "folder",
+        "kind": "string",
+        "required": false,
+        "help": "Mailbox folder to read.",
+        "default": "INBOX",
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "since_days",
+        "kind": "integer",
+        "required": false,
+        "help": "Only look at emails received in the last N days.",
+        "default": 14,
+        "options": null,
+        "min": 1.0,
+        "max": 90.0,
+        "fields": null
+      },
+      {
+        "name": "max_messages",
+        "kind": "integer",
+        "required": false,
+        "help": "Read at most this many new emails per run.",
+        "default": 50,
+        "options": null,
+        "min": 1.0,
+        "max": 200.0,
+        "fields": null
+      },
+      {
+        "name": "require_authenticated",
+        "kind": "boolean",
+        "required": false,
+        "help": "Only trust emails the receiving server marked dmarc=pass or dkim=pass for the sender's domain (guards against forged senders).",
+        "default": true,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      }
+    ]
+  },
+  {
+    "type": "custom",
+    "implemented": true,
+    "schemaSource": "model",
+    "fields": [
+      {
+        "name": "collector",
+        "kind": "choice",
+        "required": true,
+        "help": "Which built-in custom collector to run: demo_fictional, jsonld_events",
+        "default": null,
+        "options": [
+          "demo_fictional",
+          "jsonld_events"
+        ],
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "options",
+        "kind": "json",
+        "required": false,
+        "help": "Settings for the chosen collector (see its form). demo_fictional: none. jsonld_events: list_url (required), pagination_pattern, first_page, max_pages, max_items.",
+        "default": {},
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      }
+    ]
+  }
+]
