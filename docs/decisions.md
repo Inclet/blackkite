@@ -35,11 +35,17 @@ Answers to the Phase 0 questions, 2026-11-24. Conflict numbers refer to `PLAN.md
 | 29 | Items with no original source | `aggregator_only` only when every carrying source is an aggregator; publisher/news-only items are `unverified`. Both display as "Not yet confirmed at the source". (Refines spec 5.6.) |
 | 30 | Voyage model | `voyage-3.5`, 1024 dimensions. |
 | 31 | Bot contact URL | Owner will provide it later; required before any real collection. Until then the worker logs a warning. |
-| 32 | Fit word rule (orchestrator, **owner to confirm**) | Strong: fit ≥ 0.7 and eligibility ≥ 0.7, flags allowed. Good: fit ≥ 0.6 and eligibility ≥ 0.5. Possible: fit ≥ 0.4. Otherwise no word. Thresholds in config (`BK_SCORE_FIT_WORD`). Matches the boards (WFP is Strong with a "To check" note). |
+| 32 | Fit word rule (confirmed by the owner 2026-11-25) | Strong: fit ≥ 0.7 and eligibility ≥ 0.7, flags allowed. Good: fit ≥ 0.6 and eligibility ≥ 0.5. Possible: fit ≥ 0.4. Otherwise no word. Thresholds in config (`BK_SCORE_FIT_WORD`). Matches the boards (WFP is Strong with a "To check" note). |
 | 33 | Row subtitle top flag (orchestrator) | The top flag replaces the organisation only on Good items (develoPPP on the boards); Strong items show the organisation. Refines 24. |
-| 34 | Urgent alert level (orchestrator, **owner to confirm**) | Chosen as a fit word ("Strong fits only" / "Strong and good fits"), compared against the best active profile's fit word, never the numeric score. Replaces spec 6 `alert_threshold` with `alert_min_fit`. Default: off until the owner chooses. Events and investments carry no fit word, so they never alert (open question). |
+| 34 | Urgent alert level (confirmed by the owner 2026-11-25) | Chosen as a fit word ("Strong fits only" / "Strong and good fits"), compared against the best active profile's fit word, never the numeric score. Replaces spec 6 `alert_threshold` with `alert_min_fit`. Default: off until the owner chooses. Events and investments carry no fit word, so they never alert (confirmed, decision 40). |
 | 35 | Feed order | Closing soonest first, score as tie-break (feed boards: "Closing soonest first"). Ranking by score applies to the digest. |
 | 36 | Re-scoring off the request path | Profile edits and mutes queue a backfill for the worker (debounced 60 s; an unmute is due on the next tick). Renames and pauses re-judge nothing; reactivating always catches up. Failed backfills back off (1, 5, 15, 60 min, then hourly) and stop after 6 attempts until the next edit; at most 5 profiles per worker tick, after collection. |
 | 37 | NGO-only calls | A business profile with no organisation type is treated as not an NGO, so an explicit NGO-only call is filtered. |
 | 38 | Dismiss reasons | Optional, one of: not my sector, too small, can't meet the requirements, already knew about it, other. |
 | 39 | Member API paths | Phase 4 member routes and member source routes live under `/api`; `/auth/*`, `GET /me` and `/admin/sources*` stay. |
+| 40 | Alerts for events and investments | None; they appear in the weekly digest only. |
+| 41 | Tenders and funding with no fit word | Hidden from the feed (and shortlist suggestions); the digest already leaves them out. A saved item stays on the shortlist. |
+| 42 | Testing-source items for admins | Admin catalogue only; an admin's feed and digest show what members see. |
+| 43 | Unsubscribe | One-click: a signed link in every digest and alert turns that email off without signing in, plus List-Unsubscribe and List-Unsubscribe-Post headers. |
+| 44 | Where collection runs | The VPS. Nothing is deployed without the owner's go-ahead. |
+| 45 | Email provider | Resend. No real email is sent until the owner gives the go-ahead and the key is provided through the secure form. |
