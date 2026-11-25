@@ -20,24 +20,15 @@ def fit_word(
     *,
     fit: float,
     eligibility: float,
-    n_flags: int,
     stream: str,
     cap: FitWord | None = None,
 ) -> FitWord | None:
     if stream not in FIT_WORD_STREAMS:
         return None
     word: FitWord | None = None
-    if (
-        fit >= rule.strong_fit
-        and eligibility >= rule.strong_eligibility
-        and not (rule.strong_requires_no_flags and n_flags)
-    ):
+    if fit >= rule.strong_fit and eligibility >= rule.strong_eligibility:
         word = "strong"
-    elif (
-        fit >= rule.good_fit
-        and eligibility >= rule.good_eligibility
-        and (n_flags or not rule.good_requires_flag)
-    ):
+    elif fit >= rule.good_fit and eligibility >= rule.good_eligibility:
         word = "good"
     elif fit >= rule.possible_fit:
         word = "possible"
