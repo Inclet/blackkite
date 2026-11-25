@@ -87,11 +87,13 @@ test('new source: the config form is rendered from collector-types; a test run p
   });
   const router = renderAt('/admin/sources/new');
   const form = within(await screen.findByRole('form', { name: EDITOR_COPY.newTitle }));
+  // The form waits for collector-types, so the settings are the API's fields, never the JSON fallback.
+  expect(form.queryByLabelText(EDITOR_COPY.wholeConfig)).toBeNull();
   fireEvent.click(form.getByRole('button', { name: 'RSS feed' }));
-  expect(form.getByLabelText('Feed url')).toHaveAccessibleDescription('Address of the RSS or Atom feed.');
+  expect(await form.findByLabelText('Feed url')).toHaveAccessibleDescription('Address of the RSS or Atom feed.');
   fireEvent.click(form.getByRole('button', { name: 'Web page list' }));
+  expect(await form.findByLabelText('Selectors: item')).toBeInTheDocument();
   expect(form.queryByLabelText('Feed url')).toBeNull();
-  expect(form.getByLabelText('Selectors: item')).toBeInTheDocument();
   expect(form.getByLabelText('Max pages (optional)')).toBeInTheDocument();
 
   // A test run checks only the config.
@@ -138,6 +140,21 @@ test('new source: the config form is rendered from collector-types; a test run p
     accessNote: null,
   });
   expect(await screen.findByText(EDITOR_COPY.created)).toBeInTheDocument();
+});
+
+test('new source: the editor waits for collector-types (a slow answer never leaves the config as JSON)', async () => {
+  let answer: (v: unknown) => void = () => {};
+  const slow = new Promise((resolve) => (answer = resolve));
+  editorRoutes({ 'GET /api/admin/collector-types': () => slow });
+  renderAt('/admin/sources/new');
+  // Signed in, the page is drawn, but no form until the types arrive.
+  await waitFor(() => expect(screen.getByRole('heading', { name: EDITOR_COPY.newTitle })).toBeInTheDocument());
+  expect(screen.queryByRole('form', { name: EDITOR_COPY.newTitle })).toBeNull();
+  answer(COLLECTOR_TYPES);
+  const form = within(await screen.findByRole('form', { name: EDITOR_COPY.newTitle }));
+  fireEvent.click(form.getByRole('button', { name: 'RSS feed' }));
+  expect(await form.findByLabelText('Feed url')).toBeInTheDocument();
+  expect(form.queryByLabelText(EDITOR_COPY.wholeConfig)).toBeNull();
 });
 
 test('a failed test run shows its error; a refused one the API\'s reason', async () => {

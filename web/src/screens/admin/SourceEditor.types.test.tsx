@@ -26,6 +26,9 @@ test.each(TYPES.map((t) => t.type))('editor renders every field of the real %s t
   renderAt('/admin/sources/new');
   const form = within(await screen.findByRole('form', { name: EDITOR_COPY.newTitle }));
   fireEvent.click(form.getByRole('button', { name: COLLECTOR_WORDS[type] }));
+  // The type's settings group is drawn from the API's field list (not the JSON fallback).
+  await form.findByRole('group', { name: EDITOR_COPY.config });
+  expect(form.queryByLabelText(EDITOR_COPY.wholeConfig)).toBeNull();
   expect(screen.queryByText(EDITOR_COPY.notBuilt)).toBeNull();
   const fields = fieldsFor(TYPES, type)!;
   for (const f of fields) {
@@ -43,7 +46,7 @@ test('json_api: pagination and mapping fields, with the API help that spells out
   renderAt('/admin/sources/new');
   const form = within(await screen.findByRole('form', { name: EDITOR_COPY.newTitle }));
   fireEvent.click(form.getByRole('button', { name: COLLECTOR_WORDS.json_api }));
-  expect(form.getByLabelText('Pagination (optional)')).toHaveAccessibleDescription(expect.stringContaining('mode page: param, start, max_pages'));
+  expect(await form.findByLabelText('Pagination (optional)')).toHaveAccessibleDescription(expect.stringContaining('mode page: param, start, max_pages'));
   expect(form.getByLabelText('Params (optional)')).toHaveAccessibleDescription(expect.stringContaining('JSON.'));
   for (const name of ['Mapping: title', 'Mapping: url', 'Mapping: list (optional)', 'Mapping: url template (optional)', 'Mapping: extra (optional)']) {
     expect(form.getByLabelText(name)).toBeInTheDocument();
@@ -55,7 +58,7 @@ test('custom: the collector is a choice; its options are JSON with each collecto
   renderAt('/admin/sources/new');
   const form = within(await screen.findByRole('form', { name: EDITOR_COPY.newTitle }));
   fireEvent.click(form.getByRole('button', { name: COLLECTOR_WORDS.custom }));
-  expect(within(form.getByRole('group', { name: 'Collector' })).getByRole('button', { name: 'jsonld_events' })).toBeInTheDocument();
+  expect(within(await form.findByRole('group', { name: 'Collector' })).getByRole('button', { name: 'jsonld_events' })).toBeInTheDocument();
   expect(form.getByLabelText('Options (optional)')).toHaveAccessibleDescription(expect.stringContaining('jsonld_events: list_url (required)'));
 });
 
@@ -64,7 +67,7 @@ test('email_ingest: a switch whose API default is on starts on', async () => {
   renderAt('/admin/sources/new');
   const form = within(await screen.findByRole('form', { name: EDITOR_COPY.newTitle }));
   fireEvent.click(form.getByRole('button', { name: COLLECTOR_WORDS.email_ingest }));
-  expect(form.getByRole('switch', { name: 'Require authenticated (optional)' })).toHaveAttribute('aria-checked', 'true');
+  expect(await form.findByRole('switch', { name: 'Require authenticated (optional)' })).toHaveAttribute('aria-checked', 'true');
   fireEvent.click(form.getByRole('button', { name: COLLECTOR_WORDS.rss }));
   expect(form.getByRole('switch', { name: 'Author as organisation (optional)' })).toHaveAttribute('aria-checked', 'false');
 });

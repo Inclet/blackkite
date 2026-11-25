@@ -156,10 +156,12 @@ function New() {
   const accepted = useResource(suggestionId ? 'admin-suggestions-accepted' : null, (s) => sourcesApi.adminSuggestions('accepted', s));
   const failed = adminFailure('/admin/sources/new', types.error, accepted.error);
   if (failed) return failed;
-  if (suggestionId && !accepted.data) {
+  // Wait for the collector types: an editor drawn before they arrive would start the
+  // config as JSON, and a type chosen in that moment would keep the JSON shape.
+  if (types.loading || (suggestionId && !accepted.data)) {
     return (
       <AppShell path="/admin/sources/new" title={EDITOR_COPY.newTitle}>
-        <LoadState loading={accepted.loading} error={accepted.error} onRetry={accepted.reload} />
+        <LoadState loading={types.loading || accepted.loading} error={accepted.error} onRetry={accepted.reload} />
       </AppShell>
     );
   }
