@@ -10,7 +10,8 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "visual": "playwright test -c tests/visual/playwright.config.ts",
-    "e2e": "playwright test -c tests/e2e/playwright.config.ts --trace off"
+    "e2e": "playwright test -c tests/e2e/playwright.config.ts --trace off",
+    "contract:schemas": "cd ../api && uv run python ../web/tests/contract/dump_schemas.py"
   },
   "dependencies": {
     "react": "^19.3.1",

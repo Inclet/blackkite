@@ -13,7 +13,8 @@
     "skipLibCheck": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    "types": ["node"]
+    "types": ["node"],
+    "resolveJsonModule": true
   },
-  "include": ["vite.config.ts", "apiProxy.ts", "apiProxy.test.ts", "vitest.config.ts", "tests/visual/**/*.ts", "tests/e2e/**/*.ts"]
+  "include": ["vite.config.ts", "apiProxy.ts", "apiProxy.test.ts", "vitest.config.ts", "tests/visual/**/*.ts", "tests/e2e/**/*.ts", "tests/contract/**/*.ts"]
 }

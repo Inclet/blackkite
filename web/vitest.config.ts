@@ -16,7 +16,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}', 'apiProxy.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}', 'apiProxy.test.ts', 'tests/contract/**/*.test.ts'],
     css: { modules: { classNameStrategy: 'non-scoped' } },
   },
 });
