@@ -1,7 +1,7 @@
 # Blackkite developer tasks. Run from the repo root.
 API := cd api &&
 
-.PHONY: install migrate downgrade-base test bootstrap seed-sources worker dev up down
+.PHONY: install migrate downgrade-base test bootstrap seed-sources demo-seed worker dev up down
 
 install:        ## install API dependencies
 	$(API) uv sync
@@ -20,6 +20,9 @@ bootstrap:      ## first admin from BK_FIRST_ADMIN_EMAIL + seed profiles (idempo
 
 seed-sources:   ## seed sources as status testing (idempotent)
 	$(API) uv run bk seed-sources
+
+demo-seed:      ## dev only (BK_ENV=dev): fictional demo catalogue, rules-only scores
+	$(API) uv run bk demo-seed
 
 worker:         ## run the scheduler locally (active/testing sources on their schedules)
 	$(API) uv run bk worker

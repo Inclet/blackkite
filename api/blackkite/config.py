@@ -23,6 +23,11 @@ EMBEDDING_DIM = 1024
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="BK_", env_file=".env", extra="ignore")
 
+    # Where this runs: "dev" on a developer's machine, "prod" on the VPS (set
+    # BK_ENV=prod in the deploy .env). Dev-only commands (bk demo-seed) refuse
+    # to run unless it is "dev".
+    env: Literal["dev", "prod"] = "dev"
+
     # Database (SQLAlchemy URL, psycopg 3 driver)
     database_url: str = (
         "postgresql+psycopg://blackkite:blackkite@localhost:5432/blackkite"

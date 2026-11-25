@@ -69,6 +69,45 @@ def seed_sources() -> None:
         typer.echo(f"  {name}")
 
 
+@app.command("demo-seed")
+def demo_seed_cmd() -> None:
+    """Load a small FICTIONAL catalogue into a dev database and score it for the
+    bootstrap admin, so you can see a ranked feed and a dry-run digest before
+    real sources exist.
+
+    About 10 made-up items across the four streams ("[Demo]" titles, invented
+    organisations, example.com links), on two fictional active sources that are
+    never collected. Scoring is rules-only: no model, no API keys, no network,
+    so tenders and funding show at most a "Possible" fit. Re-running replaces
+    the demo items with fresh dates.
+
+    Runs only when BK_ENV=dev and the database has no non-demo opportunities.
+    Creates the admin from BK_FIRST_ADMIN_EMAIL (like bk bootstrap) if needed.
+
+    This is NOT the Phase 4 exit check: that needs real collected data.
+
+    Then: bk digest --user "$BK_FIRST_ADMIN_EMAIL" --dry-run"""
+    from blackkite.db.session import get_sessionmaker
+    from blackkite.seed.demo import DemoRefused, demo_seed
+
+    settings = get_settings()
+    with get_sessionmaker()() as db:
+        try:
+            r = demo_seed(db, env=settings.env, admin_email=settings.first_admin_email)
+        except DemoRefused as e:
+            db.rollback()
+            typer.echo(f"refused: {e}", err=True)
+            raise typer.Exit(1) from None
+        db.commit()
+    typer.echo(
+        f"demo catalogue: {r.items} fictional items on {r.sources} demo sources"
+        + (f" (replaced {r.replaced})" if r.replaced else "")
+    )
+    typer.echo(f"scored for the admin, rules only: {r.stats.summary()}")
+    typer.echo("not the Phase 4 exit check; that needs real collected data")
+    typer.echo('next: bk digest --user "$BK_FIRST_ADMIN_EMAIL" --dry-run')
+
+
 @app.command("digest-preview")
 def digest_preview(
     fixture: str = typer.Option(
