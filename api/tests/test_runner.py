@@ -8,11 +8,12 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from blackkite.db.models import Opportunity, Source, SourceRun
+from blackkite.db.models import Opportunity, OpportunitySource, Source, SourceRun
 from blackkite.pipeline import ingest
 from blackkite.worker import runner
 from blackkite.worker.main import TICK_SECONDS, build_scheduler
-from tests.fakes import FakeWeb, make_client
+from tests.fakes import FakeWeb, make_client, pipeline_deps
+from tests.pipeline.fakes import FakeEmbedder, FakeLLM, q
 
 H = "notices.example"
 CONFIG = {
@@ -46,8 +47,11 @@ def web():
     w.html(
         H,
         "/tenders",
-        '<ul><li><a href="/n/1">A</a></li><li><a href="/n/2">B</a></li></ul>',
+        '<ul><li><a href="/n/1">Supply of school desks</a></li>'
+        '<li><a href="/n/2">Supply of hospital beds</a></li></ul>',
     )
+    w.html(H, "/n/1", "<p>Supply of school desks. Closing date: 10 December 2026.</p>")
+    w.html(H, "/n/2", "<p>Supply of hospital beds. Closing date: 11 December 2026.</p>")
     w.add(H, "/blocked", httpx.Response(403))
     return w
 
@@ -57,7 +61,7 @@ def recorded(monkeypatch):
     """Replace ingest with one that writes an opportunity per item and reports counts."""
     calls = []
 
-    def fake_ingest(session, source, items):
+    def fake_ingest(session, source, items, **kw):
         calls.append((source.name, [i.url for i in items]))
         for i in items:
             session.add(Opportunity(stream="tender", title=i.title))
@@ -76,11 +80,89 @@ def runs(db, source=None):
     return db.scalars(q).all()
 
 
-def test_stub_ingest_counts_without_writing(db, web):
-    s = add_source(db, "Stubbed")
-    run = runner.run_source(db, s, client=make_client(web))
-    assert (run.status, run.items_found, run.items_new) == ("succeeded", 2, 0)
-    assert db.scalar(sa.select(sa.func.count()).select_from(Opportunity)) == 0
+def extraction(user: str) -> dict:
+    """Fake model reply: quote the title and closing date that appear in the text."""
+    title = next(
+        t for t in ("Supply of school desks", "Supply of hospital beds") if t in user
+    )
+    day = "10" if "desks" in title else "11"
+    return {
+        "stream": q("tender", title),
+        "title": q(title),
+        "deadline_at": q(f"2026-12-{day}", f"Closing date: {day} December 2026"),
+    }
+
+
+def test_run_ingests_through_the_real_pipeline(db, web, tmp_path):
+    s = add_source(db, "Real")
+    llm, emb = FakeLLM(extraction), FakeEmbedder()
+    make_deps = pipeline_deps(tmp_path / "data", llm=llm, embedder=emb)
+    client = make_client(web)
+    run = runner.run_source(db, s, client=client, make_deps=make_deps, now=lambda: NOW)
+    assert (run.status, run.items_found, run.items_new) == ("succeeded", 2, 2)
+    db.expire_all()
+    opps = db.scalars(sa.select(Opportunity).order_by(Opportunity.title)).all()
+    assert [(o.title, o.deadline_at.date().isoformat()) for o in opps] == [
+        ("Supply of hospital beds", "2026-12-11"),
+        ("Supply of school desks", "2026-12-10"),
+    ]
+    assert all(o.embedding is not None and not o.needs_review for o in opps)
+    assert len(llm.calls) == 2
+    # Detail pages were fetched through the run's own guarded client.
+    assert web.paths(H) == ["/robots.txt", "/tenders", "/n/1", "/n/2"]
+    assert {r.headers["user-agent"] for r in web.requests} == {client.user_agent}
+
+    # Second run: same URLs, nothing new, no further model calls.
+    again = runner.run_source(
+        db, s, client=client, make_deps=make_deps, now=lambda: NOW + timedelta(hours=1)
+    )
+    assert (again.items_found, again.items_new) == (2, 0)
+    assert db.scalar(sa.select(sa.func.count()).select_from(Opportunity)) == 2
+    assert len(llm.calls) == 2
+
+
+def test_detail_fetch_obeys_robots(db, web, tmp_path):
+    web.add(
+        H, "/robots.txt", httpx.Response(200, text="User-agent: *\nDisallow: /n/\n")
+    )
+    s = add_source(db, "Robots")
+    llm = FakeLLM(extraction)
+    run = runner.run_source(
+        db,
+        s,
+        client=make_client(web),
+        make_deps=pipeline_deps(tmp_path / "data", llm=llm, embedder=FakeEmbedder()),
+        now=lambda: NOW,
+    )
+    assert (run.status, run.items_found, run.items_new) == ("succeeded", 2, 2)
+    assert "/n/1" not in web.paths(H)
+    db.expire_all()
+    opp = db.scalars(sa.select(Opportunity).order_by(Opportunity.title)).first()
+    assert "robots.txt disallows" in opp.evidence["_enrich"]["errors"][0]
+    # The model saw only the listing text, so no deadline snippet: none was invented.
+    assert opp.deadline_at is None
+
+
+def test_default_deps_get_the_runs_client(db, web, monkeypatch):
+    """Without make_deps the runner calls ingest.default_deps with a fetcher that
+    wraps its client and the source's rate limit."""
+    seen = []
+    real = ingest.default_deps
+
+    def spy(fetcher=None):
+        seen.append(fetcher)
+        return real(fetcher)
+
+    monkeypatch.setattr(ingest, "default_deps", spy)
+    s = add_source(db, "Defaults")
+    s.rate_limit = 7.0
+    db.commit()
+    client = make_client(web)
+    run = runner.run_source(db, s, client=client, now=lambda: NOW)
+    assert run.status == "succeeded"
+    [fetcher] = seen
+    assert fetcher.client is client and fetcher.delay == 7.0
+    assert db.scalar(sa.select(sa.func.count()).select_from(OpportunitySource)) == 2
 
 
 def test_successful_run_records_counts_and_commits_ingest(db, web, recorded):
@@ -102,7 +184,7 @@ def test_failed_collect_marks_run_failed(db, web, recorded):
 
 
 def test_ingest_crash_rolls_back_its_writes(db, web, monkeypatch):
-    def broken(session, source, items):
+    def broken(session, source, items, **kw):
         session.add(Opportunity(stream="tender", title="half-written"))
         session.flush()
         raise RuntimeError("x" * 5000)
@@ -122,7 +204,7 @@ def test_ingest_crash_rolls_back_its_writes(db, web, monkeypatch):
 def test_one_failing_source_never_stops_the_others(Sessions, db, web, monkeypatch):
     real = []
 
-    def ingest_or_crash(session, source, items):
+    def ingest_or_crash(session, source, items, **kw):
         if source.name == "B crashes in ingest":
             raise ValueError("bad item")
         real.append(source.name)

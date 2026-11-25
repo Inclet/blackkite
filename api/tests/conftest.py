@@ -103,6 +103,23 @@ def _clean_tables(request) -> Iterator[None]:
         c.execute(sa.text(f"TRUNCATE {names} CASCADE"))
 
 
+@pytest.fixture(autouse=True)
+def _no_real_model_clients(monkeypatch, tmp_path) -> None:
+    """No test may reach a real model API, whatever keys the environment holds:
+    the pipeline's default dependencies keep the given fetcher but have no LLM and
+    no embedder, and keep documents under the test's tmp_path. Tests that need
+    model output pass fakes explicitly (``deps=`` / ``make_deps=``)."""
+    from blackkite.pipeline import ingest
+    from blackkite.pipeline.settings import PipelineSettings
+
+    settings = PipelineSettings(_env_file=None, data_dir=tmp_path / "data")
+
+    def keyless(fetcher=None):
+        return ingest.PipelineDeps(fetcher=fetcher, settings=settings)
+
+    monkeypatch.setattr(ingest, "default_deps", keyless)
+
+
 @pytest.fixture
 def Sessions(engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, expire_on_commit=False)

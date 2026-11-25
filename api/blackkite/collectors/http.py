@@ -364,6 +364,21 @@ class FetchClient:
         return _Robots(None, False, now)
 
 
+class ClientFetcher:
+    """Adapts a ``FetchClient`` to the pipeline's ``Fetcher`` protocol
+    (``get(url) -> (content_type, bytes)``), so the enrich stage's detail pages and
+    PDFs go through the same URL guard, robots.txt, per-host delay, User-Agent, size
+    cap and cache as the source's listing pages."""
+
+    def __init__(self, client: FetchClient, delay: float | None = None) -> None:
+        self.client = client
+        self.delay = delay
+
+    def get(self, url: str) -> tuple[str, bytes]:
+        resp = self.client.get(url, delay=self.delay)
+        return resp.headers.get("content-type", ""), resp.content
+
+
 def make_fetch_client(
     settings: Settings,
     *,
@@ -386,6 +401,7 @@ def make_fetch_client(
 
 __all__ = [
     "CachedResponse",
+    "ClientFetcher",
     "DbHttpCache",
     "FetchClient",
     "FetchError",

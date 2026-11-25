@@ -463,7 +463,14 @@ def test_reject_suggestion(admin, member):
 # --- test runs -----------------------------------------------------------------------------------
 
 
-def test_saved_test_run_previews_and_writes_nothing(admin, db, web):
+def test_saved_test_run_previews_and_writes_nothing(admin, db, web, monkeypatch):
+    from blackkite.pipeline import ingest
+
+    def forbidden(*a, **kw):
+        raise AssertionError("test run called the pipeline")
+
+    monkeypatch.setattr(ingest, "ingest_items", forbidden)
+    monkeypatch.setattr(ingest, "default_deps", forbidden)
     s = add_source(db, "Notices", "testing")
     before = (db.get(Source, s.id).updated_at, db.get(Source, s.id).status)
     r = admin.post(f"/admin/sources/{s.id}/test-run")

@@ -5,6 +5,12 @@ collector, hands the items to ``blackkite.pipeline.ingest.ingest_items``. The
 ingest writes and the run's success are committed together; on any failure the
 ingest work is rolled back and the run is marked failed with the error text.
 
+The pipeline's fetcher (detail pages and PDFs, enrich stage) is the run's own
+``FetchClient`` wrapped in ``ClientFetcher`` with the source's rate limit, so
+enrichment gets the same URL guard, robots.txt, per-host delay, User-Agent, size
+cap and cache as collection. ``make_deps(fetcher) -> PipelineDeps`` builds the
+rest (model clients); it defaults to ``ingest.default_deps``.
+
 ``run_due_sources`` runs every active/testing source whose schedule says a run is
 due. Each source is isolated: one failing (even with an unexpected exception)
 never stops the others. A Postgres advisory lock per source makes sure two
@@ -21,7 +27,7 @@ from __future__ import annotations
 import logging
 import uuid
 import zlib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -31,10 +37,11 @@ from pydantic import SecretStr
 from sqlalchemy.orm import Session, sessionmaker
 
 from blackkite.collectors.base import CollectorError
-from blackkite.collectors.http import FetchClient
+from blackkite.collectors.http import ClientFetcher, FetchClient
 from blackkite.collectors.registry import build_collector
 from blackkite.db.models import Source, SourceRun
 from blackkite.pipeline import ingest
+from blackkite.pipeline.enrich import Fetcher
 from blackkite.sources.service import SCHEDULED_STATUSES, parse_schedule
 
 log = logging.getLogger("blackkite.worker")
@@ -42,6 +49,8 @@ log = logging.getLogger("blackkite.worker")
 ERROR_MAX_CHARS = 2000
 # First key of the two-int advisory lock: "BK". Second: crc32 of the source id.
 LOCK_NAMESPACE = 0x424B
+
+DepsFactory = Callable[[Fetcher], ingest.PipelineDeps]
 
 
 def _now() -> datetime:
@@ -62,6 +71,7 @@ def run_source(
     *,
     client: FetchClient,
     brave_api_key: SecretStr | None = None,
+    make_deps: DepsFactory | None = None,
     now=_now,
 ) -> SourceRun:
     run = SourceRun(source_id=source.id, status="running", started_at=now())
@@ -73,7 +83,9 @@ def run_source(
             source.collector_type, client, brave_api_key=brave_api_key
         )
         items = collector.fetch(source)
-        result = ingest.ingest_items(session, source, items)
+        fetcher = ClientFetcher(client, delay=source.rate_limit)
+        deps = (make_deps or ingest.default_deps)(fetcher)
+        result = ingest.ingest_items(session, source, items, deps=deps, now=now())
         run.status = "succeeded"
         run.items_found = result.items_found
         run.items_new = result.items_new
@@ -167,6 +179,7 @@ def run_source_locked(
     client: FetchClient,
     brave_api_key: SecretStr | None = None,
     default_schedule: str | None = None,
+    make_deps: DepsFactory | None = None,
     now=_now,
 ) -> RunOutcome:
     """Run one source under its advisory lock. With ``default_schedule`` set, the
@@ -189,7 +202,12 @@ def run_source_locked(
                 ):
                     return RunOutcome(source_id, source.name, "skipped_not_due")
             run = run_source(
-                s, source, client=client, brave_api_key=brave_api_key, now=now
+                s,
+                source,
+                client=client,
+                brave_api_key=brave_api_key,
+                make_deps=make_deps,
+                now=now,
             )
             return RunOutcome(
                 source_id,
@@ -225,6 +243,7 @@ def run_due_sources(
     client: FetchClient,
     default_schedule: str,
     brave_api_key: SecretStr | None = None,
+    make_deps: DepsFactory | None = None,
     now=_now,
 ) -> list[RunOutcome]:
     with sessions() as s:
@@ -239,6 +258,7 @@ def run_due_sources(
                     client=client,
                     brave_api_key=brave_api_key,
                     default_schedule=default_schedule,
+                    make_deps=make_deps,
                     now=now,
                 )
             )

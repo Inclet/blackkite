@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -95,3 +97,19 @@ def make_client(web: FakeWeb, clock: FakeClock | None = None, **kw) -> FetchClie
         default_delay=kw.pop("default_delay", 1.0),
         **kw,
     )
+
+
+def pipeline_deps(data_dir: Path, llm: Any = None, embedder: Any = None):
+    """``make_deps`` for the runner: the run's own fetcher, fake model clients, and
+    documents kept under ``data_dir``."""
+    from blackkite.pipeline.ingest import PipelineDeps
+    from blackkite.pipeline.settings import PipelineSettings
+
+    settings = PipelineSettings(_env_file=None, data_dir=data_dir)
+
+    def make(fetcher):
+        return PipelineDeps(
+            fetcher=fetcher, llm=llm, embedder=embedder, settings=settings
+        )
+
+    return make

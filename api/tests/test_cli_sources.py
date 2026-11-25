@@ -7,8 +7,16 @@ import sqlalchemy as sa
 from typer.testing import CliRunner
 
 from blackkite import cli
-from blackkite.db.models import HttpCache, Source, SourceRun
+from blackkite.db.models import (
+    HttpCache,
+    Opportunity,
+    OpportunitySource,
+    Source,
+    SourceRun,
+)
+from blackkite.pipeline import ingest
 from tests.fakes import FakeWeb, make_client
+from tests.pipeline.fakes import FakeEmbedder, FakeLLM, q
 
 H = "notices.example"
 CONFIG = {
@@ -80,14 +88,71 @@ def test_test_source_prints_preview_and_writes_nothing(bk, db):
     assert db.scalar(sa.select(sa.func.count()).select_from(HttpCache)) == 0
 
 
-def test_run_source_records_a_run_and_caches(bk, db):
+def test_test_source_never_reaches_the_pipeline(bk, db, monkeypatch):
+    """Spec 4.3 step 2: a test run shows parsed items and writes nothing; it must not
+    call ingest (no enrichment, no model call, no catalogue rows)."""
+
+    def forbidden(*a, **kw):
+        raise AssertionError("test run called the pipeline")
+
+    monkeypatch.setattr(ingest, "ingest_items", forbidden)
+    monkeypatch.setattr(ingest, "default_deps", forbidden)
+    add(db, "Notices")
+    r = bk("test-source", "Notices")
+    assert r.exit_code == 0, r.output
+    assert "Notices: 1 items parsed" in r.output
+    assert bk.web.paths(H) == ["/robots.txt", "/tenders"]  # no detail page followed
+    assert db.scalar(sa.select(sa.func.count()).select_from(Opportunity)) == 0
+
+
+def test_run_source_records_a_run_and_caches(bk, db, monkeypatch, tmp_path):
+    from blackkite.pipeline.settings import PipelineSettings
+
+    bk.web.html(
+        H,
+        "/n/1",
+        "<h1>Invitation for Bids</h1><p>Supply of laboratory reagents to district "
+        "hospitals. Bids close on 30 November 2026.</p>",
+    )
+    llm, emb = (
+        FakeLLM(
+            {
+                "stream": q("tender", "Invitation for Bids"),
+                "summary": q(
+                    "A district agency wants reagents supplied to its hospitals."
+                ),
+                "deadline_at": q("2026-11-30", "Bids close on 30 November 2026"),
+            }
+        ),
+        FakeEmbedder(),
+    )
+    settings = PipelineSettings(_env_file=None, data_dir=tmp_path / "docs")
+    monkeypatch.setattr(
+        ingest,
+        "default_deps",
+        lambda fetcher=None: ingest.PipelineDeps(
+            fetcher=fetcher, llm=llm, embedder=emb, settings=settings
+        ),
+    )
     s = add(db, "Notices")
     r = bk("run-source", str(s.id))
     assert r.exit_code == 0, r.output
-    assert "Notices: succeeded, found 1, new 0" in r.output
+    assert "Notices: succeeded, found 1, new 1" in r.output
     (run,) = db.scalars(sa.select(SourceRun)).all()
-    assert run.status == "succeeded" and run.items_found == 1
+    assert run.status == "succeeded" and (run.items_found, run.items_new) == (1, 1)
     assert db.get(HttpCache, f"https://{H}/tenders").etag == '"abc"'
+    (opp,) = db.scalars(sa.select(Opportunity)).all()
+    assert (
+        opp.title == "Invitation for Bids" and opp.verification == "verified_original"
+    )
+    assert opp.evidence["deadline_at"]["snippet"] == "Bids close on 30 November 2026"
+    assert opp.embedding is not None and len(llm.calls) == 1
+    (link,) = db.scalars(sa.select(OpportunitySource)).all()
+    assert link.url == f"https://{H}/n/1" and link.is_original
+
+    r = bk("run-source", "Notices")
+    assert "Notices: succeeded, found 1, new 0" in r.output
+    assert db.scalar(sa.select(sa.func.count()).select_from(Opportunity)) == 1
 
 
 def test_run_source_failure_exit_code(bk, db):
