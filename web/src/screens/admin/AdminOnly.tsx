@@ -63,7 +63,10 @@ export function BackToAdmin({ to = '/admin', label = 'Admin' }: { to?: string; l
   const link = useAppLink();
   return (
     <div>
-      <BackLink {...link(to)}>{label}</BackLink>
+      {/* Named "Back to …": the sidebar has a link with the same text. */}
+      <BackLink {...link(to)} aria-label={`Back to ${label.toLowerCase()}`}>
+        {label}
+      </BackLink>
     </div>
   );
 }

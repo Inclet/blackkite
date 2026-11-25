@@ -65,6 +65,7 @@ test('/admin/sources: grouped by status with health in words, last run and the g
   // Groups in order: active, testing, …, retired.
   expect(screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'))).toEqual(['Active', 'Testing', 'Retired']);
   expect(screen.getByRole('button', { name: ADMIN_SOURCES_COPY.add })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Back to admin' })).toHaveAttribute('href', '/admin');
 });
 
 function editorRoutes(extra: Record<string, unknown> = {}) {
@@ -201,6 +202,7 @@ test('run history and error log', async () => {
   editorRoutes();
   renderAt('/admin/sources/src-1');
   const runs = within(await screen.findByRole('region', { name: EDITOR_COPY.runs }));
+  expect(screen.getByRole('link', { name: 'Back to sources' })).toHaveAttribute('href', '/admin/sources');
   expect(runs.getByText('24 Nov 2026, 06:00')).toBeInTheDocument();
   expect(runs.getByText('9 found · 2 new')).toBeInTheDocument();
   expect(runs.getByText('Worked')).toBeInTheDocument();
