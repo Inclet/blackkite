@@ -207,6 +207,26 @@ def digest_cmd(
     typer.echo("digest sent")
 
 
+@app.command("rotate-unsubscribe")
+def rotate_unsubscribe(
+    user: str = typer.Option(..., "--user", help="Email of the account."),
+) -> None:
+    """Revoke every unsubscribe link already sent to one account (decision 43).
+    Emails sent from now on carry new links. Exit code 1: no such user."""
+    from blackkite.auth.service import find_user_by_email
+    from blackkite.db.session import get_sessionmaker
+    from blackkite.delivery.unsubscribe import rotate_nonce
+
+    with get_sessionmaker()() as db:
+        account = find_user_by_email(db, user)
+        if account is None:
+            typer.echo("error: no account with that email", err=True)
+            raise typer.Exit(1)
+        rotate_nonce(account)
+        db.commit()
+    typer.echo("unsubscribe links revoked; new emails carry new links")
+
+
 # --- sources and worker -------------------------------------------------------------
 
 

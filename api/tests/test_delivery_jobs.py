@@ -257,3 +257,27 @@ def test_refusal_log_resets_each_kigali_day():
     tuesday = datetime(2026, 11, 30, 22, 30, tzinfo=UTC)
     assert log.note(uid, "digest", tuesday, exc)
     assert len(log._seen) == 1
+
+
+def test_bk_rotate_unsubscribe_revokes_old_links(bk, db, client, settings):
+    from blackkite.db.models import User
+    from blackkite.delivery.unsubscribe import make_token
+
+    ana = _seed(db)
+    ben = _seed(db, "ben@example.com")
+    old = make_token(settings, ana, "digest")
+    old_nonce = ana.unsubscribe_nonce
+    ben_token = make_token(settings, ben, "digest")
+    r = bk("rotate-unsubscribe", "--user", "ANA@example.com")
+    assert r.exit_code == 0, r.output
+    assert "revoked" in r.output
+    db.expire_all()
+    fresh = db.get(User, ana.id)
+    assert fresh.unsubscribe_nonce != old_nonce
+    assert client.post("/api/unsubscribe", json={"token": old}).status_code == 400
+    new = make_token(settings, fresh, "digest")
+    assert client.post("/api/unsubscribe", json={"token": new}).status_code == 200
+    # Only that account's links change.
+    assert client.post("/api/unsubscribe", json={"token": ben_token}).status_code == 200
+    r = bk("rotate-unsubscribe", "--user", "nobody@example.com")
+    assert r.exit_code == 1 and "no account" in r.output
