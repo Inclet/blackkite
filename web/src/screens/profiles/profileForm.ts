@@ -70,6 +70,8 @@ export const ERRORS = {
   streams: 'Choose at least one stream.',
   /** The Components board's own wording for a number field. */
   number: 'Use a number, such as 100.',
+  /** A count with decimals (the API takes whole trucks). */
+  whole: 'Use a whole number, such as 100.',
   rwf: 'Use an amount in Rwandan francs, such as 5,000,000.',
   ticketOrder: 'Make this at least the smallest ticket.',
   tonnageOrder: 'Make this at least the smallest load.',
@@ -167,7 +169,12 @@ export function validate(f: ProfileForm): FormErrors {
   if (!f.name.trim()) e.name = ERRORS.name;
   if (f.streams.length === 0) e.streams = ERRORS.streams;
   for (const k of f.type === 'business' ? BUSINESS_NUMBERS : PERSONAL_NUMBERS) {
-    if (Number.isNaN(parseNumber(f[k]))) e[k] = k === 'minContractRwf' || k.startsWith('ticket') ? ERRORS.rwf : ERRORS.number;
+    const n = parseNumber(f[k]);
+    // Counts and francs are whole numbers in the API (it refuses 2.5 trucks); only tonnage takes decimals.
+    const whole = !k.startsWith('tonnage');
+    if (Number.isNaN(n) || (whole && n !== null && !Number.isInteger(n))) {
+      e[k] = k === 'minContractRwf' || k.startsWith('ticket') ? ERRORS.rwf : Number.isNaN(n) ? ERRORS.number : ERRORS.whole;
+    }
   }
   if (f.type === 'personal' && !e.ticketMin && !e.ticketMax) {
     const lo = parseNumber(f.ticketMin);

@@ -126,3 +126,10 @@ test('tonnage validation: whole tonnes for a range, largest not below smallest',
   expect(validate({ ...f, tonnageMin: 'lots', tonnageMax: '' })).toEqual({ tonnageMin: ERRORS.number });
   expect(validate({ ...f, tonnageMin: '2.5', tonnageMax: '2.5' })).toEqual({});
 });
+
+test('counts and francs must be whole numbers (the API refuses decimals there)', () => {
+  const f = toForm(IRONJI, 'business');
+  expect(validate({ ...f, trucksInNetwork: '2.5', minContractRwf: '5000000.5' })).toEqual({ trucksInNetwork: ERRORS.whole, minContractRwf: ERRORS.rwf });
+  const p = { ...toForm(null, 'personal'), name: 'P', ticketMin: '0.5' };
+  expect(validate(p)).toEqual({ ticketMin: ERRORS.rwf });
+});
