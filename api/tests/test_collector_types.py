@@ -1,14 +1,9 @@
 """GET /api/admin/collector-types: config form schema per collector type (spec 4.2),
-read from the collectors' own config models."""
+read from the collectors' own config forms (registry.config_forms)."""
 
 from __future__ import annotations
 
-import sys
-import types
-from typing import Annotated, Literal
-
 import pytest
-from pydantic import BaseModel, Field
 
 from blackkite.db.models import COLLECTOR_TYPES
 from blackkite.sources import collector_types as ct
@@ -52,6 +47,7 @@ def test_html_list_fields_come_from_its_model(admin_client):
         "detail",
     ]
     url = _field(fields, "list_url")
+    assert url["help"] == "Address of the listing page (page 1)."
     assert (url["kind"], url["required"]) == ("url", True) and url["help"]
     pages = _field(fields, "max_pages")
     assert (pages["kind"], pages["default"], pages["min"], pages["max"]) == (
@@ -80,73 +76,106 @@ def test_search_query_fields(admin_client):
     assert (days["kind"], days["min"], days["max"]) == ("integer", 1, 365)
 
 
-def test_types_without_a_model_get_their_spec_fields(monkeypatch):
-    monkeypatch.setattr(ct, "config_model", lambda t: None)
-    schemas = {s.type: s for s in ct.collector_type_schemas()}
-    assert [f.name for f in schemas["rss"].fields] == ["feed_url"]
-    assert [f.name for f in schemas["json_api"].fields] == [
-        "endpoint",
-        "params",
-        "field_mapping",
+def test_every_type_comes_from_its_config_model(admin_client):
+    for s in admin_client.get("/api/admin/collector-types").json():
+        assert s["implemented"] is True and s["schemaSource"] == "model", s["type"]
+
+
+def test_rss_fields(admin_client):
+    s = _by_type(admin_client.get("/api/admin/collector-types").json())["rss"]
+    assert [f["name"] for f in s["fields"]] == [
+        "feed_url",
+        "max_items",
+        "author_as_organisation",
     ]
-    assert [f.name for f in schemas["email_ingest"].fields] == ["sender"]
-    assert [f.name for f in schemas["custom"].fields] == ["class_name"]
-    assert all(s.schema_source == "declared" for s in schemas.values())
+    feed = _field(s["fields"], "feed_url")
+    assert (feed["kind"], feed["required"]) == ("url", True)
+    flag = _field(s["fields"], "author_as_organisation")
+    assert (flag["kind"], flag["default"]) == ("boolean", False)
 
 
-def test_browser_list_falls_back_to_html_list_fields():
-    if ct.config_model("browser_list") is not None:
-        pytest.skip("browser_list has its own config model now")
-    s = {s.type: s for s in ct.collector_type_schemas()}["browser_list"]
-    assert s.schema_source == "declared"
-    assert [f.name for f in s.fields][:2] == ["list_url", "pagination_pattern"]
+def test_json_api_fields(admin_client):
+    s = _by_type(admin_client.get("/api/admin/collector-types").json())["json_api"]
+    f = {x["name"]: x for x in s["fields"]}
+    assert f["endpoint"]["kind"] == "url"
+    # Values may be numbers too, but strings are accepted: a map editor works.
+    assert f["params"]["kind"] == "map" and f["params"]["default"] == {}
+    pag = f["pagination"]
+    assert pag["kind"] == "json" and pag["required"] is False
+    assert "mode page: param, start, max_pages" in pag["help"]
+    assert "mode next_link: path (required), max_pages" in pag["help"]
+    mapping = f["mapping"]
+    assert mapping["kind"] == "object" and mapping["required"] is True
+    assert _field(mapping["fields"], "title")["kind"] == "string"
+    assert _field(mapping["fields"], "extra")["kind"] == "map"
 
 
-def test_a_new_collector_model_is_picked_up_by_convention(monkeypatch):
-    """A module blackkite.collectors.<type> with a <Type>Config model replaces the
-    declared fields with no change here; descriptions become help text."""
-
-    class Mapping(BaseModel):
-        title: str
-        url: str = "link"
-
-    class JsonApiConfig(BaseModel):
-        endpoint: str = Field(description="Where the JSON comes from.")
-        method: Literal["GET", "POST"] = "GET"
-        page_size: Annotated[int, Field(ge=1, le=100)] | None = None
-        params: dict[str, str] = {}
-        mapping: Mapping
-        flags: list[Mapping] = []
-        raw: dict[str, int] = {}
-        insecure: bool = False
-
-    mod = types.ModuleType("blackkite.collectors.json_api")
-    mod.JsonApiConfig = JsonApiConfig
-    monkeypatch.setitem(sys.modules, "blackkite.collectors.json_api", mod)
-    s = {s.type: s for s in ct.collector_type_schemas()}["json_api"]
-    assert s.schema_source == "model"
-    got = {f.name: f for f in s.fields}
-    assert (got["endpoint"].kind, got["endpoint"].help) == (
-        "url",
-        "Where the JSON comes from.",
+def test_email_ingest_fields(admin_client):
+    s = _by_type(admin_client.get("/api/admin/collector-types").json())["email_ingest"]
+    sender = _field(s["fields"], "sender")
+    assert (sender["kind"], sender["required"]) == ("string", True)
+    mode = _field(s["fields"], "parse_mode")
+    assert (mode["kind"], mode["options"], mode["default"]) == (
+        "choice",
+        ["links", "message"],
+        "links",
     )
-    assert (got["method"].kind, got["method"].options) == ("choice", ["GET", "POST"])
-    assert (got["page_size"].min, got["page_size"].max) == (1, 100)
-    assert got["params"].kind == "map" and got["raw"].kind == "json"
-    assert got["mapping"].kind == "object"
-    assert [f.name for f in got["mapping"].fields] == ["title", "url"]
-    assert got["flags"].kind == "object_list"
-    assert got["insecure"].kind == "boolean" and got["insecure"].default is False
 
 
-def test_a_collector_that_fails_to_import_falls_back(monkeypatch):
-    real = ct.importlib.import_module
+def test_custom_fields_name_each_collectors_options(admin_client):
+    s = _by_type(admin_client.get("/api/admin/collector-types").json())["custom"]
+    which = _field(s["fields"], "collector")
+    assert which["kind"] == "choice" and "jsonld_events" in which["options"]
+    opts = _field(s["fields"], "options")
+    assert opts["kind"] == "json"
+    assert "jsonld_events: list_url (required)" in opts["help"]
 
-    def boom(name):
-        if name == "blackkite.collectors.rss":
-            raise RuntimeError("broken collector")
-        return real(name)
 
-    monkeypatch.setattr(ct.importlib, "import_module", boom)
-    s = {s.type: s for s in ct.collector_type_schemas()}["rss"]
-    assert s.schema_source == "declared" and s.fields
+def test_browser_list_has_html_list_fields_and_wait_for(admin_client):
+    s = _by_type(admin_client.get("/api/admin/collector-types").json())
+    names = [f["name"] for f in s["browser_list"]["fields"]]
+    assert names == [f["name"] for f in s["html_list"]["fields"]] + ["wait_for"]
+
+
+def test_every_field_kind_is_one_the_editor_knows():
+    kinds = {
+        "string", "url", "integer", "number", "boolean", "choice", "string_list",
+        "selector", "object", "object_list", "map", "json",
+    }  # fmt: skip
+
+    def walk(fields):
+        for f in fields:
+            assert f.kind in kinds and f.help, f
+            if f.kind in ("object", "object_list"):
+                assert f.fields
+                walk(f.fields)
+            else:
+                assert f.fields is None, f
+
+    for s in ct.collector_type_schemas():
+        walk(s.fields)
+
+
+def test_object_lists_map_to_nested_fields():
+    f = ct.to_field(
+        {
+            "name": "rows",
+            "required": False,
+            "help": "Rows.",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "fields": [
+                    {"name": "a", "required": True, "help": "A.", "type": "integer"}
+                ],
+            },
+            "minimum": None,
+        }
+    )
+    assert f.kind == "object_list" and [x.name for x in f.fields] == ["a"]
+
+
+def test_requires_admin(client, db, outbox):
+    make_user(db, "m@example.com")
+    member = sign_in(client, outbox, "m@example.com")
+    assert member.get("/api/admin/collector-types").status_code == 403

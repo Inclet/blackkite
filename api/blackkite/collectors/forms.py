@@ -10,7 +10,8 @@
 or the item fields for arrays of objects); nested objects carry ``fields``; a
 choice of shapes carries ``variants`` (a field list each) and the
 ``discriminator`` field that tells them apart; free-form objects (a mapping of
-names to values) carry ``free_form: true``. Every
+names to values) carry ``free_form: true`` and ``values``: ``"string"`` when every
+value may be a string (string-to-string maps), else ``"any"``. Every
 field has help text: a model without a description on some field is a bug, and
 ``describe`` raises so the tests catch it.
 """
@@ -50,6 +51,16 @@ def _non_null(schema: dict[str, Any], defs: dict[str, Any]) -> tuple[dict, bool]
         if k in schema:
             merged[k] = schema[k]
     return merged, nullable
+
+
+def _value_type(schema: Any, defs: dict[str, Any]) -> str:
+    """ "string" when a free-form object's values may all be given as strings."""
+    if not isinstance(schema, dict):
+        return "any"
+    schema = _resolve(schema, defs)
+    options = schema.get("anyOf") or [schema]
+    types_ = {_resolve(o, defs).get("type") for o in options}
+    return "string" if "string" in types_ and None not in types_ else "any"
 
 
 def _field(
@@ -93,6 +104,7 @@ def _field(
         out["fields"] = _fields(s, defs)
     elif out["type"] == "object":
         out["free_form"] = True
+        out["values"] = _value_type(s.get("additionalProperties", True), defs)
     if s.get("alternatives"):
         out["alternatives"] = s["alternatives"]
     return out

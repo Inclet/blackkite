@@ -289,8 +289,8 @@ class ConfigFieldOut(CamelModel):
 
 class CollectorTypeOut(CamelModel):
     """GET /api/admin/collector-types: the config form for each type (spec 4.2).
-    ``schemaSource`` is "model" when read from the collector's config model,
-    "declared" when the collector has none yet (spec 4.2 fields)."""
+    ``schemaSource`` is always "model" now: every type's fields are read from its
+    collector's config model. "declared" stays in the type for older clients."""
 
     model_config = ConfigDict(from_attributes=True)
     type: CollectorType
