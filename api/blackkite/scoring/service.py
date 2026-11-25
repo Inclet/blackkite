@@ -545,7 +545,6 @@ def score_pair(
         s.fit_word,
         fit=fit_conf,
         eligibility=elig_conf,
-        n_flags=len(flags),
         stream=opp.stream,
         cap=cap,  # type: ignore[arg-type]
     )

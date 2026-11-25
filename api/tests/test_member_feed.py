@@ -48,7 +48,7 @@ def ana(db):
 
 
 def _items(client: TestClient, **params) -> list[dict]:
-    r = client.get("/feed", params=params)
+    r = client.get("/api/feed", params=params)
     assert r.status_code == 200, r.text
     return r.json()["items"]
 
@@ -57,17 +57,35 @@ def _ids(client: TestClient, **params) -> list[str]:
     return [i["id"] for i in _items(client, **params)]
 
 
+_FIT_WORDS = {
+    "strong": "Strong fit",
+    "good": "Good fit",
+    "possible": "Possible fit",
+    "not-scored": "Not scored",
+}
+
+
+def _subtitle(item: dict) -> str:
+    """web/src/lib/subtitle.ts rowSubtitle, desktop, tender/funding branch."""
+    top = item.get("topFlag")
+    parts = [
+        _FIT_WORDS.get(item["fit"]) if item["fit"] else None,
+        top[0].lower() + top[1:] if top else item["organisation"],
+    ]
+    return " · ".join(p for p in parts if p)
+
+
 # --- auth -----------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
     ("method", "path"),
     [
-        ("get", "/feed"),
-        ("get", "/shortlist"),
-        ("get", f"/opportunities/{uuid.uuid4()}"),
-        ("put", f"/opportunities/{uuid.uuid4()}/state"),
-        ("put", f"/opportunities/{uuid.uuid4()}/note"),
+        ("get", "/api/feed"),
+        ("get", "/api/shortlist"),
+        ("get", f"/api/opportunities/{uuid.uuid4()}"),
+        ("put", f"/api/opportunities/{uuid.uuid4()}/state"),
+        ("put", f"/api/opportunities/{uuid.uuid4()}/note"),
     ],
 )
 def test_every_route_needs_a_session(client, method, path):
@@ -122,16 +140,18 @@ def _wfp(db, user):
 def test_wfp_item_matches_the_reference_fixture(db, ana, login):
     opp = _wfp(db, ana)
     c = login(ana.email)
-    body = c.get("/feed").json()
+    body = c.get("/api/feed").json()
     assert body["user"] == {"name": "Ana"}
     assert body["digest"] == {"channel": "email"}
     [item] = body["items"]
-    # web/src/fixtures/reference.ts, item wfp-logistics, word for word. The board
-    # shows no top flag for a strong fit; the contract's topFlag is the first flag.
-    assert item.pop("topFlag") == "May require owned fleet"
+    # web/src/fixtures/reference.ts, item wfp-logistics, word for word: Strong with
+    # a flag, so no topFlag (contract section 2); the flag shows as To check.
+    assert "topFlag" not in item
+    assert _subtitle(item) == "Strong fit · World Food Programme"
     assert item == {
         "id": str(opp.id),
         "stream": "tender",
+        "state": "unseen",
         "title": "Logistics, transport and warehousing support",
         "organisation": "World Food Programme",
         "organisationShort": "WFP",
@@ -157,6 +177,94 @@ def test_wfp_item_matches_the_reference_fixture(db, ana, login):
             "originalUrl": "https://www.jobinrwanda.com/jobs/tender",
         },
     }
+
+
+def test_developpp_item_matches_the_reference_fixture(db, ana, login):
+    org = f.source(db, "develoPPP site", kind="original", publisher="develoPPP")
+    opp = f.opportunity(
+        db,
+        "develoPPP Ventures, cohort 6",
+        stream="funding",
+        organisation="develoPPP",
+        location="Rwanda",
+        deadline_at=kigali(2026, 12, 31),
+        verification="verified_original",
+        evidence={"_trust": "confirmed"},
+    )
+    f.link(db, opp, org, "https://www.developpp.de/", is_original=True)
+    ironji = f.profile(db, ana, "Ironji-Trade")
+    f.score(
+        db,
+        ana,
+        opp,
+        ironji,
+        70,
+        fit_word="good",
+        reasons=[
+            "It backs growing companies in Africa that want to scale a proven business."
+        ],
+        flags=[
+            {
+                "code": "model_other",
+                "label": "Needs matching funds",
+                "quote": "matching funds",
+                "to_check": "it needs matching funds from your side.",
+            }
+        ],
+    )
+    db.commit()
+    [item] = _items(login(ana.email))
+    # web/src/fixtures/reference.ts, item developpp-6, word for word except two
+    # things: hideOnPhone is web-only (decision 4), and the fixture's trust copy
+    # says "the programme’s" where the API fills in the source's publisher.
+    trust = item["detail"].pop("trust")
+    assert trust == {
+        "state": "confirmed",
+        "desktop": "Matched to the call on develoPPP’s own site.",
+        "phone": "Matched to the call on develoPPP’s own site.",
+    }
+    assert item == {
+        "id": str(opp.id),
+        "stream": "funding",
+        "state": "unseen",
+        "title": "develoPPP Ventures, cohort 6",
+        "organisation": "develoPPP",
+        "fit": "good",
+        "topFlag": "Needs matching funds",
+        "deadline": "2026-12-31",
+        "detail": {
+            "profile": "Ironji-Trade",
+            "location": "Rwanda",
+            "reasons": [
+                (
+                    "It backs growing companies in Africa that want to scale a "
+                    "proven business."
+                )
+            ],
+            "toCheck": "To check: it needs matching funds from your side.",
+            "originalUrl": "https://www.developpp.de/",
+        },
+    }
+    assert _subtitle(item) == "Good fit · needs matching funds"
+
+
+@pytest.mark.parametrize(
+    ("word", "flags", "top"),
+    [
+        ("strong", [{"label": "Value unknown"}], None),
+        ("good", [{"label": "Value unknown"}], "Value unknown"),
+        ("good", [], None),
+        ("possible", [{"label": "Value unknown"}], None),
+    ],
+)
+def test_top_flag_only_for_good_fit(db, ana, login, word, flags, top):
+    src = f.source(db, "Src")
+    opp = f.opportunity(db, "X", deadline_at=kigali(2026, 12, 10))
+    f.link(db, opp, src)
+    f.score(db, ana, opp, f.profile(db, ana, "P"), 70, fit_word=word, flags=flags)
+    db.commit()
+    [item] = _items(login(ana.email))
+    assert item["fit"] == word and item.get("topFlag") == top
 
 
 def test_event_item_matches_the_reference_fixture(db, ana, login):
@@ -193,6 +301,7 @@ def test_event_item_matches_the_reference_fixture(db, ana, login):
     assert item == {
         "id": str(opp.id),
         "stream": "event",
+        "state": "unseen",
         "title": "ABH Summit and Grand Finale",
         "organisation": "Africa's Business Heroes",
         "fit": None,
@@ -323,7 +432,7 @@ def test_best_profile_and_hard_filtered_rows(db, ana, login):
     assert set(only_a) == {"Both"}
     assert only_a["Both"]["fit"] == "possible"
     # The detail page still opens a filtered item, with no fit shown.
-    r = c.get(f"/opportunities/{gone.id}")
+    r = c.get(f"/api/opportunities/{gone.id}")
     assert r.status_code == 200 and r.json()["fit"] is None
 
 
@@ -408,18 +517,18 @@ def test_no_route_touches_another_users_private_item(db, ana, login):
     db.commit()
     c = login(ana.email)
     for opp in (theirs, hidden):
-        assert c.get(f"/opportunities/{opp.id}").status_code == 404
+        assert c.get(f"/api/opportunities/{opp.id}").status_code == 404
         for state in ("saved", "dismissed", "acting", "done"):
-            r = c.put(f"/opportunities/{opp.id}/state", json={"state": state})
+            r = c.put(f"/api/opportunities/{opp.id}/state", json={"state": state})
             assert r.status_code == 404
-        r = c.put(f"/opportunities/{opp.id}/note", json={"note": "mine now"})
+        r = c.put(f"/api/opportunities/{opp.id}/note", json={"note": "mine now"})
         assert r.status_code == 404
-    assert c.get(f"/opportunities/{uuid.uuid4()}").status_code == 404
+    assert c.get(f"/api/opportunities/{uuid.uuid4()}").status_code == 404
     assert db.scalar(sa.select(sa.func.count()).select_from(UserOpportunity)) == 0
     # Ben still sees his own item, with no trace of Ana.
     b = login(other.email)
     assert [i["title"] for i in _items(b)] == ["Ben's private"]
-    r = b.get(f"/opportunities/{theirs.id}")
+    r = b.get(f"/api/opportunities/{theirs.id}")
     assert r.status_code == 200
     assert r.json()["detail"]["note"] is None
     assert r.json()["detail"]["trust"]["desktop"] == (
@@ -435,23 +544,23 @@ def test_states_and_notes_are_per_user(db, ana, login):
     db.commit()
     a, b = login(ana.email), login(ben.email)
     r = a.put(
-        f"/opportunities/{opp.id}/state",
+        f"/api/opportunities/{opp.id}/state",
         json={"state": "dismissed", "dismissReason": "too far"},
     )
     assert r.status_code == 200
     assert r.json()["state"] == "dismissed" and r.json()["dismissReason"] == "too far"
-    a.put(f"/opportunities/{opp.id}/note", json={"note": "  call Monday "})
+    a.put(f"/api/opportunities/{opp.id}/note", json={"note": "  call Monday "})
     assert _items(a) == []
     assert [i["id"] for i in _items(a, state="dismissed")] == [str(opp.id)]
     # Ben's view is untouched.
     assert [i["id"] for i in _items(b)] == [str(opp.id)]
-    detail_b = b.get(f"/opportunities/{opp.id}").json()["detail"]
+    detail_b = b.get(f"/api/opportunities/{opp.id}").json()["detail"]
     assert detail_b["note"] is None and detail_b["state"] == "unseen"
-    detail_a = a.get(f"/opportunities/{opp.id}").json()["detail"]
+    detail_a = a.get(f"/api/opportunities/{opp.id}").json()["detail"]
     assert detail_a["note"] == "call Monday"
     assert detail_a["state"] == "dismissed" and detail_a["dismissReason"] == "too far"
     # Moving off dismissed drops the reason; the note stays.
-    r = a.put(f"/opportunities/{opp.id}/state", json={"state": "saved"})
+    r = a.put(f"/api/opportunities/{opp.id}/state", json={"state": "saved"})
     assert r.json() == {
         "opportunityId": str(opp.id),
         "state": "saved",
@@ -468,17 +577,19 @@ def test_state_body_is_validated(db, ana, login):
     db.commit()
     c = login(ana.email)
     assert (
-        c.put(f"/opportunities/{opp.id}/state", json={"state": "liked"}).status_code
+        c.put(f"/api/opportunities/{opp.id}/state", json={"state": "liked"}).status_code
         == 422
     )
     assert (
         c.put(
-            f"/opportunities/{opp.id}/state", json={"state": "saved", "x": 1}
+            f"/api/opportunities/{opp.id}/state", json={"state": "saved", "x": 1}
         ).status_code
         == 422
     )
     assert (
-        c.put(f"/opportunities/{opp.id}/note", json={"note": "x" * 5001}).status_code
+        c.put(
+            f"/api/opportunities/{opp.id}/note", json={"note": "x" * 5001}
+        ).status_code
         == 422
     )
 
@@ -498,7 +609,7 @@ def test_shortlist_is_saved_and_acting_soonest_first(db, ana, login):
         f.state(db, ana, o, st)
         rows[title] = o
     db.commit()
-    r = login(ana.email).get("/shortlist")
+    r = login(ana.email).get("/api/shortlist")
     assert [i["title"] for i in r.json()] == [
         "Saved soon",
         "Acting later",
@@ -542,8 +653,8 @@ def test_filters(db, ana, login):
         str(ev.id),
         str(undated.id),
     }
-    assert c.get("/feed", params={"stream": "jobs"}).status_code == 422
-    assert c.get("/feed", params={"verification": "confirmed"}).status_code == 422
+    assert c.get("/api/feed", params={"stream": "jobs"}).status_code == 422
+    assert c.get("/api/feed", params={"verification": "confirmed"}).status_code == 422
 
 
 def test_items_only_from_muted_sources_leave_the_feed(db, ana, login):
@@ -558,7 +669,7 @@ def test_items_only_from_muted_sources_leave_the_feed(db, ana, login):
     db.commit()
     c = login(ana.email)
     assert [i["title"] for i in _items(c)] == ["Both"]
-    assert c.get(f"/opportunities/{only_muted.id}").status_code == 200
+    assert c.get(f"/api/opportunities/{only_muted.id}").status_code == 200
 
 
 # --- opportunity page -----------------------------------------------------------------------
@@ -613,7 +724,7 @@ def test_opportunity_detail(db, ana, login):
     )
     f.state(db, ana, opp, "saved", note="Ask about subcontracting")
     db.commit()
-    r = login(ana.email).get(f"/opportunities/{opp.id}")
+    r = login(ana.email).get(f"/api/opportunities/{opp.id}")
     assert r.status_code == 200
     body = r.json()
     d = body["detail"]
@@ -641,3 +752,50 @@ def test_opportunity_detail(db, ana, login):
     assert "snippet" not in fields["organisation"]
     # The change from a hidden source is not shown.
     assert [c["field"] for c in d["changes"]] == ["deadline_at"]
+
+
+def test_best_profile_ignores_a_higher_inactive_profile(db, ana, login):
+    src = f.source(db, "Src")
+    live = f.profile(db, ana, "Live")
+    old = f.profile(db, ana, "Old")
+    old.active = False
+    opp = f.opportunity(db, "X", deadline_at=kigali(2026, 12, 10))
+    f.link(db, opp, src)
+    f.score(db, ana, opp, live, 40, fit_word="possible")
+    f.score(db, ana, opp, old, 95, fit_word="good", flags=[{"label": "Value unknown"}])
+    db.commit()
+    c = login(ana.email)
+    [item] = _items(c)
+    assert item["fit"] == "possible" and item["detail"]["profile"] == "Live"
+    assert "topFlag" not in item
+    assert c.get(f"/api/opportunities/{opp.id}").json()["detail"]["profile"] == "Live"
+    assert _items(c, profile=str(old.id)) == []
+
+
+def test_feed_items_carry_the_callers_state(db, ana, login):
+    """Contract section 2: FeedItem.state on feed, shortlist and detail items."""
+    src = f.source(db, "Src")
+    opp = f.opportunity(db, "X", deadline_at=kigali(2026, 12, 10))
+    f.link(db, opp, src)
+    db.commit()
+    a = login(ana.email)
+    make_user(db, "ben@example.com")
+    b = login("ben@example.com")
+    assert [i["state"] for i in _items(a)] == ["unseen"]
+    for state, in_shortlist in [
+        ("saved", True),
+        ("acting", True),
+        ("done", False),
+        ("unseen", False),
+    ]:
+        r = a.put(f"/api/opportunities/{opp.id}/state", json={"state": state})
+        assert r.status_code == 200, r.text
+        detail = a.get(f"/api/opportunities/{opp.id}").json()
+        assert detail["state"] == state and detail["detail"]["state"] == state
+        shortlist = a.get("/api/shortlist").json()
+        assert [i["state"] for i in shortlist] == ([state] if in_shortlist else [])
+        if state != "done":
+            assert [i["state"] for i in _items(a, state=state)] == [state]
+    # Per user: Ben's view is his own.
+    a.put(f"/api/opportunities/{opp.id}/state", json={"state": "saved"})
+    assert [i["state"] for i in _items(b)] == ["unseen"]

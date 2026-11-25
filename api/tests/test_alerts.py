@@ -160,3 +160,31 @@ def test_alert_html_is_email_safe():
     assert "<b>T</b>" not in html and "&lt;b&gt;T&lt;/b&gt;" in html
     for bad in ("<svg", "<style", "class=", "display: flex"):
         assert bad not in html
+
+
+def test_inactive_profiles_are_ignored(db, ana, w, settings):
+    old = f.profile(db, ana, "Old")
+    old.active = False
+    # Active profile below the threshold; the inactive one's 99 does not count.
+    low = urgent(db, ana, w, "Low for the active profile", 50)
+    f.score(db, ana, low, old, 99)
+    # Scored only by the inactive profile.
+    only_old = f.opportunity(
+        db,
+        "Only the old profile",
+        deadline_at=NOW + timedelta(days=2),
+        created_at=TODAY_9AM,
+    )
+    f.link(db, only_old, w.src)
+    f.score(db, ana, only_old, old, 99)
+    # Found yesterday by the active profile; today's row is the inactive one's,
+    # so it was not found today.
+    stale = urgent(db, ana, w, "Found yesterday", 90, created=YESTERDAY)
+    f.score(db, ana, stale, old, 99).created_at = TODAY_9AM
+    db.commit()
+    assert send_alerts(db, ana, settings, MemoryTransport(), NOW) == 0
+
+    old.active = True
+    db.commit()
+    out = MemoryTransport()
+    assert send_alerts(db, ana, settings, out, NOW) == 3

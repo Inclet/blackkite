@@ -71,7 +71,7 @@ def pair(db, client, outbox):
 def test_export_has_only_the_callers_data(db, client, pair):
     u, other = pair
     shared, _mine, _theirs = _everything(db, u, other)
-    r = client.get("/me/export")
+    r = client.get("/api/me/export")
     assert r.status_code == 200
     body = r.json()
     assert body["account"]["email"] == "ana@example.com"
@@ -105,10 +105,10 @@ def test_delete_removes_every_per_user_row_and_own_private_items(
     u, other = pair
     shared, mine, theirs = _everything(db, u, other)
     uid, shared_id, mine_id, theirs_id = u.id, shared.id, mine.id, theirs.id
-    r = client.delete("/me")
+    r = client.delete("/api/me")
     assert r.status_code == 204
     assert "bk_session=" in r.headers["set-cookie"]
-    assert client.get("/feed").status_code == 401
+    assert client.get("/api/feed").status_code == 401
     db.expunge_all()
     with engine.connect() as c:
         for table in PER_USER_TABLES:
@@ -146,11 +146,11 @@ def test_last_admin_cannot_delete_themselves(db, client, outbox):
     make_user(db, "boss@example.com", role="admin")
     make_user(db, "old@example.com", role="admin", status="deactivated")
     sign_in(client, outbox, "boss@example.com")
-    r = client.delete("/me")
+    r = client.delete("/api/me")
     assert r.status_code == 409
     assert client.get("/me").status_code == 200
 
 
 def test_need_a_session(client):
-    assert client.get("/me/export").status_code == 401
-    assert client.delete("/me").status_code == 401
+    assert client.get("/api/me/export").status_code == 401
+    assert client.delete("/api/me").status_code == 401

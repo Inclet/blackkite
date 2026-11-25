@@ -299,33 +299,29 @@ R = FitWordRule()
 
 
 @pytest.mark.parametrize(
-    "fit,elig,flags,word",
+    "fit,elig,word",
     [
-        (0.8, 0.8, 0, "strong"),
-        (0.8, 0.8, 1, "good"),
-        (0.65, 0.55, 1, "good"),
-        (0.9, 0.6, 0, "possible"),  # contract: good needs a flag (see settings)
-        (0.45, 0.1, 0, "possible"),
-        (0.39, 0.9, 0, None),
+        (0.8, 0.8, "strong"),
+        (0.7, 0.7, "strong"),
+        (0.65, 0.55, "good"),
+        (0.9, 0.6, "good"),  # misses strong only on eligibility
+        (0.6, 0.5, "good"),
+        (0.9, 0.49, "possible"),
+        (0.59, 0.9, "possible"),
+        (0.45, 0.1, "possible"),
+        (0.39, 0.9, None),
     ],
 )
-def test_fit_word_contract_rule(fit, elig, flags, word):
-    assert (
-        fit_word(R, fit=fit, eligibility=elig, n_flags=flags, stream="tender") == word
-    )
+def test_fit_word_contract_rule(fit, elig, word):
+    assert fit_word(R, fit=fit, eligibility=elig, stream="tender") == word
 
 
 def test_fit_word_config_and_caps():
-    lenient = FitWordRule(good_requires_flag=False)
+    strict = FitWordRule(strong_eligibility=0.95)
+    assert fit_word(strict, fit=0.9, eligibility=0.9, stream="funding") == "good"
     assert (
-        fit_word(lenient, fit=0.9, eligibility=0.6, n_flags=0, stream="funding")
-        == "good"
-    )
-    assert (
-        fit_word(
-            R, fit=0.9, eligibility=0.9, n_flags=0, stream="tender", cap="possible"
-        )
+        fit_word(R, fit=0.9, eligibility=0.9, stream="tender", cap="possible")
         == "possible"
     )
     for stream in ("event", "investment"):
-        assert fit_word(R, fit=1, eligibility=1, n_flags=0, stream=stream) is None
+        assert fit_word(R, fit=1, eligibility=1, stream=stream) is None

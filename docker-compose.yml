@@ -4,6 +4,7 @@
 #   docker compose run --rm api bk bootstrap    # first admin + seed profiles
 #   docker compose run --rm api bk seed-sources # seed sources (status testing)
 #   docker compose up -d worker                 # scheduler: runs active/testing sources
+#   BK_ENV=dev docker compose run --rm api bk demo-seed   # dev only: fictional demo data
 name: blackkite
 
 services:
@@ -33,6 +34,7 @@ services:
     environment:
       BK_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-blackkite}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-blackkite}
       BK_DATA_DIR: /app/data
+      BK_ENV: ${BK_ENV:-prod}   # deploy default; bk demo-seed needs dev
     volumes:
       - bk-data:/app/data   # downloaded documents (never served to members)
     depends_on:
@@ -59,6 +61,7 @@ services:
     environment:
       BK_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-blackkite}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-blackkite}
       BK_DATA_DIR: /app/data
+      BK_ENV: ${BK_ENV:-prod}   # deploy default; bk demo-seed needs dev
     volumes:
       - bk-data:/app/data   # the worker's enrich stage writes documents here
     depends_on:

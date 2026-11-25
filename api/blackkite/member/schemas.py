@@ -93,6 +93,9 @@ class FeedItem(CamelModel):
 
     id: str
     stream: Stream
+    # The caller's state for the item (decision 19), always sent (contract
+    # section 2); also in OpportunityDetail.state.
+    state: State
     title: str
     organisation: str
     organisation_short: str | None = None
@@ -170,7 +173,7 @@ class OpportunityDetail(FeedItemDetail):
     documents: list[DocumentOut]
     changes: list[ChangeOut]
     note: str | None
-    # The caller's state for this item (decision 19); not in FeedItem.
+    # The caller's state for this item (decision 19); same as FeedItem.state.
     state: State
     dismiss_reason: str | None = None
 

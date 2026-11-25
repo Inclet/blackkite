@@ -43,7 +43,7 @@ def _seed(db, admin):
 
 def test_lists_public_items_including_testing_only(db, client, admin):
     _seed(db, admin)
-    body = client.get("/admin/catalogue").json()
+    body = client.get("/api/admin/catalogue").json()
     assert body["total"] == 2
     first, second = body["items"]
     assert first["title"] == "Testing only"  # needs review first
@@ -60,13 +60,13 @@ def test_lists_public_items_including_testing_only(db, client, admin):
         }
     ]
     assert second["title"] == "Shown" and second["memberVisible"] is True
-    only = client.get("/admin/catalogue", params={"needsReview": "true"}).json()
+    only = client.get("/api/admin/catalogue", params={"needsReview": "true"}).json()
     assert [i["title"] for i in only["items"]] == ["Testing only"]
 
 
 def test_review_clears_flag_and_reasons(db, client, admin):
     hidden, _ = _seed(db, admin)
-    r = client.post(f"/admin/catalogue/{hidden.id}/review")
+    r = client.post(f"/api/admin/catalogue/{hidden.id}/review")
     assert r.status_code == 200
     assert r.json()["needsReview"] is False and r.json()["reviewReasons"] == []
     db.expire_all()
@@ -80,7 +80,7 @@ def test_review_clears_flag_and_reasons(db, client, admin):
     assert ce.field == "needs_review" and ce.old["reasons"] == REASONS
     assert ce.new["reviewed_by"] == str(admin.id)
     # Idempotent.
-    assert client.post(f"/admin/catalogue/{hidden.id}/review").status_code == 200
+    assert client.post(f"/api/admin/catalogue/{hidden.id}/review").status_code == 200
     assert db.scalar(sa.select(sa.func.count()).select_from(ChangeEvent)) == 1
 
 
@@ -88,15 +88,15 @@ def test_private_items_are_not_reviewable(db, client, admin):
     _seed(db, admin)
     for title in ("Private", "Admin private"):
         opp = db.scalar(sa.select(Opportunity).where(Opportunity.title == title))
-        assert client.post(f"/admin/catalogue/{opp.id}/review").status_code == 404
+        assert client.post(f"/api/admin/catalogue/{opp.id}/review").status_code == 404
 
 
 def test_members_get_403_and_anonymous_401(db, client, outbox):
     o = f.opportunity(db, "X")
     db.commit()
-    assert client.get("/admin/catalogue").status_code == 401
-    assert client.post(f"/admin/catalogue/{o.id}/review").status_code == 401
+    assert client.get("/api/admin/catalogue").status_code == 401
+    assert client.post(f"/api/admin/catalogue/{o.id}/review").status_code == 401
     make_user(db, "m@example.com")
     sign_in(client, outbox, "m@example.com")
-    assert client.get("/admin/catalogue").status_code == 403
-    assert client.post(f"/admin/catalogue/{o.id}/review").status_code == 403
+    assert client.get("/api/admin/catalogue").status_code == 403
+    assert client.post(f"/api/admin/catalogue/{o.id}/review").status_code == 403

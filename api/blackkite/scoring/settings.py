@@ -16,19 +16,14 @@ COMPONENTS = ("fit", "eligibility", "value", "time", "source")
 
 
 class FitWordRule(BaseModel):
-    """docs/api-contract.md section 1 (proposal, owner to confirm). Checked in order:
-    strong, good, possible; otherwise null."""
+    """docs/api-contract.md section 1 (revised 2026-11-25, owner to confirm).
+    Checked in order: strong, good, possible; otherwise null. Flags do not
+    change the word: a strong item may carry a "To check" note (WFP board)."""
 
     strong_fit: float = 0.7
     strong_eligibility: float = 0.7
-    # Strong needs an item with no flags.
-    strong_requires_no_flags: bool = True
     good_fit: float = 0.6
     good_eligibility: float = 0.5
-    # The contract says good is "with at least one flag". Read literally, an
-    # unflagged item that misses strong only on eligibility (e.g. fit 0.9,
-    # eligibility 0.6) falls to possible. Set false to let good take it.
-    good_requires_flag: bool = True
     possible_fit: float = 0.4
 
 

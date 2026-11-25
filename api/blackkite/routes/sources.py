@@ -1,8 +1,10 @@
-"""Source routes. Members: sources page, mute, suggest (spec 3, 4.4). Admins: the
-registry, status changes, run history, test runs, suggestion review (spec 4.3)."""
+"""Source routes. Members (mounted under /api): sources page, mute, suggest (spec 3,
+4.4). Admins (/admin): the registry, status changes, run history, test runs,
+suggestion review (spec 4.3)."""
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Callable
 from dataclasses import asdict
@@ -11,7 +13,9 @@ from typing import Annotated, Literal
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
+from blackkite import scoring
 from blackkite.auth.deps import (
     AdminUser,
     CurrentUser,
@@ -40,6 +44,8 @@ from blackkite.routes.source_schemas import (
 )
 from blackkite.sources import service
 from blackkite.sources.testrun import PreviewResult, preview_source, transient_source
+
+log = logging.getLogger("blackkite.sources")
 
 member_router = APIRouter()
 admin_router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
@@ -88,6 +94,7 @@ def mute_source(source_id: uuid.UUID, user: CurrentUser, db: DbDep) -> Response:
         raise HTTPException(404, "Source not found")
     service.mute(db, user, source)
     db.commit()
+    rescore_user(db, user.id)
     return Response(status_code=204)
 
 
@@ -96,7 +103,20 @@ def unmute_source(source_id: uuid.UUID, user: CurrentUser, db: DbDep) -> Respons
     # Works whatever the source's status now, so a mute is never stuck.
     service.unmute(db, user, source_id)
     db.commit()
+    rescore_user(db, user.id)
     return Response(status_code=204)
+
+
+def rescore_user(db: Session, user_id: uuid.UUID) -> None:
+    """Re-score the caller's profiles after a mute change, so ``muted_source_only``
+    rows (spec 7 hard filter) appear or clear. The mute is already committed; a
+    scoring failure is logged and rolled back, never answered as an error."""
+    try:
+        scoring.score_user(db, user_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        log.exception("re-scoring after a mute change failed for user %s", user_id)
 
 
 @member_router.post(

@@ -146,7 +146,8 @@ def test_unsupported_model_flags_are_dropped(db, profiles, make_opp):
     assert [(f["code"], f["label"]) for f in b["flags"]] == [
         ("model_experience", "Check experience")
     ]
-    assert b["fit_word"] == "good"  # flagged, so not strong
+    # Flags do not lower the word (contract section 1, revised): strong with a note.
+    assert b["fit_word"] == "strong"
 
 
 def test_71_flags_end_to_end(db, profiles, make_opp, make_source):
@@ -179,7 +180,9 @@ def test_71_flags_end_to_end(db, profiles, make_opp, make_source):
     assert flags["umucyo_registration"]["label"] == "Needs Umucyo supplier registration"
     assert flags["value_unknown"]["label"] == "Value unknown"
     assert r.score_breakdown["hard_filtered"] is None
-    assert r.score_breakdown["fit_word"] != "strong"
+    # Model says fit 0.85, eligibility 0.8: strong even with four flags (the WFP
+    # board shows Strong with a "To check" note).
+    assert r.score_breakdown["fit_word"] == "strong"
     # The model was told which rule flags were already raised.
     assert "May require owned fleet" in llm.calls[0]["user"]
 
