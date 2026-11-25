@@ -27,6 +27,8 @@ DIGEST_CHANNELS = ("email", "telegram")  # spec 8: email first, Telegram second
 # adding one later is a CHECK swap (see enum() in db/base.py).
 DIGEST_FREQUENCIES = ("weekly", "off")
 DIGEST_DAYS = ("mon",)
+# Urgent alerts by fit word (spec 8, spec 12: never the numeric score). NULL = off.
+ALERT_MIN_FITS = ("strong", "good")
 SOURCE_KINDS = ("original", "publisher", "aggregator", "news", "community")
 SOURCE_STATUSES = ("suggested", "testing", "active", "paused", "retired")
 COLLECTOR_TYPES = (
@@ -179,10 +181,6 @@ class DigestSetting(Base):
     __tablename__ = "digest_setting"
     __table_args__ = (
         sa.UniqueConstraint("user_id", "channel"),
-        sa.CheckConstraint(
-            "alert_threshold IS NULL OR alert_threshold BETWEEN 0 AND 100",
-            name="alert_threshold_range",
-        ),
         in_list_check("streams", STREAMS, "streams_valid"),
     )
 
@@ -200,7 +198,10 @@ class DigestSetting(Base):
     day: Mapped[str] = mapped_column(
         enum(*DIGEST_DAYS, name="day"), nullable=False, server_default="mon"
     )
-    alert_threshold: Mapped[int | None] = mapped_column(sa.SmallInteger)
+    # Lowest fit word that sends an urgent alert; NULL turns alerts off.
+    alert_min_fit: Mapped[str | None] = mapped_column(
+        enum(*ALERT_MIN_FITS, name="alert_min_fit")
+    )
     # NULL means "the streams of the user's profiles".
     streams: Mapped[list[str] | None] = mapped_column(ARRAY(sa.String(32)))
     created_at: Mapped[datetime] = created_at()

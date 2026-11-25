@@ -59,6 +59,8 @@ CLOSED_STATUSES = ("expired", "awarded", "cancelled")
 # Streams that show a fit word; events and investments never do (decision 24).
 SCORED_STREAMS = ("tender", "funding")
 FIT_WORDS = ("strong", "good", "possible")
+# Order of fit words for comparisons (alerts: "at least good"); no word ranks 0.
+FIT_RANK = {"possible": 1, "good": 2, "strong": 3}
 SHORTLIST_STATES = ("saved", "acting")
 TO_CHECK_PREFIX = "To check: "
 

@@ -38,7 +38,7 @@ def _everything(db, u, other):
     f.state(db, other, shared, "dismissed", note="other's note")
     db.add(
         DigestSetting(
-            user_id=u.id, channel="email", address=u.email, alert_threshold=60
+            user_id=u.id, channel="email", address=u.email, alert_min_fit="good"
         )
     )
     db.add(DigestLog(user_id=u.id, opportunity_ids=[shared.id], details={"items": []}))
@@ -77,7 +77,7 @@ def test_export_has_only_the_callers_data(db, client, pair):
     assert body["account"]["email"] == "ana@example.com"
     assert [p["name"] for p in body["profiles"]] == ["Ironji-Trade"]
     assert body["profiles"][0]["data"]["minContractRwf"] == 5000000
-    assert body["digestSettings"][0]["alertThreshold"] == 60
+    assert body["digestSettings"][0]["alertMinFit"] == "good"
     assert body["states"] == [
         {
             "opportunityId": str(shared.id),

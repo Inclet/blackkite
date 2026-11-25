@@ -18,21 +18,21 @@ def test_defaults_without_a_row(client, ana, db):
         "channel": "email",
         "frequency": "weekly",
         "day": "mon",
-        "alertThreshold": None,
+        "alertMinFit": None,
         "streams": None,
     }
     assert db.query(DigestSetting).count() == 0
 
 
 def test_put_creates_then_updates_own_row(client, ana, db):
-    body = {"frequency": "off", "alertThreshold": 70, "streams": ["tender", "event"]}
+    body = {"frequency": "off", "alertMinFit": "good", "streams": ["tender", "event"]}
     r = client.put("/api/digest-settings", json=body)
     assert r.status_code == 200
     assert r.json() == {"channel": "email", "day": "mon", **body}
     [row] = db.query(DigestSetting).all()
     assert row.user_id == ana.id and row.address == ana.email
     r = client.put("/api/digest-settings", json={"frequency": "weekly"})
-    assert r.json()["alertThreshold"] is None and r.json()["streams"] is None
+    assert r.json()["alertMinFit"] is None and r.json()["streams"] is None
     assert db.query(DigestSetting).count() == 1
 
 
@@ -42,7 +42,9 @@ def test_put_creates_then_updates_own_row(client, ana, db):
         {"frequency": "daily"},
         {"frequency": "weekly", "day": "fri"},
         {"frequency": "weekly", "channel": "telegram"},
-        {"frequency": "weekly", "alertThreshold": 101},
+        {"frequency": "weekly", "alertMinFit": "possible"},
+        {"frequency": "weekly", "alertMinFit": 70},
+        {"frequency": "weekly", "alertThreshold": 70},
         {"frequency": "weekly", "streams": []},
         {"frequency": "weekly", "streams": ["jobs"]},
         {"frequency": "weekly", "address": "someone@else.example"},
@@ -56,15 +58,15 @@ def test_settings_are_per_user(client, ana, db, outbox, app):
     ben = make_user(db, "ben@example.com")
     db.add(
         DigestSetting(
-            user_id=ben.id, channel="email", address=ben.email, alert_threshold=10
+            user_id=ben.id, channel="email", address=ben.email, alert_min_fit="strong"
         )
     )
     db.commit()
-    assert client.get("/api/digest-settings").json()["alertThreshold"] is None
+    assert client.get("/api/digest-settings").json()["alertMinFit"] is None
     client.put("/api/digest-settings", json={"frequency": "off"})
     db.expire_all()
     ben_row = db.query(DigestSetting).filter_by(user_id=ben.id).one()
-    assert ben_row.frequency == "weekly" and ben_row.alert_threshold == 10
+    assert ben_row.frequency == "weekly" and ben_row.alert_min_fit == "strong"
 
 
 def test_patch_me_sets_name(client, ana):

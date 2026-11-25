@@ -1,11 +1,14 @@
-"""Urgent alerts (spec 8): an item whose best score is above the user's
-``alert_threshold``, with a deadline under 5 days away, sent the day it is found,
-once per item.
+"""Urgent alerts (spec 8): an item whose best active profile's fit word is at
+least the user's ``alert_min_fit`` (strong > good > possible; spec 12: the fit
+word, never the numeric score), with a deadline under 5 days away, sent the day
+it is found, once per item. The best profile is the one the feed shows
+(member/view.py: highest-scoring non-filtered row among active profiles).
+Events and investments carry no fit word (decision 24), so they never alert.
 
 "Found" for a user is the Kigali day the item entered the catalogue or was first
 scored for them (a new or edited profile can find older items). Only items found
 today qualify, so an item that drifts under 5 days later is left to the digest.
-A null threshold turns alerts off. The same visibility, mute, stream and state
+A null ``alert_min_fit`` turns alerts off. The same visibility, mute, stream and state
 rules as the digest apply.
 
 One email per user per run lists every new qualifying item. ``alert_log``
@@ -44,6 +47,7 @@ from blackkite.delivery.build import (
 from blackkite.delivery.mail import Mail, MailTransport
 from blackkite.member.view import (
     CLOSED_STATUSES,
+    FIT_RANK,
     Row,
     kigali_today,
     load_rows,
@@ -61,9 +65,9 @@ HEADING = "Closing within 5 days"
 def alert_rows(
     db: Session, user: User, setting: DigestSetting, now: datetime
 ) -> list[Row]:
-    threshold = setting.alert_threshold
-    if threshold is None:
+    if setting.alert_min_fit is None:
         return []
+    min_rank = FIT_RANK[setting.alert_min_fit]
     day_start = datetime.combine(kigali_today(now), time(0), KIGALI)
     # Only active profiles find items (contract section 1: the best profile is
     # chosen among active profiles; an inactive profile's rows are ignored).
@@ -106,24 +110,32 @@ def alert_rows(
     rows = [
         r
         for r in rows
-        if r.best is not None and r.best.score is not None and r.best.score > threshold
+        if r.best is not None and FIT_RANK.get(r.best.fit_word or "", 0) >= min_rank
     ]
     return sorted(rows, key=lambda r: (r.opp.deadline_at, r.opp.title))
 
 
-def alert_view(rows: list[Row], settings: Settings, now: datetime) -> AlertView:
+FIT_PHRASES = {"strong": "a strong fit", "good": "a good or strong fit"}
+
+
+def alert_view(
+    rows: list[Row],
+    settings: Settings,
+    now: datetime,
+    min_fit: str | None = None,
+) -> AlertView:
     web = settings.web_base_url.rstrip("/")
     if len(rows) == 1:
         d = rows[0].opp.deadline_at.astimezone(KIGALI).date()  # type: ignore[union-attr]
         subject = f"Closes {W.full_date(d)}: {rows[0].opp.title}"
         intro = (
-            "Found today and above your alert level, so it should not wait for "
+            "Found today and at your alert level, so it should not wait for "
             "Monday's digest."
         )
     else:
         subject = f"{W.number_word(len(rows), True)} items close within 5 days"
         intro = (
-            "Found today and above your alert level, so they should not wait for "
+            "Found today and at your alert level, so they should not wait for "
             "Monday's digest."
         )
     return AlertView(
@@ -134,6 +146,14 @@ def alert_view(rows: list[Row], settings: Settings, now: datetime) -> AlertView:
         items=[digest_item(r, web) for r in rows],
         cta_url=f"{web}/",
         settings_url=f"{web}{SETTINGS_PATH}",
+        **({"footer_line": footer_line(min_fit)} if min_fit in FIT_PHRASES else {}),
+    )
+
+
+def footer_line(min_fit: str) -> str:
+    return (
+        f"You get these alerts when an item is {FIT_PHRASES[min_fit]} for one of "
+        "your profiles and closes within 5 days."
     )
 
 
@@ -149,7 +169,7 @@ def send_alerts(
     if user.status != "active":
         return 0
     setting = email_setting(db, user)
-    if setting is None or setting.alert_threshold is None:
+    if setting is None or setting.alert_min_fit is None:
         return 0
     rows = alert_rows(db, user, setting, now)
     if not rows:
@@ -176,7 +196,9 @@ def send_alerts(
     if not rows:
         db.rollback()
         return 0
-    subject, html, text = render_alert(alert_view(rows, settings, now))
+    subject, html, text = render_alert(
+        alert_view(rows, settings, now, setting.alert_min_fit)
+    )
     try:
         transport.send(
             Mail(
@@ -202,7 +224,7 @@ def users_with_alerts(db: Session) -> list[User]:
             .where(
                 User.status == "active",
                 DigestSetting.channel == "email",
-                DigestSetting.alert_threshold.is_not(None),
+                DigestSetting.alert_min_fit.is_not(None),
             )
             .order_by(User.created_at)
         )

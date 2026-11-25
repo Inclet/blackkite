@@ -1,5 +1,5 @@
-"""Urgent alerts (spec 8): above threshold, deadline under 5 days, found today,
-once per item."""
+"""Urgent alerts (spec 8): fit word at least the user's alert level (spec 12,
+never the numeric score), deadline under 5 days, found today, once per item."""
 
 from __future__ import annotations
 
@@ -25,7 +25,10 @@ def ana(db):
     u = make_user(db, "ana@example.com")
     db.add(
         DigestSetting(
-            user_id=u.id, channel="email", address="ana@example.com", alert_threshold=70
+            user_id=u.id,
+            channel="email",
+            address="ana@example.com",
+            alert_min_fit="good",
         )
     )
     db.commit()
@@ -41,11 +44,30 @@ def w(db, ana):
     return ns
 
 
-def urgent(db, user, w, title, value=80, *, created=TODAY_9AM, scored=None, **kw):
+def urgent(
+    db,
+    user,
+    w,
+    title,
+    value=80,
+    *,
+    fit="strong",
+    created=TODAY_9AM,
+    scored=None,
+    **kw,
+):
     kw.setdefault("deadline_at", NOW + timedelta(days=3))
     o = f.opportunity(db, title, created_at=created, **kw)
     f.link(db, o, w.src, f"https://example.org/{title.replace(' ', '-')}")
-    s = f.score(db, user, o, w.prof, value, reason="It asks for cold chain transport")
+    s = f.score(
+        db,
+        user,
+        o,
+        w.prof,
+        value,
+        reason="It asks for cold chain transport",
+        fit_word=fit,
+    )
     s.created_at = scored or created
     db.flush()
     return o
@@ -72,7 +94,7 @@ def test_sends_once_for_new_urgent_items(db, ana, w, settings):
 
 def test_only_qualifying_items(db, ana, w, settings):
     ben = make_user(db, "ben@example.com")
-    urgent(db, ana, w, "At threshold", 70)  # not above
+    urgent(db, ana, w, "Possible fit", 95, fit="possible")  # below "good"
     urgent(db, ana, w, "Six days", 90, deadline_at=NOW + timedelta(days=6))
     urgent(db, ana, w, "Passed", 90, deadline_at=NOW - timedelta(hours=1))
     urgent(db, ana, w, "Found yesterday", 90, created=YESTERDAY)
@@ -113,9 +135,9 @@ def test_only_qualifying_items(db, ana, w, settings):
     assert [x.opportunity_id for x in db.scalars(sa.select(AlertLog))] == [rescored.id]
 
 
-def test_null_threshold_means_no_alerts(db, ana, w, settings):
+def test_null_min_fit_means_no_alerts(db, ana, w, settings):
     urgent(db, ana, w, "Urgent", 99)
-    db.execute(sa.update(DigestSetting).values(alert_threshold=None))
+    db.execute(sa.update(DigestSetting).values(alert_min_fit=None))
     db.commit()
     assert users_with_alerts(db) == []
     assert send_alerts(db, ana, settings, MemoryTransport(), NOW) == 0
@@ -165,8 +187,8 @@ def test_alert_html_is_email_safe():
 def test_inactive_profiles_are_ignored(db, ana, w, settings):
     old = f.profile(db, ana, "Old")
     old.active = False
-    # Active profile below the threshold; the inactive one's 99 does not count.
-    low = urgent(db, ana, w, "Low for the active profile", 50)
+    # Active profile below the alert level; the inactive one's Strong does not count.
+    low = urgent(db, ana, w, "Low for the active profile", 50, fit="possible")
     f.score(db, ana, low, old, 99)
     # Scored only by the inactive profile.
     only_old = f.opportunity(
@@ -188,3 +210,47 @@ def test_inactive_profiles_are_ignored(db, ana, w, settings):
     db.commit()
     out = MemoryTransport()
     assert send_alerts(db, ana, settings, out, NOW) == 3
+
+
+def _set_min_fit(db, value):
+    db.execute(sa.update(DigestSetting).values(alert_min_fit=value))
+    db.commit()
+
+
+def test_strong_item_with_a_low_score_alerts_under_strong(db, ana, w, settings):
+    _set_min_fit(db, "strong")
+    o = urgent(db, ana, w, "Strong but low score", 20, fit="strong")
+    urgent(db, ana, w, "Good with a high score", 99, fit="good")
+    db.commit()
+    out = MemoryTransport()
+    assert send_alerts(db, ana, settings, out, NOW) == 1
+    assert [x.opportunity_id for x in db.scalars(sa.select(AlertLog))] == [o.id]
+    assert "Strong but low score" in out.outbox[0].subject
+    assert "a strong fit for one of your profiles" in out.outbox[0].text
+
+
+def test_possible_item_with_a_high_score_does_not_alert_under_good(
+    db, ana, w, settings
+):
+    _set_min_fit(db, "good")
+    urgent(db, ana, w, "Possible but high score", 99, fit="possible")
+    urgent(db, ana, w, "No fit word", 99, fit=None)
+    db.commit()
+    assert send_alerts(db, ana, settings, MemoryTransport(), NOW) == 0
+    good = urgent(db, ana, w, "Good with a low score", 10, fit="good")
+    db.commit()
+    out = MemoryTransport()
+    assert send_alerts(db, ana, settings, out, NOW) == 1
+    assert [x.opportunity_id for x in db.scalars(sa.select(AlertLog))] == [good.id]
+    assert "a good or strong fit" in out.outbox[0].text
+
+
+def test_best_profile_is_the_one_the_feed_shows(db, ana, w, settings):
+    """The fit word of the best active profile (highest score) decides, as on the
+    feed; a lower-scoring profile's Strong does not lift it."""
+    _set_min_fit(db, "strong")
+    other = f.profile(db, ana, "AI lab")
+    o = urgent(db, ana, w, "Two profiles", 80, fit="good")
+    f.score(db, ana, o, other, 40, fit_word="strong")
+    db.commit()
+    assert send_alerts(db, ana, settings, MemoryTransport(), NOW) == 0

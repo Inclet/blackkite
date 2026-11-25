@@ -143,7 +143,7 @@ def export(db: Session, user: User) -> dict[str, Any]:
                     "address": s.address,
                     "frequency": s.frequency,
                     "day": s.day,
-                    "alertThreshold": s.alert_threshold,
+                    "alertMinFit": s.alert_min_fit,
                     "streams": s.streams,
                 }
                 for s in settings
