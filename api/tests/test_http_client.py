@@ -342,18 +342,57 @@ def test_decompression_bomb_is_cut_off_while_decoding(encoding, monkeypatch):
             seen.append(len(out))
             return out
 
-        @property
-        def unconsumed_tail(self):
-            return self.d.unconsumed_tail
-
-        def flush(self):
-            return self.d.flush()
+        def __getattr__(self, name):  # unconsumed_tail, eof, unused_data, flush
+            return getattr(self.d, name)
 
     monkeypatch.setattr(mod.zlib, "decompressobj", Spy)
     c = make_client(web, max_bytes=1_000_000)
     with pytest.raises(ResponseTooLarge, match="exceeds"):
         c.get(f"https://{H}/bomb")
     assert max(seen) <= 1_000_001 and sum(seen) <= 1_000_001
+
+
+def _gzip_members_handler(body: bytes):
+    def handler(_req):
+        return httpx.Response(
+            200,
+            headers={"content-encoding": "gzip", "content-type": "text/html"},
+            stream=httpx.ByteStream(body),
+        )
+
+    return handler
+
+
+def test_multi_member_gzip_body_is_decoded_in_full():
+    import gzip
+
+    parts = [b"<p>first notice</p>", b"<p>second notice</p>", b"<p>third</p>"]
+    body = b"".join(gzip.compress(p) for p in parts) + b"\0" * 8  # zero padding
+    web = FakeWeb()
+    web.add(H, "/multi", _gzip_members_handler(body))
+    assert make_client(web).get(f"https://{H}/multi").content == b"".join(parts)
+
+
+def test_multi_member_gzip_is_still_bounded():
+    import gzip
+
+    # Each member is small, but together they decode past the limit.
+    member = gzip.compress(b"\0" * 400_000)
+    web = FakeWeb()
+    web.add(H, "/multibomb", _gzip_members_handler(member * 5))
+    c = make_client(web, max_bytes=1_000_000)
+    with pytest.raises(ResponseTooLarge, match="exceeds"):
+        c.get(f"https://{H}/multibomb")
+
+
+def test_garbage_after_a_gzip_member_is_an_error():
+    import gzip
+
+    body = gzip.compress(b"<p>ok</p>") + b"not gzip at all"
+    web = FakeWeb()
+    web.add(H, "/junk", _gzip_members_handler(body))
+    with pytest.raises(FetchError, match="bad compressed body"):
+        make_client(web).get(f"https://{H}/junk")
 
 
 def test_unknown_content_encoding_is_refused():
