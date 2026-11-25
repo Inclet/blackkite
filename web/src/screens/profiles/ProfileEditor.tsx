@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { api, ApiError } from '../../api/client';
 import type { Profile, ProfileType } from '../../api/types';
@@ -128,9 +128,12 @@ function Editor({ profile, type, onSaved }: { profile: Profile | null; type: Pro
   const [confirming, setConfirming] = useState(false);
   const [deleteFailed, setDeleteFailed] = useState(false);
 
-  // A fresh copy from the server (after save) resets the form.
+  // A fresh copy from the server (after save) resets the form; the copy it started from does not.
+  const shown = useRef(profile);
   useEffect(() => {
-    if (profile) setForm(toForm(profile, profile.type));
+    if (!profile || profile === shown.current) return;
+    shown.current = profile;
+    setForm(toForm(profile, profile.type));
   }, [profile]);
 
   const set = <K extends keyof ProfileForm>(key: K, value: ProfileForm[K]) => {

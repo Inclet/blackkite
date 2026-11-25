@@ -42,6 +42,13 @@ const rowTitles = () => list().getAllByRole('link').map((r) => r.querySelector('
 const saveButton = () => within(screen.getByRole('article')).getByRole('button', { name: 'Save to shortlist' });
 const press = (key: string) => act(() => void fireEvent.keyDown(window, { key }));
 
+/** The detail pane is on screen and its effects (the key listener among them) have run. */
+async function ready() {
+  const pane = await screen.findByRole('article');
+  await act(async () => {});
+  return pane;
+}
+
 test('loads from the API: the circling kite first, then the ranked list', async () => {
   const api = liveApi();
   renderAt('/');
@@ -129,7 +136,7 @@ test('saved items from /shortlist start pressed', async () => {
 test('save: pressed at once, sent with PUT; S unsaves', async () => {
   const api = liveApi();
   renderAt('/');
-  await screen.findByRole('article');
+  await ready();
   fireEvent.click(saveButton());
   expect(saveButton()).toHaveAttribute('aria-pressed', 'true');
   await waitFor(() => expect(api.calls).toContainEqual({ key: 'PUT /opportunities/wfp-logistics/state', body: { state: 'saved' } }));
@@ -141,7 +148,7 @@ test('save: pressed at once, sent with PUT; S unsaves', async () => {
 test('save that does not reach the server is undone, and says so', async () => {
   liveApi({ 'PUT /opportunities/wfp-logistics/state': status(503) });
   renderAt('/');
-  await screen.findByRole('article');
+  await ready();
   fireEvent.click(saveButton());
   expect(saveButton()).toHaveAttribute('aria-pressed', 'true');
   await waitFor(() => expect(saveButton()).toHaveAttribute('aria-pressed', 'false'));
@@ -152,7 +159,7 @@ test('save that does not reach the server is undone, and says so', async () => {
 test('X dismisses with PUT; a failed dismissal brings the row back, and J reaches it again', async () => {
   const api = liveApi({ 'PUT /opportunities/wfp-logistics/state': status(500) });
   renderAt('/');
-  await screen.findByRole('article');
+  await ready();
   press('x');
   expect(list().getAllByRole('link')).toHaveLength(5);
   await waitFor(() => expect(api.calls).toContainEqual({ key: 'PUT /opportunities/wfp-logistics/state', body: { state: 'dismissed' } }));
@@ -165,7 +172,7 @@ test('X dismisses with PUT; a failed dismissal brings the row back, and J reache
 test('a dismissal that is saved stays gone', async () => {
   liveApi();
   renderAt('/');
-  await screen.findByRole('article');
+  await ready();
   press('x');
   await waitFor(() => expect(list().getAllByRole('link')).toHaveLength(5));
   expect(rowTitles()[0]).not.toContain('Logistics');
@@ -194,7 +201,7 @@ test('acting and done chips, and the note, are saved with PUT', async () => {
     'PUT /opportunities/wfp-logistics/note': {},
   });
   renderAt('/');
-  const pane = await screen.findByRole('article');
+  const pane = await ready();
   const note = within(pane).getByLabelText(LIVE_COPY.note);
   await waitFor(() => expect(note).toHaveValue('Ask Eric'));
 
@@ -219,7 +226,7 @@ test('acting and done chips, and the note, are saved with PUT', async () => {
 test('a note that does not reach the server keeps the text and shows the field error', async () => {
   liveApi({ 'PUT /opportunities/wfp-logistics/note': status(500) });
   renderAt('/');
-  const pane = await screen.findByRole('article');
+  const pane = await ready();
   const note = within(pane).getByLabelText(LIVE_COPY.note);
   fireEvent.change(note, { target: { value: 'Call Tuesday' } });
   fireEvent.click(within(pane).getByRole('button', { name: LIVE_COPY.saveNote }));
