@@ -64,9 +64,14 @@ def _check_css(css: str) -> str:
 
 class Sel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    css: str
+    css: str = Field(
+        description="CSS selector; the first match inside the item is used."
+    )
     attr: Annotated[str, Field(pattern=r"^[A-Za-z_:][-A-Za-z0-9_:.]{0,60}$")] | None = (
-        None
+        Field(
+            default=None,
+            description="Read this attribute instead of the text (for example href).",
+        )
     )
 
     @field_validator("css")
@@ -79,15 +84,30 @@ def _sel(v: Any) -> Any:
     return {"css": v} if isinstance(v, str) else v
 
 
+_SEL_HELP = "A CSS selector, or {css, attr} to read an attribute."
+
+
 class ListSelectors(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    item: str
-    title: Sel
-    link: Sel | None = None
-    date: Sel | None = None
-    deadline: Sel | None = None
-    organisation: Sel | None = None
-    snippet: Sel | None = None
+    item: str = Field(description="CSS selector matching one node per listing.")
+    title: Sel = Field(description=f"Title inside the item. {_SEL_HELP}")
+    link: Sel | None = Field(
+        default=None,
+        description="Link to the notice (default: the <a> in or at the title, "
+        f"else in the item). {_SEL_HELP}",
+    )
+    date: Sel | None = Field(
+        default=None, description=f"Published date as listed. {_SEL_HELP}"
+    )
+    deadline: Sel | None = Field(
+        default=None, description=f"Deadline as listed. {_SEL_HELP}"
+    )
+    organisation: Sel | None = Field(
+        default=None, description=f"Issuing organisation. {_SEL_HELP}"
+    )
+    snippet: Sel | None = Field(
+        default=None, description=f"Short description text. {_SEL_HELP}"
+    )
 
     @field_validator("item")
     @classmethod
@@ -104,10 +124,18 @@ class ListSelectors(BaseModel):
 
 class DetailSelectors(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    date: Sel | None = None
-    deadline: Sel | None = None
-    organisation: Sel | None = None
-    snippet: Sel | None = None
+    date: Sel | None = Field(
+        default=None, description=f"Published date on the detail page. {_SEL_HELP}"
+    )
+    deadline: Sel | None = Field(
+        default=None, description=f"Deadline on the detail page. {_SEL_HELP}"
+    )
+    organisation: Sel | None = Field(
+        default=None, description=f"Organisation on the detail page. {_SEL_HELP}"
+    )
+    snippet: Sel | None = Field(
+        default=None, description=f"Notice text on the detail page. {_SEL_HELP}"
+    )
 
     @field_validator("date", "deadline", "organisation", "snippet", mode="before")
     @classmethod
@@ -117,8 +145,13 @@ class DetailSelectors(BaseModel):
 
 class DetailConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    selectors: DetailSelectors
-    max_items: Annotated[int, Field(ge=1, le=50)] = 20
+    selectors: DetailSelectors = Field(
+        description="Selectors applied to each item's detail page; values found "
+        "there replace the listing's."
+    )
+    max_items: Annotated[int, Field(ge=1, le=50)] = Field(
+        default=20, description="Follow at most this many detail pages per run."
+    )
 
 
 def _url_ok(v: str) -> str:
@@ -131,12 +164,21 @@ def _url_ok(v: str) -> str:
 
 class HtmlListConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    list_url: str
-    pagination_pattern: str | None = None
-    first_page: Annotated[int, Field(ge=0, le=1000)] = 2
-    max_pages: Annotated[int, Field(ge=1, le=20)] = 1
-    selectors: ListSelectors
-    detail: DetailConfig | None = None
+    list_url: str = Field(description="Address of the listing page (page 1).")
+    pagination_pattern: str | None = Field(
+        default=None,
+        description="Address of later pages with {page} where the number goes.",
+    )
+    first_page: Annotated[int, Field(ge=0, le=1000)] = Field(
+        default=2, description="Page number of the first pattern page."
+    )
+    max_pages: Annotated[int, Field(ge=1, le=20)] = Field(
+        default=1, description="Pages to read per run, counting list_url as 1."
+    )
+    selectors: ListSelectors = Field(description="Where each field is on the list.")
+    detail: DetailConfig | None = Field(
+        default=None, description="Optional: follow each link to its detail page."
+    )
 
     @field_validator("list_url")
     @classmethod
