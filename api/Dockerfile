@@ -7,6 +7,22 @@ RUN pip install --no-cache-dir uv==0.11.32
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
+
+# Headless Chromium for browser_list sources (spec 9: Playwright only there). The
+# playwright CLI comes from the venv just synced, so the browser build is the one
+# pinned for playwright 1.63 in uv.lock. --with-deps pulls Chromium's system
+# libraries (apt, needs root: before USER). Browsers live outside any home
+# directory, readable by the non-root bk user. Playwright launches Chromium
+# without Chromium's own sandbox by default (no user namespaces needed in the
+# container); collectors/browser_list.py routes every request through the URL
+# guard and runs the browser in a killable child process. Nothing is downloaded
+# at run time. The image is unbuilt here (no Docker daemon in the dev sandbox).
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN python -c "import importlib.metadata as m; v = m.version('playwright'); \
+        assert v.startswith('1.63.'), v" \
+    && python -m playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/* \
+    && chmod -R a+rX /ms-playwright
 COPY . .
 RUN uv sync --frozen --no-dev
 
