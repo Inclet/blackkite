@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
-import { ApiError } from '../../api/client';
+import { ApiError, refusalOf, type FieldError } from '../../api/client';
 import {
   COLLECTOR_TYPES,
   SOURCE_KINDS,
@@ -53,6 +53,7 @@ import {
   fieldKind,
   fieldLabel,
   fieldsFor,
+  placeServerErrors,
   switchOn,
   toForm,
   validate,
@@ -92,7 +93,9 @@ export const EDITOR_COPY = {
   save: 'Save changes',
   saving: 'Saving…',
   checkFields: 'Some answers need a fix. They are marked above.',
-  refused: (why: string | null) => `Blackkite did not accept this source${why ? `: ${why}` : '.'}`,
+  refused: (why: string | null) => `Blackkite did not accept this source.${why ? ` ${why}` : ''}`,
+  /** Heading of the list of refusals that are not about a field on this form. */
+  otherProblems: 'Also refused:',
   nameTaken: 'Another source already has that name.',
   saved: 'Saved.',
   savedBackToTesting: 'Saved. The settings changed, so it is back in testing.',
@@ -106,7 +109,10 @@ export const EDITOR_COPY = {
     }`,
   previewFailed: (why: string) => `The test run failed: ${why}`,
   previewEmpty: 'It ran, but found no items. Check the settings.',
-  previewRefused: (why: string | null) => `Blackkite did not run the test${why ? `: ${why}` : '.'}`,
+  previewRefused: (why: string | null) => `Blackkite did not run the test.${why ? ` ${why}` : ''}`,
+  /** 429 without a detail (the API sends its own sentence). */
+  previewBusy: 'Another test run is in progress; try again in a minute.',
+  tooMany: 'Too many requests just now; try again in a minute.',
   previewUnreachable: `${COPY.unreachableTitle}. The test did not run; try again.`,
   published: (v: string) => `Published ${v}`,
   closes: (v: string) => `Closes ${v}`,
@@ -237,6 +243,8 @@ function Editor({ source, suggestion, types, typesFailed, runs, errorLog, onSave
   const [errors, setErrors] = useState<FormErrors>({});
   const [save, setSave] = useState<SaveStatus>(() => ({ kind: 'idle', text: (state as { notice?: string } | null)?.notice ?? '' }));
   const [test, setTest] = useState<TestState>({ kind: 'idle' });
+  /** Server refusals that are not about a field on this form, as sentences. */
+  const [unplaced, setUnplaced] = useState<string[]>([]);
 
   const fields = fieldsFor(types, form.collectorType);
   // Keys the field list does not describe survive an edit, but only within the same collector type.
@@ -252,9 +260,21 @@ function Editor({ source, suggestion, types, typesFailed, runs, errorLog, onSave
     const keep = source && source.collectorType === t ? source.config : {};
     setForm((f) => ({ ...f, collectorType: t, config: configValues(fieldsFor(types, t), keep) }));
   };
+  /** Show the server's field errors next to their fields (client checks for the rest stay as found). */
+  const showServerErrors = (found: FieldError[], clientErrors: FormErrors) => {
+    const { placed, unplaced: rest } = placeServerErrors(found, fields);
+    setErrors({ ...clientErrors, ...placed, config: { ...clientErrors.config, ...placed.config } });
+    setUnplaced(rest);
+  };
+  /** A new action replaces the last one's status line ("Saved as testing…" must not sit next to a refusal). */
+  const startAction = () => {
+    if (save.kind !== 'saving') setSave({ kind: 'idle', text: '' });
+    setUnplaced([]);
+  };
   const toggleStream = (s: Stream) => set('streams', form.streams.includes(s) ? form.streams.filter((x) => x !== s) : [...form.streams, s]);
 
   const runTest = async () => {
+    startAction();
     const checked = validateForTest(form, fields, base);
     setErrors(checked.errors);
     if (!checked.ok || !form.collectorType) {
@@ -270,17 +290,24 @@ function Editor({ source, suggestion, types, typesFailed, runs, errorLog, onSave
         streams: form.streams.length ? form.streams : ['tender'],
         rateLimit: form.rateLimit.trim() ? Number(form.rateLimit) : null,
       });
+      if (preview.errors?.length) showServerErrors(preview.errors, checked.errors);
       setTest({ kind: 'done', preview });
     } catch (err) {
-      setTest({
-        kind: 'failed',
-        text: err instanceof ApiError && err.kind === 'invalid' ? EDITOR_COPY.previewRefused(detailText(err.detail)) : EDITOR_COPY.previewUnreachable,
-      });
+      if (err instanceof ApiError && err.kind === 'invalid') {
+        const refusal = refusalOf(err);
+        showServerErrors(refusal.errors, checked.errors);
+        setTest({ kind: 'failed', text: EDITOR_COPY.previewRefused(refusal.detail ?? detailText(err.detail)) });
+      } else if (err instanceof ApiError && err.kind === 'too-many') {
+        setTest({ kind: 'failed', text: refusalOf(err).detail ?? EDITOR_COPY.previewBusy });
+      } else {
+        setTest({ kind: 'failed', text: EDITOR_COPY.previewUnreachable });
+      }
     }
   };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    setUnplaced([]);
     const { errors: found, body } = validate(form, fields, base);
     setErrors(found);
     if (!body) {
@@ -300,9 +327,16 @@ function Editor({ source, suggestion, types, typesFailed, runs, errorLog, onSave
         navigate(`/admin/sources/${encodeURIComponent(created.id)}`, { state: { notice: EDITOR_COPY.created } });
       }
     } catch (err) {
-      if (err instanceof ApiError && err.kind === 'conflict') setSave({ kind: 'refused', text: EDITOR_COPY.nameTaken });
-      else if (err instanceof ApiError && err.kind === 'invalid') setSave({ kind: 'refused', text: EDITOR_COPY.refused(detailText(err.detail)) });
-      else setSave({ kind: 'unreachable', text: EDITOR_COPY.unreachableSave });
+      if (err instanceof ApiError && (err.kind === 'conflict' || err.kind === 'invalid')) {
+        const refusal = refusalOf(err);
+        showServerErrors(refusal.errors, found);
+        setSave({
+          kind: 'refused',
+          text: err.kind === 'conflict' ? EDITOR_COPY.nameTaken : EDITOR_COPY.refused(refusal.detail ?? detailText(err.detail)),
+        });
+      } else if (err instanceof ApiError && err.kind === 'too-many') {
+        setSave({ kind: 'refused', text: refusalOf(err).detail ?? EDITOR_COPY.tooMany });
+      } else setSave({ kind: 'unreachable', text: EDITOR_COPY.unreachableSave });
     }
   };
 
@@ -320,7 +354,7 @@ function Editor({ source, suggestion, types, typesFailed, runs, errorLog, onSave
           {suggestion.note && <div className={styles.note}>{suggestion.note}</div>}
         </Card>
       )}
-      {source && <StatusCard source={source} onChanged={onSaved} />}
+      {source && <StatusCard source={source} onChanged={onSaved} onStart={startAction} />}
 
       <form onSubmit={submit} noValidate aria-label={title} className={styles.form} style={{ gap: 'inherit' }}>
         <Card label={EDITOR_COPY.record} gap={14}>
@@ -336,7 +370,7 @@ function Editor({ source, suggestion, types, typesFailed, runs, errorLog, onSave
               onChange={(e) => set('homeUrl', e.target.value)}
             />
           </div>
-          <Field label={EDITOR_COPY.publisher} name="publisher" value={form.publisher} onChange={(e) => set('publisher', e.target.value)} />
+          <Field label={EDITOR_COPY.publisher} name="publisher" value={form.publisher} error={errors.publisher} onChange={(e) => set('publisher', e.target.value)} />
           <ChipGroup label={EDITOR_COPY.streams} error={errors.streams}>
             {STREAMS.map((s) => (
               <FilterChip key={s} stream={s} selected={form.streams.includes(s)} onClick={() => toggleStream(s)} />
@@ -372,6 +406,7 @@ function Editor({ source, suggestion, types, typesFailed, runs, errorLog, onSave
             value={form.accessNote}
             hint={EDITOR_COPY.accessNoteHint}
             maxLength={5000}
+            error={errors.accessNote}
             onChange={(e) => set('accessNote', e.target.value)}
           />
         </Card>
@@ -401,6 +436,14 @@ function Editor({ source, suggestion, types, typesFailed, runs, errorLog, onSave
         <div role="status" className={save.kind === 'saved' || save.kind === 'saving' || save.kind === 'idle' ? styles.status : styles.alertStatus}>
           {save.text}
         </div>
+        {unplaced.length > 0 && (
+          <div className={styles.alertStatus}>
+            <div>{EDITOR_COPY.otherProblems}</div>
+            {unplaced.map((t, i) => (
+              <div key={i}>{t}</div>
+            ))}
+          </div>
+        )}
       </form>
 
       <TestResult test={test} />
@@ -533,7 +576,7 @@ function TestResult({ test }: { test: TestState }) {
   );
 }
 
-function StatusCard({ source, onChanged }: { source: SourceDetail; onChanged: (s: SourceDetail) => void }) {
+function StatusCard({ source, onChanged, onStart }: { source: SourceDetail; onChanged: (s: SourceDetail) => void; onStart: () => void }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; alert: boolean } | null>(null);
   const moves = STATUS_MOVES[source.status] ?? [];
@@ -542,6 +585,7 @@ function StatusCard({ source, onChanged }: { source: SourceDetail; onChanged: (s
   const move = async (to: SourceStatus) => {
     setBusy(true);
     setMessage(null);
+    onStart();
     try {
       const s = await sourcesApi.setStatus(source.id, to);
       onChanged(s);

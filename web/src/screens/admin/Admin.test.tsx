@@ -150,6 +150,84 @@ test('a failed test run shows its error; a refused one the API\'s reason', async
   expect(await screen.findByText(EDITOR_COPY.previewRefused('config: selector does not parse'))).toBeInTheDocument();
 });
 
+test('a refused save: each server message under its field, the detail as the summary, the rest listed under the form', async () => {
+  editorRoutes({
+    'PATCH /api/admin/sources/src-1': status(422, {
+      detail: 'Home page: address 10.0.0.1 is not public. List URL: address 127.0.0.1 is not public. Selectors: item: invalid CSS selector. Wat: is not a setting this accepts.',
+      errors: [
+        { field: 'homeUrl', message: 'address 10.0.0.1 is not public' },
+        { field: 'config.list_url', message: 'address 127.0.0.1 is not public' },
+        { field: 'config.selectors.item', message: 'invalid CSS selector' },
+        { field: 'config.wat', message: 'is not a setting this accepts' },
+      ],
+    }),
+  });
+  renderAt('/admin/sources/src-1');
+  const form = within(await screen.findByRole('form', { name: 'Umucyo e-procurement' }));
+  fireEvent.click(form.getByRole('button', { name: EDITOR_COPY.save }));
+  expect(
+    await screen.findByText(
+      EDITOR_COPY.refused('Home page: address 10.0.0.1 is not public. List URL: address 127.0.0.1 is not public. Selectors: item: invalid CSS selector. Wat: is not a setting this accepts.'),
+    ),
+  ).toBeInTheDocument();
+  expect(form.getByLabelText(EDITOR_COPY.homeUrl)).toHaveAccessibleDescription('Address 10.0.0.1 is not public.');
+  expect(form.getByLabelText(EDITOR_COPY.homeUrl)).toHaveAttribute('aria-invalid', 'true');
+  expect(form.getByLabelText('List url')).toHaveAccessibleDescription('Address of the listing page (page 1). Address 127.0.0.1 is not public.');
+  expect(form.getByLabelText('Selectors: item')).toHaveAccessibleDescription(expect.stringContaining('Invalid CSS selector.'));
+  expect(form.getByText(EDITOR_COPY.otherProblems)).toBeInTheDocument();
+  expect(form.getByText('Wat: is not a setting this accepts.')).toBeInTheDocument();
+  // The values stay as typed.
+  expect(form.getByLabelText('List url')).toHaveValue('https://www.umucyo.gov.rw/tenders');
+});
+
+test('a taken name (409 with the name field): said plainly, and under the name', async () => {
+  editorRoutes({
+    'PATCH /api/admin/sources/src-1': status(409, {
+      detail: 'Name: a source with that name already exists.',
+      errors: [{ field: 'name', message: 'a source with that name already exists' }],
+    }),
+  });
+  renderAt('/admin/sources/src-1');
+  const form = within(await screen.findByRole('form', { name: 'Umucyo e-procurement' }));
+  fireEvent.click(form.getByRole('button', { name: EDITOR_COPY.save }));
+  expect(await screen.findByText(EDITOR_COPY.nameTaken)).toBeInTheDocument();
+  expect(form.getByLabelText(EDITOR_COPY.name)).toHaveAccessibleDescription('A source with that name already exists.');
+});
+
+test('test runs: a refused config puts the messages on its fields; a preview with errors too; a busy server says so and keeps the form', async () => {
+  const api = editorRoutes({
+    'POST /api/admin/sources/test-run': status(422, {
+      detail: 'List URL: address 127.0.0.1 is not public.',
+      errors: [{ field: 'config.list_url', message: 'address 127.0.0.1 is not public' }],
+    }),
+  });
+  renderAt('/admin/sources/src-1');
+  const form = within(await screen.findByRole('form', { name: 'Umucyo e-procurement' }));
+  fireEvent.change(form.getByLabelText('List url'), { target: { value: 'http://127.0.0.1/' } });
+  fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.testRun }));
+  expect(await screen.findByText(EDITOR_COPY.previewRefused('List URL: address 127.0.0.1 is not public.'))).toBeInTheDocument();
+  expect(form.getByLabelText('List url')).toHaveAccessibleDescription(expect.stringContaining('Address 127.0.0.1 is not public.'));
+
+  api.on('POST /api/admin/sources/test-run', {
+    ...PREVIEW,
+    ok: false,
+    error: 'Selectors: item: invalid CSS selector.',
+    errors: [{ field: 'config.selectors.item', message: 'invalid CSS selector' }],
+    items: [],
+    totalParsed: 0,
+    requestsMade: 0,
+  });
+  fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.testRun }));
+  expect(await screen.findByText(EDITOR_COPY.previewFailed('Selectors: item: invalid CSS selector.'))).toBeInTheDocument();
+  expect(form.getByLabelText('Selectors: item')).toHaveAccessibleDescription(expect.stringContaining('Invalid CSS selector.'));
+
+  api.on('POST /api/admin/sources/test-run', status(429, { detail: 'Another test run is in progress; try again in a minute.' }));
+  fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.testRun }));
+  expect(await screen.findByText('Another test run is in progress; try again in a minute.')).toBeInTheDocument();
+  expect(form.getByLabelText('List url')).toHaveValue('http://127.0.0.1/');
+  expect(screen.getByRole('button', { name: EDITOR_COPY.testRun })).toBeEnabled();
+});
+
 test('existing source: record and config filled in; status with the promotion gate; a refused promotion explains the gate', async () => {
   const api = editorRoutes({ 'POST /api/admin/sources/src-1/status': status(409, { detail: 'needs 2 successful runs that found items since its config last changed; has 1' }) });
   renderAt('/admin/sources/src-1');
