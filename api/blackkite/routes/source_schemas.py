@@ -195,6 +195,7 @@ class RunOut(BaseModel):
     status: str
     items_found: int
     items_new: int
+    items_failed: int
     error: str | None
 
 

@@ -137,7 +137,7 @@ def test_run_source_records_a_run_and_caches(bk, db, monkeypatch, tmp_path):
     s = add(db, "Notices")
     r = bk("run-source", str(s.id))
     assert r.exit_code == 0, r.output
-    assert "Notices: succeeded, found 1, new 1" in r.output
+    assert "Notices: succeeded, found 1, new 1, failed 0" in r.output
     (run,) = db.scalars(sa.select(SourceRun)).all()
     assert run.status == "succeeded" and (run.items_found, run.items_new) == (1, 1)
     assert db.get(HttpCache, f"https://{H}/tenders").etag == '"abc"'

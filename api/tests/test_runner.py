@@ -405,3 +405,77 @@ def test_runs_feed_last_seen_and_items_found_in_30_days(db, web, tmp_path):
     st = stats()
     assert st.items_30d == 2 and st.health == "ok"
     assert st.last_success_at == NOW
+
+
+# --- runs left behind by a stopped worker; items_failed --------------------------------
+
+
+def _running(db, source, started):
+    r = SourceRun(source_id=source.id, status="running", started_at=started)
+    db.add(r)
+    db.commit()
+    return r
+
+
+def test_stale_running_rows_are_failed_unless_a_worker_holds_the_lock(
+    Sessions, db, engine
+):
+    old = add_source(db, "Old")
+    live = add_source(db, "Live")
+    fresh = add_source(db, "Fresh")
+    stale = _running(db, old, NOW - timedelta(hours=3))
+    held = _running(db, live, NOW - timedelta(hours=5))
+    recent = _running(db, fresh, NOW - timedelta(minutes=30))
+    with runner.source_lock(engine, live.id) as got:
+        assert got
+        n = runner.fail_stale_runs(Sessions, timedelta(hours=2), now=lambda: NOW)
+    assert n == 1
+    db.expire_all()
+    assert (stale.status, stale.error) == ("failed", runner.STALE_RUN_ERROR)
+    assert stale.finished_at == NOW
+    assert held.status == "running"  # its worker is alive
+    assert recent.status == "running"  # not old enough
+    # Once the lock is free the old one is closed too.
+    assert runner.fail_stale_runs(Sessions, timedelta(hours=2), now=lambda: NOW) == 1
+    db.expire_all()
+    assert held.status == "failed"
+
+
+def test_tick_and_start_close_stale_runs(Sessions, db, settings, web, monkeypatch):
+    from blackkite.worker import main as worker_main
+
+    s = add_source(db, "Stopped", status="paused")
+    r = _running(db, s, datetime.now(UTC) - timedelta(minutes=121))
+    settings.stale_run_minutes = 120
+    worker_main.tick(Sessions, make_client(web), settings)
+    db.expire_all()
+    assert (r.status, r.error) == ("failed", "worker stopped")
+
+    r2 = _running(db, s, datetime.now(UTC) - timedelta(minutes=200))
+
+    class NoScheduler:
+        def start(self):
+            pass
+
+    monkeypatch.setattr(worker_main, "build_scheduler", lambda *a, **k: NoScheduler())
+    worker_main.main(settings, Sessions)
+    db.expire_all()
+    assert r2.status == "failed"
+
+
+def test_items_failed_is_stored_and_shown(db, web, monkeypatch):
+    def partly(session, source, items, **kw):
+        return ingest.IngestResult(items_found=len(items), items_new=1, items_failed=1)
+
+    monkeypatch.setattr(ingest, "ingest_items", partly)
+    s = add_source(db, "Partly")
+    run = runner.run_source(db, s, client=make_client(web))
+    assert (run.status, run.items_found, run.items_new, run.items_failed) == (
+        "succeeded",
+        2,
+        1,
+        1,
+    )
+    from blackkite.routes.source_schemas import RunOut
+
+    assert RunOut.model_validate(run).items_failed == 1

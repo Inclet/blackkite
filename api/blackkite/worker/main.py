@@ -7,6 +7,10 @@ from the database on each tick, sources added or edited in the admin screen are
 picked up without a restart. Sources run one after another on one shared HTTP
 client, so per-host delays and robots.txt caching hold across sources.
 
+Each tick (and start-up) first closes source runs left ``running`` by a worker that
+stopped: older than ``BK_STALE_RUN_MINUTES`` (default 120) and with no worker
+holding the source's lock, they are marked failed with "worker stopped".
+
 A second job runs once a day (and once at start-up) to move catalogue statuses on
 as deadlines pass (open -> closing_soon -> expired), under its own advisory lock.
 """
@@ -14,7 +18,7 @@ as deadlines pass (open -> closing_soon -> expired), under its own advisory lock
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -23,7 +27,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from blackkite.collectors.http import DbHttpCache, FetchClient, make_fetch_client
 from blackkite.config import Settings
-from blackkite.worker.runner import refresh_statuses_locked, run_due_sources
+from blackkite.worker.runner import (
+    fail_stale_runs,
+    refresh_statuses_locked,
+    run_due_sources,
+)
 
 log = logging.getLogger("blackkite.worker")
 
@@ -32,9 +40,17 @@ TICK_SECONDS = 60
 REFRESH_STATUSES_CRON = "5 22 * * *"
 
 
+def close_stale_runs(sessions: sessionmaker[Session], settings: Settings) -> int:
+    return fail_stale_runs(sessions, timedelta(minutes=settings.stale_run_minutes))
+
+
 def tick(
     sessions: sessionmaker[Session], client: FetchClient, settings: Settings
 ) -> None:
+    try:
+        close_stale_runs(sessions, settings)
+    except Exception:  # never let housekeeping stop the sources
+        log.exception("could not close stale source runs")
     outcomes = run_due_sources(
         sessions,
         client=client,
@@ -43,11 +59,12 @@ def tick(
     )
     for o in outcomes:
         log.info(
-            "source %s: %s (found %d, new %d)%s",
+            "source %s: %s (found %d, new %d, failed %d)%s",
             o.name,
             o.status,
             o.items_found,
             o.items_new,
+            o.items_failed,
             f" error: {o.error}" if o.error else "",
         )
 
@@ -94,6 +111,7 @@ def main(settings: Settings, sessions: sessionmaker[Session]) -> None:
     )
     if not settings.bot_contact_url:
         log.warning("BK_BOT_CONTACT_URL is not set; the User-Agent has no contact URL")
+    close_stale_runs(sessions, settings)  # runs left by a worker that stopped
     sched = build_scheduler(sessions, settings)
     log.info("worker started; checking sources every %ds", TICK_SECONDS)
     try:

@@ -92,6 +92,7 @@ def run_source(
         run.status = "succeeded"
         run.items_found = result.items_found
         run.items_new = result.items_new
+        run.items_failed = result.items_failed
         run.finished_at = now()
         session.commit()
     except Exception as e:  # one source's failure is recorded, never propagated
@@ -132,6 +133,41 @@ def advisory_lock(engine: sa.Engine, namespace: int, key: int) -> Iterator[bool]
 
 def source_lock(engine: sa.Engine, source_id: uuid.UUID):
     return advisory_lock(engine, LOCK_NAMESPACE, lock_key(source_id))
+
+
+# --- runs left behind by a stopped worker ------------------------------------------------
+
+STALE_RUN_ERROR = "worker stopped"
+
+
+def fail_stale_runs(
+    sessions: sessionmaker[Session], max_age: timedelta, now=_now
+) -> int:
+    """Mark ``running`` source_run rows older than ``max_age`` as failed with
+    "worker stopped". A run whose source lock is held by a live worker is left
+    alone, however old. Returns how many rows were closed."""
+    closed = 0
+    with sessions() as s:
+        cutoff = now() - max_age
+        rows = s.execute(
+            sa.select(SourceRun.id, SourceRun.source_id).where(
+                SourceRun.status == "running", SourceRun.started_at < cutoff
+            )
+        ).all()
+        for run_id, source_id in rows:
+            with source_lock(s.get_bind(), source_id) as got:
+                if not got:
+                    continue  # still being run by a live worker
+                n = s.execute(
+                    sa.update(SourceRun)
+                    .where(SourceRun.id == run_id, SourceRun.status == "running")
+                    .values(status="failed", error=STALE_RUN_ERROR, finished_at=now())
+                ).rowcount
+                s.commit()
+                closed += n
+    if closed:
+        log.warning("marked %d stale source run(s) failed: %s", closed, STALE_RUN_ERROR)
+    return closed
 
 
 # --- daily status refresh -------------------------------------------------------------
@@ -185,6 +221,7 @@ class RunOutcome:
     items_found: int = 0
     items_new: int = 0
     error: str | None = None
+    items_failed: int = 0
 
 
 def run_source_locked(
@@ -231,6 +268,7 @@ def run_source_locked(
                 run.items_found,
                 run.items_new,
                 run.error,
+                run.items_failed,
             )
 
 

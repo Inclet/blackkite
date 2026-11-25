@@ -275,6 +275,10 @@ class SourceRun(Base):
     items_new: Mapped[int] = mapped_column(
         sa.Integer, nullable=False, server_default="0"
     )
+    # Items rolled back by the pipeline (one bad item never sinks the run).
+    items_failed: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, server_default="0"
+    )
     error: Mapped[str | None] = mapped_column(sa.Text)
 
 

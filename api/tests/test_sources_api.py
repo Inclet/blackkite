@@ -551,7 +551,13 @@ def test_run_history(admin, db):
         ("failed", 3, 0),
     ]
     assert runs[1]["error"] == "boom"
+    assert [r["items_failed"] for r in runs] == [0, 0]
     assert admin.get(f"/admin/sources/{s.id}").json()["health"] == "degraded"
+    partly = add_run(db, s, "succeeded", ago_hours=0.5, found=4, new=1)
+    partly.items_failed = 2
+    db.commit()
+    latest = admin.get(f"/admin/sources/{s.id}/runs").json()[0]
+    assert (latest["items_found"], latest["items_failed"]) == (4, 2)
 
 
 # --- member visibility of catalogue items -----------------------------------------------------------

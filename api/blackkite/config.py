@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     # Seconds between two requests to one host when the source sets no rate_limit.
     # At least 1 s (collectors.http.MIN_DELAY_SECONDS).
     default_rate_limit: float = Field(default=5.0, ge=1.0)
+    # A source_run still "running" after this many minutes, with no worker holding
+    # its source's lock, is marked failed ("worker stopped").
+    stale_run_minutes: int = Field(default=120, ge=1)
     # Cron (UTC) for sources whose schedule is NULL: 04:00 UTC = 06:00 Africa/Kigali.
     default_source_schedule: str = "0 4 * * *"
 

@@ -196,7 +196,8 @@ def run_source_cmd(
         )
         raise typer.Exit(2)
     typer.echo(
-        f"{out.name}: {out.status}, found {out.items_found}, new {out.items_new}"
+        f"{out.name}: {out.status}, found {out.items_found}, new {out.items_new}, "
+        f"failed {out.items_failed}"
     )
     if out.error:
         typer.echo(f"error: {out.error}", err=True)
