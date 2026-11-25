@@ -279,3 +279,92 @@ def test_default_rate_limit_setting_is_at_least_one_second():
     with pytest.raises(ValidationError):
         Settings(_env_file=None, default_rate_limit=0.5)
     assert Settings(_env_file=None, default_rate_limit=1).default_rate_limit == 1.0
+
+
+def _compressed(encoding: str, data: bytes) -> bytes:
+    import gzip
+    import zlib
+
+    if encoding == "gzip":
+        return gzip.compress(data)
+    if encoding == "deflate":
+        return zlib.compress(data)
+    c = zlib.compressobj(wbits=-zlib.MAX_WBITS)  # raw deflate, no zlib header
+    return c.compress(data) + c.flush()
+
+
+def _encoded(encoding: str, data: bytes, chunk: int = 512):
+    body = _compressed(encoding, data)
+    header = "deflate" if encoding == "raw-deflate" else encoding
+
+    def handler(_req):
+        parts = [body[i : i + chunk] for i in range(0, len(body), chunk)]
+        return httpx.Response(
+            200,
+            headers={"content-encoding": header, "content-type": "text/html"},
+            stream=httpx.ByteStream(b"".join(parts)),
+        )
+
+    return handler
+
+
+@pytest.mark.parametrize("encoding", ["gzip", "deflate", "raw-deflate"])
+def test_compressed_bodies_are_decoded(encoding):
+    web = FakeWeb()
+    page = b"<p>" + b"cold rooms " * 200 + b"</p>"
+    web.add(H, "/z", _encoded(encoding, page))
+    r = make_client(web).get(f"https://{H}/z")
+    assert r.content == page
+    assert "content-encoding" not in r.headers
+    assert web.requests[-1].headers["accept-encoding"] == "gzip, deflate"
+
+
+@pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+def test_decompression_bomb_is_cut_off_while_decoding(encoding, monkeypatch):
+    import zlib
+
+    from blackkite.collectors import http as mod
+
+    # 50 MB of zeros compresses to ~50 kB, under the raw limit.
+    bomb = b"\0" * 50_000_000
+    web = FakeWeb()
+    web.add(H, "/bomb", _encoded(encoding, bomb, chunk=64_000))
+    seen = []
+    real = zlib.decompressobj
+
+    class Spy:
+        def __init__(self, *a):
+            self.d = real(*a)
+
+        def decompress(self, data, max_length=0):
+            assert 0 < max_length <= 1_000_001  # every step is bounded
+            out = self.d.decompress(data, max_length)
+            seen.append(len(out))
+            return out
+
+        @property
+        def unconsumed_tail(self):
+            return self.d.unconsumed_tail
+
+        def flush(self):
+            return self.d.flush()
+
+    monkeypatch.setattr(mod.zlib, "decompressobj", Spy)
+    c = make_client(web, max_bytes=1_000_000)
+    with pytest.raises(ResponseTooLarge, match="exceeds"):
+        c.get(f"https://{H}/bomb")
+    assert max(seen) <= 1_000_001 and sum(seen) <= 1_000_001
+
+
+def test_unknown_content_encoding_is_refused():
+    web = FakeWeb()
+    web.add(
+        H,
+        "/br",
+        lambda _r: httpx.Response(
+            200, headers={"content-encoding": "br"}, stream=httpx.ByteStream(b"xx")
+        ),
+    )
+    with pytest.raises(FetchError, match="unsupported content-encoding"):
+        make_client(web).get(f"https://{H}/br")
+

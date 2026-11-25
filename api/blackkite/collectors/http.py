@@ -13,7 +13,9 @@
 - Conditional GET: ETag / Last-Modified stored in an ``HttpCache``; 304 returns the
   cached body.
 - At most one retry, only on a connect error or a 5xx, after a backoff. Never on 4xx.
-- Response size capped (Content-Length and while streaming); timeouts on every request.
+- Response size capped (Content-Length, raw bytes while streaming, and the decoded
+  body: gzip/deflate are decompressed here in bounded steps); timeouts on every
+  request.
 
 Clock, sleep, resolver, transport and cache are injectable so tests run offline.
 """
@@ -22,6 +24,7 @@ from __future__ import annotations
 
 import json
 import time
+import zlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -87,6 +90,72 @@ class FetchResponse:
             return json.loads(self.content)
         except ValueError as e:
             raise FetchError(f"invalid JSON from {self.url}: {e}") from None
+
+
+# --- bounded decoding -------------------------------------------------------------
+
+ACCEPT_ENCODING = "gzip, deflate"
+
+
+class _BoundedBody:
+    """Collects a response body, decompressing gzip/deflate in steps of at most
+    ``max_bytes + 1`` output bytes, and raises ResponseTooLarge as soon as either
+    the raw or the decoded size passes ``max_bytes``."""
+
+    def __init__(self, url: str, max_bytes: int, encoding: str | None) -> None:
+        self.url = url
+        self.max_bytes = max_bytes
+        self.raw_size = 0
+        self.size = 0
+        self.chunks: list[bytes] = []
+        self.encoding = (encoding or "").strip().lower()
+        if self.encoding in ("", "identity"):
+            self.decoder = None
+        elif self.encoding in ("gzip", "x-gzip"):
+            self.decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        elif self.encoding == "deflate":
+            self.decoder = zlib.decompressobj()
+        else:
+            raise FetchError(f"unsupported content-encoding {encoding!r} from {url}")
+
+    def _add(self, data: bytes) -> None:
+        self.size += len(data)
+        if self.size > self.max_bytes:
+            raise ResponseTooLarge(f"{self.url} exceeds {self.max_bytes} bytes")
+        self.chunks.append(data)
+
+    def _decompress(self, data: bytes, first: bool) -> None:
+        assert self.decoder is not None
+        while data:
+            try:
+                out = self.decoder.decompress(data, self.max_bytes - self.size + 1)
+            except zlib.error as e:
+                if first and self.encoding == "deflate" and self.size == 0:
+                    # Some servers send raw deflate without the zlib header.
+                    self.decoder = zlib.decompressobj(-zlib.MAX_WBITS)
+                    first = False
+                    continue
+                raise FetchError(f"bad compressed body from {self.url}: {e}") from None
+            self._add(out)
+            data = self.decoder.unconsumed_tail
+
+    def feed(self, chunk: bytes) -> None:
+        first = self.raw_size == 0
+        self.raw_size += len(chunk)
+        if self.raw_size > self.max_bytes:
+            raise ResponseTooLarge(f"{self.url} exceeds {self.max_bytes} bytes")
+        if self.decoder is None:
+            self._add(chunk)
+        else:
+            self._decompress(chunk, first)
+
+    def finish(self) -> bytes:
+        if self.decoder is not None:
+            try:
+                self._add(self.decoder.flush())
+            except zlib.error as e:
+                raise FetchError(f"bad compressed body from {self.url}: {e}") from None
+        return b"".join(self.chunks)
 
 
 # --- conditional GET cache ---------------------------------------------------------
@@ -310,26 +379,36 @@ class FetchClient:
     ) -> tuple[int, dict[str, str], bytes]:
         self.requests_made += 1
         deadline = self.clock() + self.timeout * 3
+        headers = {"Accept-Encoding": ACCEPT_ENCODING, **headers}
         with self._client.stream("GET", url, headers=headers) as r:
             declared = r.headers.get("content-length")
             if declared and declared.isdigit() and int(declared) > self.max_bytes:
                 raise ResponseTooLarge(
                     f"{url} is {declared} bytes; limit {self.max_bytes}"
                 )
-            chunks: list[bytes] = []
-            size = 0
-            for chunk in r.iter_bytes():
-                size += len(chunk)
-                if size > self.max_bytes:
-                    raise ResponseTooLarge(f"{url} exceeds {self.max_bytes} bytes")
-                if self.clock() > deadline:
-                    raise FetchError(f"{url} took too long")
-                chunks.append(chunk)
-            return (
-                r.status_code,
-                {k.lower(): v for k, v in r.headers.items()},
-                b"".join(chunks),
-            )
+            if r.is_stream_consumed:
+                # Body already loaded and decoded by httpx (in-memory test
+                # transports only; real responses always stream).
+                out = _BoundedBody(url, self.max_bytes, None)
+                out.feed(r.content)
+            else:
+                # Raw bytes, decompressed here in bounded steps: the size limit
+                # holds for the decoded body, so a small compressed bomb cannot
+                # blow memory.
+                out = _BoundedBody(
+                    url, self.max_bytes, r.headers.get("content-encoding")
+                )
+                for chunk in r.iter_raw():
+                    out.feed(chunk)
+                    if self.clock() > deadline:
+                        raise FetchError(f"{url} took too long")
+            content = out.finish()
+            resp_headers = {
+                k.lower(): v
+                for k, v in r.headers.items()
+                if k.lower() not in ("content-encoding", "content-length")
+            }
+            return r.status_code, resp_headers, content
 
     def _robots_allow(self, url: str, delay: float | None) -> bool:
         parts = urlsplit(url)
