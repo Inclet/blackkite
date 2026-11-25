@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { DigestSettings } from '../../api/types';
 import { mockApi, status } from '../../test/mockApi';
@@ -28,7 +28,7 @@ test('shows the settings: weekly on Monday, the board\'s Urgent alerts switch, t
   expect(screen.getByRole('group', { name: DIGEST_COPY.threshold })).toBeInTheDocument();
   expect(chip(DIGEST_COPY.strongOnly)).toHaveAttribute('aria-pressed', 'true');
   expect(chip(DIGEST_COPY.strongAndGood)).toHaveAttribute('aria-pressed', 'false');
-  expect(screen.queryByText(/\d{2}/)).toBeNull();
+  expect(within(screen.getByRole('form', { name: 'Digest settings' })).queryByText(/\d{2}/)).toBeNull();
   expect(screen.queryByRole('textbox')).toBeNull();
   expect(chip(DIGEST_COPY.profileStreams)).toHaveAttribute('aria-pressed', 'true');
   expect(chip('Tenders')).toHaveAttribute('aria-pressed', 'false');

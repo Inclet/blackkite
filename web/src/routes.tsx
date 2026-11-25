@@ -2,6 +2,7 @@ import type { RouteObject } from 'react-router';
 import { AuthConfirm } from './screens/AuthConfirm';
 import { FeedRoute } from './screens/feed/FeedRoute';
 import { Placeholder } from './screens/Placeholder';
+import { AppShell } from './screens/shell/AppShell';
 import { SignIn } from './screens/SignIn';
 import { Shortlist } from './screens/shortlist/Shortlist';
 import { ProfileEditor } from './screens/profiles/ProfileEditor';
@@ -11,6 +12,9 @@ import { DigestSettings } from './screens/settings/DigestSettings';
 import { More } from './screens/settings/More';
 import { StyleguideComponents } from './screens/StyleguideComponents';
 import { StyleguideFoundations } from './screens/StyleguideFoundations';
+
+/** Calendar and Sources, until they are built (CLAUDE.md section 12). */
+export const NOT_DESIGNED = 'Not designed yet.';
 
 export const routes: RouteObject[] = [
   {
@@ -34,8 +38,12 @@ export const routes: RouteObject[] = [
   { path: '/styleguide/foundations', element: <StyleguideFoundations /> },
   { path: '/styleguide/components', element: <StyleguideComponents /> },
   // Not designed yet (CLAUDE.md section 12): reachable from the navigation, marked for design review.
-  ...['/calendar', '/sources'].map((path) => ({
+  // In the app frame, so the sidebar is the same as on every other screen.
+  ...[
+    { path: '/calendar', title: 'Calendar' },
+    { path: '/sources', title: 'Sources' },
+  ].map(({ path, title }) => ({
     path,
-    element: <Placeholder name={`${path.slice(1, 2).toUpperCase()}${path.slice(2)} (not designed yet)`} />,
+    element: <AppShell path={path} title={title} summary={NOT_DESIGNED} />,
   })),
 ];

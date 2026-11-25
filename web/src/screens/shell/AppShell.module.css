@@ -11,31 +11,6 @@
   flex-wrap: wrap;
 }
 
-.nav {
-  flex: 1 1 232px;
-  max-width: 100%;
-  box-sizing: border-box;
-  padding: 28px 20px;
-  border-right: 1px solid var(--bk-stone-200);
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-}
-
-.lockup {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px;
-}
-
-.navList {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 15px;
-}
-
 .main {
   flex: 999 1 560px;
   min-width: 0;
