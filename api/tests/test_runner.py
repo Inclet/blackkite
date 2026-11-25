@@ -322,7 +322,7 @@ def test_due_rechecked_inside_the_lock(Sessions, db, web):
 def test_scheduler_jobs(Sessions, settings, web):
     sched = build_scheduler(Sessions, settings, client=make_client(web))
     jobs = {j.id: j for j in sched.get_jobs()}
-    assert set(jobs) == {"run-due-sources", "refresh-statuses"}
+    assert set(jobs) == {"run-due-sources", "refresh-statuses", "weekly-digest"}
     tick = jobs["run-due-sources"]
     assert tick.trigger.interval.total_seconds() == TICK_SECONDS
     assert tick.max_instances == 1 and tick.coalesce
@@ -333,6 +333,12 @@ def test_scheduler_jobs(Sessions, settings, web):
     assert daily.trigger.get_next_fire_time(None, fire + timedelta(seconds=1)) == (
         fire + timedelta(days=1)
     )
+    weekly = jobs["weekly-digest"]
+    assert weekly.max_instances == 1 and weekly.coalesce
+    fire = weekly.trigger.get_next_fire_time(None, NOW)
+    # Monday 07:00 Africa/Kigali = 05:00 UTC (BK_DIGEST_HOUR default 7).
+    assert fire.astimezone(UTC).weekday() == 0
+    assert (fire.astimezone(UTC).hour, fire.minute) == (5, 0)
 
 
 def test_refresh_statuses_job_moves_items_on_under_its_lock(Sessions, db, engine):
