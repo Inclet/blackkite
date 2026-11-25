@@ -48,9 +48,10 @@ test('phone: the phone rows and the tab bar', async () => {
 
 test('empty: the nothing-new card pointing at the feed', async () => {
   mockApi({ 'GET /shortlist': [], 'GET /me': ME });
-  renderAt('/shortlist');
+  const router = renderAt('/shortlist');
   expect(await screen.findByText(SHORTLIST_COPY.emptyTitle)).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: SHORTLIST_COPY.openFeed })).toHaveAttribute('href', '/');
+  fireEvent.click(screen.getByRole('button', { name: SHORTLIST_COPY.openFeed }));
+  expect(router.state.location.pathname).toBe('/');
 });
 
 test('401 signs in; unreachable says so', async () => {

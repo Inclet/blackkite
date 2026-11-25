@@ -1,0 +1,180 @@
+import type { Profile, ProfileData, ProfileInput, ProfileType } from '../../api/types';
+import { STREAMS, type Stream } from '../../lib/streams';
+
+/** Spec 7.1: the owner's instrument list (personal profile). */
+export const INSTRUMENTS = [
+  'treasury bonds and bills',
+  'RSE shares',
+  'corporate bonds',
+  'real estate and land',
+  'private deals and startups',
+] as const;
+
+/** Spec 7.1: the owner's event topics (personal profile). */
+export const EVENT_TOPICS = [
+  'AI and tech',
+  'logistics and trade',
+  'startups and investors',
+  'finance and fintech',
+  'agriculture and food',
+  'general networking',
+] as const;
+
+/** Streams a new profile starts with (spec 7.1: business profiles tender/funding/event, personal investment/event). */
+export const DEFAULT_STREAMS: Record<ProfileType, Stream[]> = {
+  business: ['tender', 'funding', 'event'],
+  personal: ['investment', 'event'],
+};
+
+/** Everything as the inputs hold it: text for text fields, lists for chip groups. */
+export interface ProfileForm {
+  type: ProfileType;
+  name: string;
+  active: boolean;
+  streams: Stream[];
+  location: string;
+  services: string;
+  registrationsHeld: string;
+  registrationsNotHeld: string;
+  capacityModel: string;
+  trucksInNetwork: string;
+  refrigeratedInNetwork: string;
+  ownedTrucks: string;
+  tonnage: string;
+  minContractRwf: string;
+  provisional: boolean;
+  instruments: string[];
+  ticketMin: string;
+  ticketMax: string;
+  eventTopics: string[];
+  excludeOrganisations: string;
+  excludeSectors: string;
+  excludeKeywords: string;
+}
+
+export type NumberField = 'trucksInNetwork' | 'refrigeratedInNetwork' | 'ownedTrucks' | 'tonnage' | 'minContractRwf' | 'ticketMin' | 'ticketMax';
+export type FormErrors = Partial<Record<'name' | 'streams' | NumberField, string>>;
+
+export const ERRORS = {
+  name: 'Give the profile a name, such as Ironji-Trade.',
+  streams: 'Choose at least one stream.',
+  /** The Components board's own wording for a number field. */
+  number: 'Use a number, such as 100.',
+  rwf: 'Use an amount in Rwandan francs, such as 5,000,000.',
+  ticketOrder: 'Make this at least the smallest ticket.',
+} as const;
+
+const list = (v: string[] | null | undefined) => (v ?? []).join(', ');
+const num = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v));
+
+export function toForm(profile: Pick<Profile, 'name' | 'type' | 'data' | 'active'> | null, type: ProfileType): ProfileForm {
+  const d: ProfileData = profile?.data ?? {};
+  const t = profile?.type ?? type;
+  return {
+    type: t,
+    name: profile?.name ?? '',
+    active: profile?.active ?? true,
+    streams: d.streams ?? (profile ? [] : DEFAULT_STREAMS[t]),
+    location: d.location ?? '',
+    services: list(d.services),
+    registrationsHeld: list(d.registrationsHeld),
+    registrationsNotHeld: list(d.registrationsNotHeld),
+    capacityModel: d.capacity?.model ?? '',
+    trucksInNetwork: num(d.capacity?.trucksInNetwork),
+    refrigeratedInNetwork: num(d.capacity?.refrigeratedInNetwork),
+    ownedTrucks: num(d.capacity?.ownedTrucks),
+    tonnage: num(d.capacity?.tonnage),
+    minContractRwf: num(d.minContractRwf),
+    provisional: d.provisional ?? false,
+    instruments: d.instruments ?? [],
+    ticketMin: num(d.ticketRangeRwf?.min),
+    ticketMax: num(d.ticketRangeRwf?.max),
+    eventTopics: d.eventTopics ?? [],
+    excludeOrganisations: list(d.exclusions?.organisations),
+    excludeSectors: list(d.exclusions?.sectors),
+    excludeKeywords: list(d.exclusions?.keywords),
+  };
+}
+
+/** "dry freight, cold chain" -> ["dry freight", "cold chain"]; empty -> null (not provided, never filters). */
+export function parseList(s: string): string[] | null {
+  const items = s
+    .split(/[,\n]/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  return items.length ? [...new Set(items)] : null;
+}
+
+/** "5,000,000" or "5 000 000" -> 5000000; "" -> null; anything else -> NaN. */
+export function parseNumber(s: string): number | null {
+  const t = s.trim().replace(/[\s,_]/g, '');
+  if (t === '') return null;
+  return /^\d+(\.\d+)?$/.test(t) ? Number(t) : NaN;
+}
+
+const BUSINESS_NUMBERS: NumberField[] = ['trucksInNetwork', 'refrigeratedInNetwork', 'ownedTrucks', 'tonnage', 'minContractRwf'];
+const PERSONAL_NUMBERS: NumberField[] = ['ticketMin', 'ticketMax'];
+
+export function validate(f: ProfileForm): FormErrors {
+  const e: FormErrors = {};
+  if (!f.name.trim()) e.name = ERRORS.name;
+  if (f.streams.length === 0) e.streams = ERRORS.streams;
+  for (const k of f.type === 'business' ? BUSINESS_NUMBERS : PERSONAL_NUMBERS) {
+    if (Number.isNaN(parseNumber(f[k]))) e[k] = k === 'minContractRwf' || k.startsWith('ticket') ? ERRORS.rwf : ERRORS.number;
+  }
+  if (f.type === 'personal' && !e.ticketMin && !e.ticketMax) {
+    const lo = parseNumber(f.ticketMin);
+    const hi = parseNumber(f.ticketMax);
+    if (lo !== null && hi !== null && hi < lo) e.ticketMax = ERRORS.ticketOrder;
+  }
+  return e;
+}
+
+/** The profile to send. Keys this form does not show are kept from `original`. */
+export function toInput(f: ProfileForm, original?: ProfileData): ProfileInput {
+  const keep: ProfileData = { ...(original ?? {}) };
+  const streams = STREAMS.filter((s) => f.streams.includes(s));
+  const exclusions = {
+    organisations: parseList(f.excludeOrganisations) ?? [],
+    sectors: parseList(f.excludeSectors) ?? [],
+    keywords: parseList(f.excludeKeywords) ?? [],
+  };
+  let data: ProfileData;
+  if (f.type === 'business') {
+    data = {
+      ...keep,
+      streams,
+      location: f.location.trim() || null,
+      services: parseList(f.services),
+      registrationsHeld: parseList(f.registrationsHeld),
+      registrationsNotHeld: parseList(f.registrationsNotHeld),
+      capacity: {
+        ...(original?.capacity ?? {}),
+        model: f.capacityModel.trim() || null,
+        trucksInNetwork: parseNumber(f.trucksInNetwork),
+        refrigeratedInNetwork: parseNumber(f.refrigeratedInNetwork),
+        ownedTrucks: parseNumber(f.ownedTrucks),
+        tonnage: parseNumber(f.tonnage),
+      },
+      minContractRwf: parseNumber(f.minContractRwf),
+      provisional: f.provisional,
+      exclusions,
+    };
+  } else {
+    data = {
+      ...keep,
+      streams,
+      location: f.location.trim() || null,
+      instruments: f.instruments.length ? f.instruments : null,
+      ticketRangeRwf: { min: parseNumber(f.ticketMin), max: parseNumber(f.ticketMax) },
+      eventTopics: f.eventTopics.length ? f.eventTopics : null,
+      exclusions,
+    };
+  }
+  return { name: f.name.trim(), type: f.type, active: f.active, data };
+}
+
+/** Options to show for a chip group: the spec's set, then anything else the profile already holds. */
+export function chipOptions(base: readonly string[], selected: string[]): string[] {
+  return [...base, ...selected.filter((s) => !base.includes(s))];
+}

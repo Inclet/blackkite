@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router';
 import { api } from '../../api/client';
 import { useResource } from '../../api/useResource';
 import { Card } from '../../components/Card/Card';
@@ -31,6 +32,7 @@ export function shortlistSummary(n: number): string {
 export function Shortlist() {
   const desktop = useIsDesktop();
   const link = useAppLink();
+  const navigate = useNavigate();
   const res = useResource('shortlist', (s) => api.shortlist(s));
   if (res.error?.kind === 'unauthorized') return <SignIn />;
   const items = res.data ? sortClosingSoonest(res.data) : [];
@@ -44,7 +46,7 @@ export function Shortlist() {
             kind="nothing-new"
             title={SHORTLIST_COPY.emptyTitle}
             body={SHORTLIST_COPY.emptyBody}
-            action={{ label: SHORTLIST_COPY.openFeed, ...link('/') }}
+            action={{ label: SHORTLIST_COPY.openFeed, onClick: () => navigate('/') }}
           />
         </Card>
       )}
