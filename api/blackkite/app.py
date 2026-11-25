@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 
-from blackkite.auth.ratelimit import LinkRequestLimiter, SlidingWindowLimiter
+from blackkite.auth.ratelimit import LinkRequestLimiter, UnsubscribeLimiter
 from blackkite.config import Settings, get_settings, warn_ignored_env
 from blackkite.routes import (
     admin,
@@ -28,9 +28,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         per_email=settings.link_rate_per_email_per_hour,
         per_ip=settings.link_rate_per_ip_per_hour,
     )
-    # One-click unsubscribe (no session): per client address, like link requests.
-    app.state.unsubscribe_limiter = SlidingWindowLimiter(
-        settings.link_rate_per_ip_per_hour
+    # One-click unsubscribe (no session): per token, with a per-address ceiling.
+    app.state.unsubscribe_limiter = UnsubscribeLimiter(
+        per_token=settings.unsubscribe_rate_per_token_per_hour,
+        per_ip=settings.unsubscribe_rate_per_ip_per_hour,
     )
     app.include_router(auth.router)
     app.include_router(admin.router)
