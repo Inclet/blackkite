@@ -28,3 +28,10 @@ Answers to the Phase 0 questions, 2026-11-24. Conflict numbers refer to `PLAN.md
 | 22 | Contract comment | Comment in contract.ts and the report header updated to match ruling 16. Text only (b57650a). |
 | 23 | Event date pills (resolves 1) | Counted from `event_start`: over 14 days quiet; 7–14 outlined; 6 or fewer solid; the day before or the day of, alert red. |
 | 24 | Row subtitles (resolves 5) | Tender and funding: fit word · organisation, or fit word · top flag when there is one. Event: topic · venue on desktop, venue on phone. Investment: issuer · note on desktop, issuer on phone. Phone uses the short organisation name. |
+| 25 | Retired sources | Their items are hidden from members unless an active or paused source also carries them. |
+| 26 | Deadline conflict window | Sources' deadlines up to 14 days apart are one notice ("sources disagree"); further apart, separate notices. |
+| 27 | Editing an active source | Changing collector type or config sends it back to testing; two good runs needed again. Other fields don't change status. |
+| 28 | `bk run-source` on retired | Refused; move the source back to testing first. |
+| 29 | Items with no original source | `aggregator_only` only when every carrying source is an aggregator; publisher/news-only items are `unverified`. Both display as "Not yet confirmed at the source". (Refines spec 5.6.) |
+| 30 | Voyage model | `voyage-3.5`, 1024 dimensions. |
+| 31 | Bot contact URL | Owner will provide it later; required before any real collection. Until then the worker logs a warning. |
