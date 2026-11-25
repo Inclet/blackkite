@@ -21,7 +21,7 @@ One `user_opportunity_score` row per (user, opportunity, profile). Columns: `sco
 }
 ```
 
-- `fit_word` rule (proposal, owner to confirm): **strong** when fit_confidence ≥ 0.7, eligibility_confidence ≥ 0.7 and no flags; **good** when fit_confidence ≥ 0.6 and eligibility_confidence ≥ 0.5 with at least one flag; **possible** when fit_confidence ≥ 0.4 (eligibility unclear); otherwise null (not shown). Investments and events: fit_word null (decision 24 / boards), ranked on time, verification and source kind (spec 7.1).
+- `fit_word` rule (revised 2026-11-25 to match the boards; owner to confirm): **strong** when fit_confidence ≥ 0.7 and eligibility_confidence ≥ 0.7 (flags allowed: the WFP item is Strong with a "To check" note); **good** when fit_confidence ≥ 0.6 and eligibility_confidence ≥ 0.5 ("matches, with something to check"); **possible** when fit_confidence ≥ 0.4 (eligibility unclear); otherwise null (not shown). Thresholds in config. Investments and events: fit_word null (decision 24 / boards), ranked on time, verification and source kind (spec 7.1).
 - Hard-filtered pairs are stored with `hard_filtered` set and never shown or sent.
 - A user's best profile for an item = highest score among non-filtered rows; that profile's name is the item's `profile`.
 
@@ -39,7 +39,7 @@ All JSON in camelCase. Every route requires a session; every query filters by th
 | `GET/PUT /digest-settings` | channel email, frequency weekly\|off, day mon, alertThreshold, streams (decision 18). |
 | `GET /shortlist` | saved/acting items, `FeedItem[]`, soonest first. |
 
-Field mapping for `FeedItem`: `fit` = fit_word, or `"not-scored"` when no score row exists for a scorable stream, or null for events/investments/closed; `topFlag` = first flag label; `detail.reasons` = reasons; `detail.toCheck` = first flag's `to_check`; `detail.trust.state` = `evidence._trust` (confirmed/unconfirmed/conflict); `detail.trust.desktop` / `.phone` = the two copy templates the web fixtures already use, filled from the source names and dates; `deadline` = Kigali date of deadline_at.
+Field mapping for `FeedItem`: `fit` = fit_word, or `"not-scored"` when no score row exists for a scorable stream, or null for events/investments/closed; `topFlag` = first flag label, sent only when `fit` is "good" (feed boards: develoPPP "Good fit · needs matching funds"; WFP is Strong with a flag and shows the organisation); `detail.reasons` = reasons; `detail.toCheck` = first flag's `to_check`; `detail.trust.state` = `evidence._trust` (confirmed/unconfirmed/conflict); `detail.trust.desktop` / `.phone` = the two copy templates the web fixtures already use, filled from the source names and dates; `deadline` = Kigali date of deadline_at.
 
 ## 3. Digest (member-API track)
 
