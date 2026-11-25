@@ -267,6 +267,9 @@ def _parse(html: str, css: str) -> list[LexborNode]:
 
 
 class HtmlListCollector:
+    """Plain HTTP pages. Subclasses (browser_list) change how a page is obtained
+    (``_page``) and the config model (``_config``); parsing is shared."""
+
     def __init__(
         self,
         client: FetchClient,
@@ -278,20 +281,30 @@ class HtmlListCollector:
         self.preview = preview
         self.now = now
 
+    def _config(self, config: dict[str, Any]) -> HtmlListConfig:
+        return parse_config(config)
+
+    def _page(
+        self, url: str, delay: float | None, cfg: HtmlListConfig, *, detail: bool
+    ) -> tuple[str, str]:
+        """(final URL, HTML) of one page."""
+        resp = self.client.get(url, delay=delay)
+        return resp.url, resp.text
+
     def fetch(self, source) -> list[RawItem]:
-        cfg = parse_config(source.config or {})
+        cfg = self._config(source.config or {})
         pages = cfg.page_urls()[:1] if self.preview else cfg.page_urls()
         items: list[RawItem] = []
         seen: set[str] = set()
         for page_url in pages:
-            resp = self.client.get(page_url, delay=source.rate_limit)
-            nodes = _parse(resp.text, cfg.selectors.item)
+            final_url, html = self._page(page_url, source.rate_limit, cfg, detail=False)
+            nodes = _parse(html, cfg.selectors.item)
             if not nodes and page_url != pages[0]:
                 break  # ran past the last page
             fetched_at = self.now()
             for node in nodes:
                 title = _value(node, cfg.selectors.title)
-                link = _link(node, cfg.selectors, resp.url)
+                link = _link(node, cfg.selectors, final_url)
                 if not title or not link or link in seen:
                     continue
                 seen.add(link)
@@ -305,26 +318,26 @@ class HtmlListCollector:
                         listed_published=_value(node, cfg.selectors.date),
                         listed_deadline=_value(node, cfg.selectors.deadline),
                         snippet=_value(node, cfg.selectors.snippet, MAX_SNIPPET),
-                        extra={"list_page": resp.url},
+                        extra={"list_page": final_url},
                     )
                 )
         if cfg.detail is not None:
             limit = PREVIEW_DETAIL_ITEMS if self.preview else cfg.detail.max_items
             items = [
-                self._with_detail(it, cfg.detail.selectors, source.rate_limit)
-                if i < limit
-                else it
+                self._with_detail(it, cfg, source.rate_limit) if i < limit else it
                 for i, it in enumerate(items)
             ]
         return items
 
     def _with_detail(
-        self, item: RawItem, sels: DetailSelectors, delay: float | None
+        self, item: RawItem, cfg: HtmlListConfig, delay: float | None
     ) -> RawItem:
+        assert cfg.detail is not None
+        sels = cfg.detail.selectors
         extra = dict(item.extra)
         try:
-            resp = self.client.get(item.url, delay=delay)
-            root = LexborHTMLParser(resp.text).body
+            final_url, html = self._page(item.url, delay, cfg, detail=True)
+            root = LexborHTMLParser(html).body
         except CollectorError as e:
             extra["detail_error"] = str(e)[:500]
             return _replace(item, extra=extra)
@@ -336,7 +349,7 @@ class HtmlListCollector:
 
         return _replace(
             item,
-            detail_url=resp.url,
+            detail_url=final_url,
             organisation=pick(sels.organisation, item.organisation),
             listed_published=pick(sels.date, item.listed_published),
             listed_deadline=pick(sels.deadline, item.listed_deadline),
