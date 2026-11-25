@@ -100,13 +100,15 @@ test('digest settings round trip', async ({ page }, testInfo) => {
   await open(page, '/settings/digest');
   const weekly = page.getByRole('switch', { name: 'Weekly digest' });
   await expect(weekly).toHaveAttribute('aria-checked', 'true');
+  // The address is the account's own, from GET /me.
+  await expect(page.getByText('Every Monday, by email to clet@example.rw.')).toBeVisible();
   await weekly.click();
   await page.getByRole('button', { name: 'Strong and good fits' }).click();
   await page.getByRole('button', { name: 'Investments' }).click();
   await page.getByRole('button', { name: 'Save digest settings' }).click();
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible();
   const put = (await api.seen()).find((r) => r.method === 'PUT' && r.url === '/api/digest-settings');
-  expect(JSON.parse(put!.body)).toMatchObject({ frequency: 'off', day: 'mon', alertThreshold: 60, streams: ['investment'] });
+  expect(JSON.parse(put!.body)).toEqual({ channel: 'email', frequency: 'off', day: 'mon', alertThreshold: 60, streams: ['investment'] });
 
   await page.reload();
   await expect(page.getByRole('switch', { name: 'Weekly digest' })).toHaveAttribute('aria-checked', 'false');

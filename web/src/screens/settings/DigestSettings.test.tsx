@@ -11,7 +11,7 @@ beforeEach(() => setViewport('desktop'));
 afterEach(() => vi.unstubAllGlobals());
 
 const ME = { id: 'u', email: 'c@x.rw', name: 'Clet', role: 'admin' };
-const SETTINGS: DigestSettings = { channel: 'email', address: 'c@x.rw', frequency: 'weekly', day: 'mon', alertThreshold: 75, streams: null };
+const SETTINGS: DigestSettings = { channel: 'email', frequency: 'weekly', day: 'mon', alertThreshold: 75, streams: null };
 
 const sw = (name: string) => screen.getByRole('switch', { name });
 const chip = (name: string) => screen.getByRole('button', { name });
@@ -46,7 +46,7 @@ test('round trip: off, strong and good fits, two streams; PUT sends the whole se
   expect(chip(DIGEST_COPY.profileStreams)).toHaveAttribute('aria-pressed', 'false');
   fireEvent.click(chip(DIGEST_COPY.save));
   expect(await screen.findByText(DIGEST_COPY.saved)).toBeInTheDocument();
-  expect(put(api)).toEqual({ channel: 'email', address: 'c@x.rw', frequency: 'off', day: 'mon', alertThreshold: ALERT_THRESHOLDS.good, streams: ['tender', 'event'] });
+  expect(put(api)).toEqual({ channel: 'email', frequency: 'off', day: 'mon', alertThreshold: ALERT_THRESHOLDS.good, streams: ['tender', 'event'] });
 });
 
 test('alerts off sends a null threshold and hides the choice; back on starts at strong fits only', async () => {
@@ -121,4 +121,17 @@ test('choiceFor: at or above the strong value is strong only; null starts at str
   expect(choiceFor(ALERT_THRESHOLDS.good)).toBe('good');
   expect(choiceFor(0)).toBe('good');
   expect(choiceFor(null)).toBe('strong');
+});
+
+test('the address shown is the account email from GET /me; PUT sends only the keys the API takes', async () => {
+  const api = mockApi({
+    'GET /api/digest-settings': { ...SETTINGS, address: 'old@x.rw' },
+    'GET /me': { ...ME, email: 'clet@ironji.rw' },
+    'PUT /api/digest-settings': (b: unknown) => b,
+  });
+  renderAt('/settings/digest');
+  expect(await screen.findByText('Every Monday, by email to clet@ironji.rw.')).toBeInTheDocument();
+  fireEvent.click(chip(DIGEST_COPY.save));
+  expect(await screen.findByText(DIGEST_COPY.saved)).toBeInTheDocument();
+  expect(Object.keys(put(api) as object).sort()).toEqual(['alertThreshold', 'channel', 'day', 'frequency', 'streams']);
 });

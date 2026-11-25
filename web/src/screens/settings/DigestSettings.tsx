@@ -58,16 +58,18 @@ type Status = 'idle' | 'saving' | 'saved' | 'refused' | 'unreachable';
 /** /settings/digest (decision 18: weekly on Monday, or off). Not on any board (design review). */
 export function DigestSettings() {
   const res = useResource('digest-settings', (s) => api.digestSettings(s));
+  // The digest goes to the account's own address; only GET /me says what it is.
+  const me = useResource('me', (s) => api.me(s));
   if (res.error?.kind === 'unauthorized') return <SignIn />;
   return (
     <AppShell path="/settings/digest" title={DIGEST_COPY.title} summary={DIGEST_COPY.summary}>
       <LoadState loading={res.loading} error={res.data ? null : res.error} onRetry={res.reload} />
-      {res.data && <DigestForm settings={res.data} onSaved={(s) => res.setData(() => s)} />}
+      {res.data && <DigestForm settings={res.data} address={me.data?.email} onSaved={(s) => res.setData(() => s)} />}
     </AppShell>
   );
 }
 
-function DigestForm({ settings, onSaved }: { settings: Settings; onSaved: (s: Settings) => void }) {
+function DigestForm({ settings, address, onSaved }: { settings: Settings; address?: string; onSaved: (s: Settings) => void }) {
   const [weekly, setWeekly] = useState(settings.frequency === 'weekly');
   const [alerts, setAlerts] = useState(settings.alertThreshold !== null);
   const [choice, setChoice] = useState<AlertChoice>(choiceFor(settings.alertThreshold));
@@ -91,7 +93,8 @@ function DigestForm({ settings, onSaved }: { settings: Settings; onSaved: (s: Se
     e.preventDefault();
     const value = !alerts ? null : !choiceTouched && settings.alertThreshold !== null ? settings.alertThreshold : ALERT_THRESHOLDS[choice];
     setStatus('saving');
-    const next: Settings = { ...settings, channel: 'email', frequency: weekly ? 'weekly' : 'off', day: 'mon', alertThreshold: value, streams };
+    // Exactly the keys PUT takes: the API refuses any other.
+    const next: Settings = { channel: 'email', frequency: weekly ? 'weekly' : 'off', day: 'mon', alertThreshold: value, streams };
     try {
       const saved = await api.saveDigestSettings(next);
       onSaved(saved && typeof saved === 'object' ? saved : next);
@@ -115,7 +118,7 @@ function DigestForm({ settings, onSaved }: { settings: Settings; onSaved: (s: Se
       <Card gap={14} aria-label={DIGEST_COPY.weekly}>
         <SwitchRow
           label={DIGEST_COPY.weekly}
-          description={DIGEST_COPY.weeklyHelp(settings.address)}
+          description={DIGEST_COPY.weeklyHelp(address)}
           checked={weekly}
           onChange={(v) => {
             touch();

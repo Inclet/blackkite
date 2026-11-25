@@ -143,7 +143,8 @@ export function defaultSeed(): Seed {
         data: { streams: ['investment', 'event'], instruments: ['treasury bonds and bills', 'RSE shares'], eventTopics: ['AI and tech'], ticketRangeRwf: null },
       },
     ],
-    digest: { channel: 'email', address: 'clet@example.rw', frequency: 'weekly', day: 'mon', alertThreshold: 70, streams: null },
+    // GET /api/digest-settings never sends an address (the account email is GET /me's).
+    digest: { channel: 'email', frequency: 'weekly', day: 'mon', alertThreshold: 70, streams: null },
   };
 }
 
@@ -167,6 +168,8 @@ function send(res: http.ServerResponse, status: number, body?: unknown): void {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(body));
 }
+
+const DIGEST_KEYS = new Set(['channel', 'frequency', 'day', 'alertThreshold', 'streams']);
 
 const STATES = new Set(['saved', 'dismissed', 'acting', 'done', 'unseen']);
 
@@ -237,6 +240,9 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
     if (method === 'GET') return send(res, 200, s.digest);
     if (method === 'PUT') {
       const b = body as Record<string, unknown>;
+      // Like the API: unknown keys are refused.
+      const unknown = Object.keys(b ?? {}).filter((k) => !DIGEST_KEYS.has(k));
+      if (unknown.length) return send(res, 422, { detail: `extra keys: ${unknown.join(', ')}` });
       if (b.frequency !== 'weekly' && b.frequency !== 'off') return send(res, 422, { detail: 'frequency' });
       s.digest = { ...s.digest, ...b, day: 'mon', channel: 'email' };
       return send(res, 200, s.digest);

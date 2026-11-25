@@ -134,9 +134,12 @@ export interface Profile {
 
 export type ProfileInput = Pick<Profile, 'name' | 'type' | 'data'> & { active?: boolean };
 
+/**
+ * GET and PUT /api/digest-settings (api routes/digest_settings.py). No address:
+ * the digest goes to the account's own email (GET /me), and PUT refuses unknown keys.
+ */
 export interface DigestSettings {
   channel: 'email';
-  address?: string;
   /** Decision 18: weekly on Monday, or off. */
   frequency: 'weekly' | 'off';
   day: 'mon';
@@ -146,9 +149,12 @@ export interface DigestSettings {
   streams: Stream[] | null;
 }
 
+/** GET /me (api routes/schemas.py UserOut; snake_case, as the API sends it). */
 export interface Me {
   id: string;
   email: string;
   name: string | null;
   role: 'member' | 'admin';
+  status?: string;
+  created_at?: string;
 }
