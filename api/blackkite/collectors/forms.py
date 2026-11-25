@@ -7,7 +7,10 @@
 
 ``type`` is one of ``string``, ``integer``, ``number``, ``boolean``, ``array``,
 ``object`` (or ``enum`` with ``choices``). Arrays carry ``items`` (the item type,
-or the item fields for arrays of objects); nested objects carry ``fields``. Every
+or the item fields for arrays of objects); nested objects carry ``fields``; a
+choice of shapes carries ``variants`` (a field list each) and the
+``discriminator`` field that tells them apart; free-form objects (a mapping of
+names to values) carry ``free_form: true``. Every
 field has help text: a model without a description on some field is a bug, and
 ``describe`` raises so the tests catch it.
 """
@@ -71,6 +74,15 @@ def _field(
     for k in ("minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems"):
         if k in s:
             out[k] = s[k]
+    if "oneOf" in s:
+        # A choice of shapes (e.g. pagination by page number or by next link): one
+        # set of fields per variant, told apart by the discriminator field.
+        out["type"] = "object"
+        disc = (s.get("discriminator") or {}).get("propertyName")
+        if disc:
+            out["discriminator"] = disc
+        out["variants"] = [_fields(_resolve(v, defs), defs) for v in s["oneOf"]]
+        return out
     if out["type"] == "array":
         items, _ = _non_null(s.get("items", {}), defs)
         if items.get("type") == "object" and "properties" in items:

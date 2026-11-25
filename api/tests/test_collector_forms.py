@@ -12,6 +12,8 @@ def _walk(fields):
         yield f
         yield from _walk(f.get("fields", []))
         yield from _walk((f.get("items") or {}).get("fields", []))
+        for variant in f.get("variants", []):
+            yield from _walk(variant)
 
 
 @pytest.mark.parametrize("ctype", sorted(registry.CONFIG_MODELS))
