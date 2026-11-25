@@ -27,8 +27,12 @@ test('save persists across a reload, and shows on the shortlist', async ({ page 
   await open(page, '/');
   const save = page.getByRole('article').getByRole('button', { name: 'Save to shortlist' });
   await expect(save).toHaveAttribute('aria-pressed', 'false');
+  await expect(save.locator('svg')).toHaveCount(0);
   await page.keyboard.press('s');
   await expect(save).toHaveAttribute('aria-pressed', 'true');
+  // Saved: the secondary look with the check icon before the same label.
+  await expect(save.locator('svg[data-icon="check"]')).toHaveCount(1);
+  await expect(save).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect.poll(async () => (await api.seen()).filter((r) => r.method === 'PUT').map((r) => [r.url, JSON.parse(r.body)])).toEqual([
     ['/api/opportunities/wfp-logistics/state', { state: 'saved' }],
   ]);

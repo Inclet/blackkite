@@ -9,6 +9,7 @@ import { StateCard } from '../../components/StateCard/StateCard';
 import { FilterChip } from '../../components/FilterChip/FilterChip';
 import { FitLine, FitReason } from '../../components/FitLine/FitLine';
 import { Flag } from '../../components/Flag/Flag';
+import { Icon } from '../../components/Icon/Icon';
 import { Tag } from '../../components/Tag/Tag';
 import type { FeedItem } from '../../fixtures/types';
 import { pillFor } from '../../lib/feed';
@@ -65,6 +66,28 @@ export function FitSection({ item }: { item: FeedItem }) {
 
 export function hasFitSection(item: FeedItem): boolean {
   return item.fit !== null && item.fit !== 'not-scored';
+}
+
+export const SAVE_LABEL = 'Save to shortlist';
+
+/**
+ * "Save to shortlist". Unpressed: the primary button, as on the boards. Pressed
+ * (saved): the secondary button with the check icon before the same label. The
+ * boards never show a saved item, so the pressed look is not on any board (design review).
+ */
+export function SaveButton({ saved, size, onClick }: { saved: boolean; size?: 'regular' | 'large'; onClick: () => void }) {
+  return (
+    <Button
+      size={size}
+      variant={saved ? 'secondary' : 'primary'}
+      aria-pressed={saved}
+      onClick={onClick}
+      className={saved ? styles.saved : undefined}
+    >
+      {saved && <Icon name="check" size={16} strokeWidth={1.6} />}
+      {SAVE_LABEL}
+    </Button>
+  );
 }
 
 /** Announces save and dismiss to screen readers. */

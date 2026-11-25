@@ -72,3 +72,15 @@
   font-size: 13px;
   color: var(--bk-slate);
 }
+
+/* The pressed "Save to shortlist": check icon before the label (16px, as the fit reasons' check, 8px gap). Design review. */
+.saved {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.saved svg {
+  flex-shrink: 0;
+}

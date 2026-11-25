@@ -78,3 +78,15 @@ test('a non-http original notice URL renders no link on the phone', () => {
     item.detail.originalUrl = was;
   }
 });
+
+test('saved look in the action bar: secondary, large, check icon before the label', () => {
+  renderAt('/o/wfp-logistics?fixture=reference');
+  const save = () => within(screen.getByRole('group', { name: 'Actions' })).getByRole('button', { name: 'Save to shortlist' });
+  expect(save().querySelector('svg')).toBeNull();
+  fireEvent.click(save());
+  expect(save()).toHaveClass('large', 'secondary');
+  expect(save().firstElementChild).toHaveAttribute('data-icon', 'check');
+  fireEvent.click(save());
+  expect(save()).toHaveClass('large', 'primary');
+  expect(save().querySelector('svg')).toBeNull();
+});

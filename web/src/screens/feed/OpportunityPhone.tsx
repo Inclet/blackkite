@@ -9,7 +9,7 @@ import { httpUrl } from '../../lib/externalUrl';
 import { useAppLink } from '../../lib/useAppLink';
 import type { FeedModel } from './model';
 import { HEADING } from './focus';
-import { DetailTop, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus } from './parts';
+import { DetailTop, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus, SaveButton } from './parts';
 import styles from './OpportunityPhone.module.css';
 
 /** opportunity-phone.html: one opportunity, with a sticky action bar. Below 792 px. */
@@ -67,9 +67,7 @@ export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }
       </main>
 
       <div className={styles.actions} role="group" aria-label="Actions">
-        <Button size="large" aria-pressed={saved} onClick={() => model.toggleSaved(item.id)}>
-          Save to shortlist
-        </Button>
+        <SaveButton size="large" saved={saved} onClick={() => model.toggleSaved(item.id)} />
         <Button
           size="large"
           variant="secondary"

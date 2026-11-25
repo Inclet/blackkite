@@ -14,7 +14,7 @@ import { httpUrl } from '../../lib/externalUrl';
 import { useAppLink } from '../../lib/useAppLink';
 import { Sidebar } from '../shell/Sidebar';
 import type { FeedModel } from './model';
-import { DetailTop, FilterChips, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus } from './parts';
+import { DetailTop, FilterChips, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus, SaveButton } from './parts';
 import { HEADING, rowId } from './focus';
 import { useLiveList, useLiveSelection } from './liveList';
 import { useFeedKeys } from './useFeedKeys';
@@ -199,9 +199,7 @@ function DetailPane({ item, model, onDismiss }: { item: FeedItem; model: FeedMod
         {item.detail.trust.desktop}
       </TrustPanel>
       <div className={styles.actions}>
-        <Button aria-pressed={saved} onClick={() => model.toggleSaved(item.id)}>
-          Save to shortlist
-        </Button>
+        <SaveButton saved={saved} onClick={() => model.toggleSaved(item.id)} />
         <Button variant="secondary" onClick={onDismiss}>
           Not for me
         </Button>
