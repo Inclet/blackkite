@@ -5,7 +5,7 @@ import { mockApi, status } from '../../test/mockApi';
 import { COPY } from '../common/copy';
 import { renderAt, setViewport } from '../feed/testUtils';
 import { SIGN_IN } from '../SignIn';
-import { DEFAULT_THRESHOLD, DIGEST_COPY, parseThreshold } from './DigestSettings';
+import { ALERT_THRESHOLDS, choiceFor, DIGEST_COPY } from './DigestSettings';
 
 beforeEach(() => setViewport('desktop'));
 afterEach(() => vi.unstubAllGlobals());
@@ -24,33 +24,39 @@ test('shows the settings: weekly on Monday, the board\'s Urgent alerts switch, t
   expect(sw(DIGEST_COPY.weekly)).toHaveAttribute('aria-checked', 'true');
   expect(sw('Urgent alerts')).toHaveAttribute('aria-checked', 'true');
   expect(sw('Urgent alerts')).toHaveAccessibleDescription('Email me the day a strong fit closes within 5 days.');
-  expect(screen.getByLabelText(DIGEST_COPY.threshold)).toHaveValue('75');
+  // The fit words, never the internal score.
+  expect(screen.getByRole('group', { name: DIGEST_COPY.threshold })).toBeInTheDocument();
+  expect(chip(DIGEST_COPY.strongOnly)).toHaveAttribute('aria-pressed', 'true');
+  expect(chip(DIGEST_COPY.strongAndGood)).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.queryByText(/75/)).toBeNull();
+  expect(screen.queryByRole('textbox')).toBeNull();
   expect(chip(DIGEST_COPY.profileStreams)).toHaveAttribute('aria-pressed', 'true');
   expect(chip('Tenders')).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('round trip: off, alerts at 60, two streams; PUT sends the whole setting', async () => {
+test('round trip: off, strong and good fits, two streams; PUT sends the whole setting', async () => {
   const api = mockApi({ 'GET /api/digest-settings': SETTINGS, 'GET /me': ME, 'PUT /api/digest-settings': (b: unknown) => b });
   renderAt('/settings/digest');
   await screen.findByText('Every Monday, by email to c@x.rw.');
   fireEvent.click(sw(DIGEST_COPY.weekly));
-  fireEvent.change(screen.getByLabelText(DIGEST_COPY.threshold), { target: { value: '60' } });
+  fireEvent.click(chip(DIGEST_COPY.strongAndGood));
+  expect(chip(DIGEST_COPY.strongOnly)).toHaveAttribute('aria-pressed', 'false');
   fireEvent.click(chip('Events'));
   fireEvent.click(chip('Tenders'));
   expect(chip(DIGEST_COPY.profileStreams)).toHaveAttribute('aria-pressed', 'false');
   fireEvent.click(chip(DIGEST_COPY.save));
   expect(await screen.findByText(DIGEST_COPY.saved)).toBeInTheDocument();
-  expect(put(api)).toEqual({ channel: 'email', address: 'c@x.rw', frequency: 'off', day: 'mon', alertThreshold: 60, streams: ['tender', 'event'] });
+  expect(put(api)).toEqual({ channel: 'email', address: 'c@x.rw', frequency: 'off', day: 'mon', alertThreshold: ALERT_THRESHOLDS.good, streams: ['tender', 'event'] });
 });
 
-test('alerts off sends a null threshold and hides the field; back on starts from the last value', async () => {
+test('alerts off sends a null threshold and hides the choice; back on starts at strong fits only', async () => {
   const api = mockApi({ 'GET /api/digest-settings': { ...SETTINGS, alertThreshold: null, streams: ['tender'] }, 'GET /me': ME, 'PUT /api/digest-settings': (b: unknown) => b });
   renderAt('/settings/digest');
   await screen.findByText(/Every Monday/);
   expect(sw('Urgent alerts')).toHaveAttribute('aria-checked', 'false');
-  expect(screen.queryByLabelText(DIGEST_COPY.threshold)).toBeNull();
+  expect(screen.queryByRole('group', { name: DIGEST_COPY.threshold })).toBeNull();
   fireEvent.click(sw('Urgent alerts'));
-  expect(screen.getByLabelText(DIGEST_COPY.threshold)).toHaveValue(String(DEFAULT_THRESHOLD));
+  expect(chip(DIGEST_COPY.strongOnly)).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(sw('Urgent alerts'));
   // Removing the last stream means "my profiles' streams" again.
   fireEvent.click(chip('Tenders'));
@@ -59,14 +65,25 @@ test('alerts off sends a null threshold and hides the field; back on starts from
   await waitFor(() => expect(put(api)).toMatchObject({ alertThreshold: null, streams: null, frequency: 'weekly' }));
 });
 
-test('a threshold that is not 0-100 gets the field error and nothing is sent', async () => {
-  const api = mockApi({ 'GET /api/digest-settings': SETTINGS, 'GET /me': ME });
+test('switching alerts on sends the strong value', async () => {
+  const api = mockApi({ 'GET /api/digest-settings': { ...SETTINGS, alertThreshold: null }, 'GET /me': ME, 'PUT /api/digest-settings': (b: unknown) => b });
   renderAt('/settings/digest');
   await screen.findByText(/Every Monday/);
-  fireEvent.change(screen.getByLabelText(DIGEST_COPY.threshold), { target: { value: '150' } });
+  fireEvent.click(sw('Urgent alerts'));
   fireEvent.click(chip(DIGEST_COPY.save));
-  expect(screen.getByLabelText(DIGEST_COPY.threshold)).toHaveAccessibleDescription(DIGEST_COPY.thresholdError);
-  expect(put(api)).toBeUndefined();
+  await waitFor(() => expect(put(api)).toMatchObject({ alertThreshold: ALERT_THRESHOLDS.strong }));
+});
+
+test('a stored value set some other way is kept until the choice changes', async () => {
+  const api = mockApi({ 'GET /api/digest-settings': { ...SETTINGS, alertThreshold: 70 }, 'GET /me': ME, 'PUT /api/digest-settings': (b: unknown) => b });
+  renderAt('/settings/digest');
+  await screen.findByText(/Every Monday/);
+  expect(chip(DIGEST_COPY.strongAndGood)).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(chip(DIGEST_COPY.save));
+  await waitFor(() => expect(put(api)).toMatchObject({ alertThreshold: 70 }));
+  fireEvent.click(chip(DIGEST_COPY.strongOnly));
+  fireEvent.click(chip(DIGEST_COPY.save));
+  await waitFor(() => expect(put(api)).toMatchObject({ alertThreshold: ALERT_THRESHOLDS.strong }));
 });
 
 test.each([
@@ -97,10 +114,11 @@ test('unreachable on load offers Try again', async () => {
   expect(await screen.findByText(/Every Monday/)).toBeInTheDocument();
 });
 
-test('parseThreshold: whole numbers 0 to 100 only', () => {
-  expect(parseThreshold('0')).toBe(0);
-  expect(parseThreshold(' 100 ')).toBe(100);
-  expect(parseThreshold('101')).toBeNull();
-  expect(parseThreshold('7.5')).toBeNull();
-  expect(parseThreshold('')).toBeNull();
+test('choiceFor: at or above the strong value is strong only; null starts at strong', () => {
+  expect(choiceFor(ALERT_THRESHOLDS.strong)).toBe('strong');
+  expect(choiceFor(100)).toBe('strong');
+  expect(choiceFor(ALERT_THRESHOLDS.strong - 1)).toBe('good');
+  expect(choiceFor(ALERT_THRESHOLDS.good)).toBe('good');
+  expect(choiceFor(0)).toBe('good');
+  expect(choiceFor(null)).toBe('strong');
 });

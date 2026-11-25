@@ -98,16 +98,17 @@ test('digest settings round trip', async ({ page }, testInfo) => {
   const weekly = page.getByRole('switch', { name: 'Weekly digest' });
   await expect(weekly).toHaveAttribute('aria-checked', 'true');
   await weekly.click();
-  await page.getByLabel('Alert threshold, from 0 to 100').fill('55');
+  await page.getByRole('button', { name: 'Strong and good fits' }).click();
   await page.getByRole('button', { name: 'Investments' }).click();
   await page.getByRole('button', { name: 'Save digest settings' }).click();
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible();
   const put = (await api.seen()).find((r) => r.method === 'PUT' && r.url === '/api/digest-settings');
-  expect(JSON.parse(put!.body)).toMatchObject({ frequency: 'off', day: 'mon', alertThreshold: 55, streams: ['investment'] });
+  expect(JSON.parse(put!.body)).toMatchObject({ frequency: 'off', day: 'mon', alertThreshold: 60, streams: ['investment'] });
 
   await page.reload();
   await expect(page.getByRole('switch', { name: 'Weekly digest' })).toHaveAttribute('aria-checked', 'false');
-  await expect(page.getByLabel('Alert threshold, from 0 to 100')).toHaveValue('55');
+  await expect(page.getByRole('button', { name: 'Strong and good fits' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Strong fits only' })).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByRole('button', { name: 'Investments' })).toHaveAttribute('aria-pressed', 'true');
 });
 

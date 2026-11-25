@@ -4,7 +4,6 @@ import type { DigestSettings as Settings } from '../../api/types';
 import { useResource } from '../../api/useResource';
 import { Button } from '../../components/Button/Button';
 import { Card } from '../../components/Card/Card';
-import { Field } from '../../components/Field/Field';
 import { FilterChip } from '../../components/FilterChip/FilterChip';
 import { SwitchRow } from '../../components/SwitchRow/SwitchRow';
 import { reference } from '../../fixtures/reference';
@@ -25,23 +24,33 @@ export const DIGEST_COPY = {
   /** The Components board's own label and description. */
   alerts: BOARD_ALERTS.label,
   alertsHelp: BOARD_ALERTS.description,
-  threshold: 'Alert threshold, from 0 to 100',
-  thresholdError: 'Use a whole number from 0 to 100, such as 70.',
+  /** The fit words, never the internal score (CLAUDE.md section 12). */
+  threshold: 'Alert me about',
+  strongOnly: 'Strong fits only',
+  strongAndGood: 'Strong and good fits',
   streams: 'Streams in the digest',
   profileStreams: 'My profiles’ streams',
   save: 'Save digest settings',
   saved: 'Saved.',
-  refused: 'Blackkite did not accept these settings. Check the threshold.',
+  refused: 'Blackkite did not accept these settings. Try again.',
 } as const;
 
-/** Where an alert threshold starts when urgent alerts are switched on (design review). */
-export const DEFAULT_THRESHOLD = 70;
+/**
+ * alertThreshold values (the internal 0-100 score) behind the two choices. The
+ * owner may tune them; they sit near the fit-word bands (strong >= 0.7 confidence,
+ * good >= 0.6, docs/api-contract.md section 1).
+ */
+export const ALERT_THRESHOLDS = { strong: 75, good: 60 } as const;
 
-export function parseThreshold(s: string): number | null {
-  const t = s.trim();
-  if (!/^\d{1,3}$/.test(t)) return null;
-  const n = Number(t);
-  return n <= 100 ? n : null;
+export type AlertChoice = keyof typeof ALERT_THRESHOLDS;
+
+/** Where the choice starts when urgent alerts are switched on (design review). */
+export const DEFAULT_ALERT_CHOICE: AlertChoice = 'strong';
+
+/** The choice a stored threshold reads as: at or above the strong value is "strong only". */
+export function choiceFor(threshold: number | null): AlertChoice {
+  if (threshold === null) return DEFAULT_ALERT_CHOICE;
+  return threshold >= ALERT_THRESHOLDS.strong ? 'strong' : 'good';
 }
 
 type Status = 'idle' | 'saving' | 'saved' | 'refused' | 'unreachable';
@@ -61,9 +70,10 @@ export function DigestSettings() {
 function DigestForm({ settings, onSaved }: { settings: Settings; onSaved: (s: Settings) => void }) {
   const [weekly, setWeekly] = useState(settings.frequency === 'weekly');
   const [alerts, setAlerts] = useState(settings.alertThreshold !== null);
-  const [threshold, setThreshold] = useState(String(settings.alertThreshold ?? DEFAULT_THRESHOLD));
+  const [choice, setChoice] = useState<AlertChoice>(choiceFor(settings.alertThreshold));
+  // A stored value the owner set some other way is kept until the choice is changed.
+  const [choiceTouched, setChoiceTouched] = useState(false);
   const [streams, setStreams] = useState<Stream[] | null>(settings.streams);
-  const [error, setError] = useState<string | undefined>();
   const [status, setStatus] = useState<Status>('idle');
 
   const touch = () => status === 'saved' && setStatus('idle');
@@ -79,12 +89,7 @@ function DigestForm({ settings, onSaved }: { settings: Settings; onSaved: (s: Se
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const value = alerts ? parseThreshold(threshold) : null;
-    if (alerts && value === null) {
-      setError(DIGEST_COPY.thresholdError);
-      return;
-    }
-    setError(undefined);
+    const value = !alerts ? null : !choiceTouched && settings.alertThreshold !== null ? settings.alertThreshold : ALERT_THRESHOLDS[choice];
     setStatus('saving');
     const next: Settings = { ...settings, channel: 'email', frequency: weekly ? 'weekly' : 'off', day: 'mon', alertThreshold: value, streams };
     try {
@@ -143,22 +148,28 @@ function DigestForm({ settings, onSaved }: { settings: Settings; onSaved: (s: Se
           onChange={(v) => {
             touch();
             setAlerts(v);
-            if (!v) setError(undefined);
           }}
         />
         {alerts && (
-          <Field
-            className={styles.threshold}
-            label={DIGEST_COPY.threshold}
-            name="alertThreshold"
-            inputMode="numeric"
-            value={threshold}
-            onChange={(e) => {
-              touch();
-              setThreshold(e.target.value);
-            }}
-            error={error}
-          />
+          // Not on any board: the Filters chips as a one-of-two choice (design review).
+          <fieldset className={styles.group}>
+            <legend className={styles.groupLabel}>{DIGEST_COPY.threshold}</legend>
+            <div className={styles.chips}>
+              {(['strong', 'good'] as const).map((c) => (
+                <FilterChip
+                  key={c}
+                  stream="all"
+                  label={c === 'strong' ? DIGEST_COPY.strongOnly : DIGEST_COPY.strongAndGood}
+                  selected={choice === c}
+                  onClick={() => {
+                    touch();
+                    setChoiceTouched(true);
+                    setChoice(c);
+                  }}
+                />
+              ))}
+            </div>
+          </fieldset>
         )}
       </Card>
       <div className={styles.actions}>
