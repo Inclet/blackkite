@@ -30,13 +30,19 @@ export function FilterChips({ model, className, chipClassName }: { model: FeedMo
   );
 }
 
-/** Stream tag, profile tag and the deadline pill. */
+export const DETAIL_COPY = {
+  /** Next to the profile tag when the matched profile is provisional (spec 7.1). Not on any board (design review). */
+  provisional: 'Provisional',
+} as const;
+
+/** Stream tag, profile tag (and "Provisional" when the profile is) and the deadline pill. */
 export function DetailTop({ item, tagGap }: { item: FeedItem; tagGap: 6 | 8 }) {
   return (
     <div className={cx(styles.top, tagGap === 6 ? styles.topPhone : undefined)}>
       <span className={styles.tags}>
         <Tag kind="stream" stream={item.stream} />
         {item.detail.profile && <Tag kind="profile">{item.detail.profile}</Tag>}
+        {item.provisional && <Tag kind="profile">{DETAIL_COPY.provisional}</Tag>}
       </span>
       <DeadlinePill {...pillFor(item)} />
     </div>
