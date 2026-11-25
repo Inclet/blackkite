@@ -1,13 +1,11 @@
 /**
- * Sources and admin API (docs/api-contract.md section 4; spec 3, 4.1 to 4.4).
+ * Sources and admin API (docs/api-contract.md section 4.1; spec 3, 4.1 to 4.4).
  *
  * Paths: members under /api (/api/sources, /api/sources/{id}/mute,
- * /api/source-suggestions), admins under /api/admin. The Phase 3 source and admin
- * routes answer in snake_case (api routes/source_schemas.py, routes/schemas.py)
- * while the catalogue answers in camelCase; every answer goes through `camel()`
- * so the screens read one shape whichever the API sends. `config` and preview
- * `extra` are data, never renamed. Bodies are sent in snake_case, which the API
- * accepts in either case (its camelCase models also populate by name).
+ * /api/source-suggestions), admins under /api/admin. JSON is camelCase both ways
+ * (GET /me stays snake_case). Answers still go through `camel()`, a no-op on
+ * camelCase, so an older snake_case answer reads the same. `config` and preview
+ * `extra` are data: their keys are the collector's own (list_url…), never renamed.
  */
 import { request } from './client';
 import type { Stream } from '../lib/streams';
@@ -75,29 +73,36 @@ export interface AdminSource {
   promotionRuns: number;
 }
 
-/** POST /api/admin/sources and PATCH /api/admin/sources/{id} (api SourceIn / SourcePatch), snake_case. */
+/** GET/PATCH /api/admin/sources/{id} and status changes (api SourceDetailOut). */
+export interface SourceDetail extends AdminSource {
+  promotionGate: { goodRuns: number; needed: number; since: string | null; met: boolean };
+  /** Newest first; oldStatus null = created. */
+  statusHistory: { at: string; oldStatus: SourceStatus | null; newStatus: SourceStatus; changedBy: string | null; reason: string | null }[];
+}
+
+/** POST /api/admin/sources and PATCH /api/admin/sources/{id} (api SourceIn / SourcePatch). */
 export interface SourceBody {
   name: string;
-  home_url: string;
+  homeUrl: string;
   publisher: string | null;
   streams: Stream[];
   kind: SourceKind;
-  collector_type: CollectorType;
+  collectorType: CollectorType;
   config: Record<string, unknown>;
   schedule: string | null;
-  rate_limit: number | null;
-  access_note: string | null;
+  rateLimit: number | null;
+  accessNote: string | null;
   /** Create only: the accepted suggestion this source comes from. */
-  suggestion_id?: string;
+  suggestionId?: string;
 }
 
 /** POST /api/admin/sources/test-run (api PreviewIn). */
 export interface PreviewBody {
-  collector_type: CollectorType;
+  collectorType: CollectorType;
   config: Record<string, unknown>;
-  home_url: string | null;
+  homeUrl: string | null;
   streams: Stream[];
-  rate_limit: number | null;
+  rateLimit: number | null;
 }
 
 export interface SourceRun {
@@ -131,21 +136,41 @@ export interface Preview {
   elapsedSeconds: number;
 }
 
-/** One config field of a collector type (GET /api/admin/collector-types). */
+/** One config field of a collector type (GET /api/admin/collector-types, api ConfigFieldOut). */
 export interface ConfigField {
-  /** The config key; a dotted name ("selectors.title") is a nested key. */
+  /** The key in `config` (inside its parent for nested fields). The editor flattens nesting to "selectors.title". */
   name: string;
-  /** string | url | integer | number | boolean | list | object; anything else is edited as JSON. */
-  type: string;
+  /**
+   * string | url | integer | number | boolean | choice | string_list | selector |
+   * object | object_list | map | json. Anything else is edited as JSON.
+   */
+  kind: string;
   required: boolean;
   help: string | null;
+  default?: unknown;
+  /** kind "choice". */
+  options?: string[] | null;
+  min?: number | null;
+  max?: number | null;
+  /** kinds "object" and "object_list". */
+  fields?: ConfigField[] | null;
   label?: string | null;
 }
 
 export interface CollectorTypeInfo {
   type: CollectorType;
   label: string | null;
+  /** False while the collector is not built yet: its runs fail cleanly. */
+  implemented: boolean;
+  /** "declared": the spec 4.2 fields, until the collector has its own config model. */
+  schemaSource: 'model' | 'declared' | null;
   fields: ConfigField[];
+}
+
+/** GET /api/admin/sources/{id}/runs (api RunPage). */
+export interface RunPage {
+  total: number;
+  items: SourceRun[];
 }
 
 /** api routes/catalogue.py CatalogueItem (camelCase already). */
@@ -171,7 +196,7 @@ export interface CataloguePage {
   items: CatalogueItem[];
 }
 
-/** api UserOut. */
+/** api AdminUserOut. */
 export interface AdminUser {
   id: string;
   email: string;
@@ -179,6 +204,8 @@ export interface AdminUser {
   role: 'member' | 'admin';
   status: 'active' | 'deactivated';
   createdAt: string;
+  /** Null: never signed in. */
+  lastSignInAt?: string | null;
 }
 
 /** api InviteOut. */
@@ -223,24 +250,50 @@ export function collectorTypesFrom(raw: unknown): CollectorTypeInfo[] {
     .map(([key, r]) => {
       const c = camel<Record<string, unknown>>(r);
       const type = String(key ?? c.type ?? c.collectorType ?? c.name ?? '') as CollectorType;
-      const fields = (Array.isArray(c.fields) ? c.fields : []).map((f) => {
-        const o = (f ?? {}) as Record<string, unknown>;
-        return {
-          name: String(o.name ?? ''),
-          type: String(o.type ?? 'string'),
-          required: o.required === true,
-          help: typeof o.help === 'string' && o.help ? o.help : null,
-          label: typeof o.label === 'string' && o.label ? o.label : null,
-        };
-      });
-      return { type, label: typeof c.label === 'string' && c.label ? c.label : null, fields: fields.filter((f) => f.name) };
+      return {
+        type,
+        label: typeof c.label === 'string' && c.label ? c.label : null,
+        implemented: c.implemented !== false,
+        schemaSource: c.schemaSource === 'model' || c.schemaSource === 'declared' ? (c.schemaSource as 'model' | 'declared') : null,
+        fields: configFieldsFrom(c.fields),
+      };
     })
     .filter((t) => t.type);
+}
+
+function configFieldsFrom(raw: unknown): ConfigField[] {
+  return (Array.isArray(raw) ? raw : [])
+    .map((f) => {
+      const o = (f ?? {}) as Record<string, unknown>;
+      const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      const field: ConfigField = {
+        name: String(o.name ?? ''),
+        // `kind` (contract 4.1); `type` from earlier drafts.
+        kind: String(o.kind ?? o.type ?? 'string'),
+        required: o.required === true,
+        help: typeof o.help === 'string' && o.help ? o.help : null,
+        default: o.default ?? null,
+        options: Array.isArray(o.options) ? o.options.map(String) : null,
+        min: num(o.min),
+        max: num(o.max),
+        fields: Array.isArray(o.fields) ? configFieldsFrom(o.fields) : null,
+        label: typeof o.label === 'string' && o.label ? o.label : null,
+      };
+      return field;
+    })
+    .filter((f) => f.name);
 }
 
 const enc = encodeURIComponent;
 const get = async <T>(path: string, signal?: AbortSignal) => camel<T>(await request<unknown>(path, { signal }));
 const post = async <T>(path: string, body?: unknown) => camel<T>(await request<unknown>(path, { method: 'POST', body }));
+
+/** A RunPage, or a bare list of runs (earlier answers). */
+function runPage(raw: unknown): RunPage {
+  const page = camel<RunPage | SourceRun[]>(raw);
+  if (Array.isArray(page)) return { total: page.length, items: page };
+  return { total: page?.total ?? 0, items: page?.items ?? [] };
+}
 
 export const sourcesApi = {
   // Members
@@ -252,12 +305,18 @@ export const sourcesApi = {
 
   // Admins: sources
   adminSources: (signal?: AbortSignal) => get<AdminSource[]>('/api/admin/sources', signal),
-  adminSource: (id: string, signal?: AbortSignal) => get<AdminSource>(`/api/admin/sources/${enc(id)}`, signal),
-  createSource: (body: SourceBody) => post<AdminSource>('/api/admin/sources', body),
+  adminSource: (id: string, signal?: AbortSignal) => get<SourceDetail>(`/api/admin/sources/${enc(id)}`, signal),
+  createSource: (body: SourceBody) => post<SourceDetail>('/api/admin/sources', body),
   updateSource: async (id: string, body: Partial<SourceBody>) =>
-    camel<AdminSource>(await request<unknown>(`/api/admin/sources/${enc(id)}`, { method: 'PATCH', body })),
-  setStatus: (id: string, status: SourceStatus) => post<AdminSource>(`/api/admin/sources/${enc(id)}/status`, { status }),
-  runs: (id: string, signal?: AbortSignal) => get<SourceRun[]>(`/api/admin/sources/${enc(id)}/runs`, signal),
+    camel<SourceDetail>(await request<unknown>(`/api/admin/sources/${enc(id)}`, { method: 'PATCH', body })),
+  setStatus: (id: string, status: SourceStatus) => post<SourceDetail>(`/api/admin/sources/${enc(id)}/status`, { status }),
+  /** The run history, newest first; `failed` gives the error log. */
+  runs: async (id: string, opts: { failed?: boolean; limit?: number } = {}, signal?: AbortSignal) => {
+    const q = new URLSearchParams();
+    if (opts.failed) q.set('status', 'failed');
+    q.set('limit', String(opts.limit ?? 20));
+    return runPage(await request<unknown>(`/api/admin/sources/${enc(id)}/runs?${q}`, { signal }));
+  },
   /** Fetch once with the config on screen; the API writes nothing. */
   testRun: (body: PreviewBody) => post<Preview>('/api/admin/sources/test-run', body),
   collectorTypes: async (signal?: AbortSignal) => collectorTypesFrom(await request<unknown>('/api/admin/collector-types', { signal })),
@@ -275,6 +334,8 @@ export const sourcesApi = {
   // Admins: users and invites
   users: (signal?: AbortSignal) => get<AdminUser[]>('/api/admin/users', signal),
   deactivate: (id: string) => post<AdminUser>(`/api/admin/users/${enc(id)}/deactivate`),
+  setRole: async (id: string, role: AdminUser['role']) =>
+    camel<AdminUser>(await request<unknown>(`/api/admin/users/${enc(id)}`, { method: 'PATCH', body: { role } })),
   invites: (signal?: AbortSignal) => get<Invite[]>('/api/admin/invites', signal),
   invite: (email: string) => post<Invite>('/api/admin/invites', { email }),
   withdrawInvite: (id: string) => request<void>(`/api/admin/invites/${enc(id)}`, { method: 'DELETE' }),

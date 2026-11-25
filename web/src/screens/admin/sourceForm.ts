@@ -1,25 +1,60 @@
 /**
  * The admin source editor's form (spec 4.1 record, 4.2 config per collector type).
  * The config part is rendered from GET /api/admin/collector-types: one input per
- * field, keyed by the field's name (a dotted name is a nested key). Config keys the
- * field list does not describe are kept as they were.
+ * field. Nested "object" fields are flattened to dotted names ("selectors.title"),
+ * each a key inside its parent. Config keys the field list does not describe are
+ * kept as they were.
  */
 import type { AdminSource, CollectorType, CollectorTypeInfo, ConfigField, SourceBody, SourceKind } from '../../api/sources';
 import type { Stream } from '../../lib/streams';
 
-export type FieldKind = 'text' | 'url' | 'integer' | 'number' | 'boolean' | 'list' | 'json';
+export type FieldKind = 'text' | 'url' | 'integer' | 'number' | 'boolean' | 'choice' | 'list' | 'selector' | 'json';
 
-/** How a field's declared type is edited. Unknown types are edited as JSON, so nothing is lost. */
-export function fieldKind(type: string): FieldKind {
-  const t = type.trim().toLowerCase();
-  if (t === 'bool' || t === 'boolean') return 'boolean';
-  if (t === 'int' || t === 'integer') return 'integer';
-  if (t === 'number' || t === 'float' || t === 'decimal') return 'number';
-  if (t === 'url' || t === 'uri') return 'url';
-  if (t === 'list' || t === 'array' || t.startsWith('list[') || t.startsWith('list<') || t.endsWith('[]')) return 'list';
-  if (t === 'object' || t === 'dict' || t === 'json' || t === 'mapping' || t.startsWith('dict[')) return 'json';
-  if (t === 'string' || t === 'str' || t === 'text' || t === 'email' || t === 'selector' || t === 'regex' || t === 'pattern' || t === 'cron') return 'text';
+/**
+ * How a field kind (contract 4.1) is edited. object_list, map, json and anything
+ * unknown are edited as JSON, so nothing is lost; an object with nested fields is
+ * flattened first (flattenFields).
+ */
+export function fieldKind(kind: string): FieldKind {
+  const t = kind.trim().toLowerCase();
+  if (t === 'boolean' || t === 'bool') return 'boolean';
+  if (t === 'integer' || t === 'int') return 'integer';
+  if (t === 'number' || t === 'float') return 'number';
+  if (t === 'url') return 'url';
+  if (t === 'choice') return 'choice';
+  if (t === 'string_list' || t === 'list') return 'list';
+  if (t === 'selector') return 'selector';
+  if (t === 'string' || t === 'str' || t === 'text') return 'text';
   return 'json';
+}
+
+/**
+ * Nested object fields become dotted names. A nested field is required only when
+ * every object above it is (an optional "detail" block stays optional).
+ */
+export function flattenFields(fields: ConfigField[], prefix = '', parentRequired = true): ConfigField[] {
+  const out: ConfigField[] = [];
+  for (const f of fields) {
+    const name = prefix ? `${prefix}.${f.name}` : f.name;
+    const required = f.required && parentRequired;
+    if (f.kind === 'object' && f.fields && f.fields.length) out.push(...flattenFields(f.fields, name, required));
+    else out.push({ ...f, name, required });
+  }
+  return out;
+}
+
+/** The hint under a config input: the API's help, the default and the range. */
+export function fieldHint(f: ConfigField): string | undefined {
+  const kind = fieldKind(f.kind);
+  let help = f.help ?? '';
+  if (kind === 'list') help = /one per line/i.test(help) ? help.replace(/,?\s*one per line/i, ', separated by commas') : [help, 'Separate with commas.'].filter(Boolean).join(' ');
+  const parts = [help];
+  if (kind === 'selector') parts.push('A CSS selector, or JSON such as {"css": "a", "attr": "href"}.');
+  if (kind === 'json') parts.push('JSON.');
+  const hasDefault = f.default !== null && f.default !== undefined && !(Array.isArray(f.default) && f.default.length === 0) && kind !== 'boolean';
+  if (hasDefault) parts.push(`Default: ${Array.isArray(f.default) ? f.default.join(', ') : typeof f.default === 'object' ? JSON.stringify(f.default) : String(f.default)}.`);
+  if ((kind === 'integer' || kind === 'number') && f.min !== null && f.min !== undefined && f.max !== null && f.max !== undefined) parts.push(`From ${f.min} to ${f.max}.`);
+  return parts.filter(Boolean).join(' ') || undefined;
 }
 
 /** "selectors.item_title" -> "Selectors: item title". */
@@ -66,6 +101,9 @@ export const FORM_COPY = {
   integer: 'Use a whole number, such as 20.',
   number: 'Use a number, such as 1.5.',
   json: 'Use JSON, such as {"css": "a.title"}.',
+  range: (min: number | null | undefined, max: number | null | undefined) =>
+    min !== null && min !== undefined && max !== null && max !== undefined ? `Use a number from ${min} to ${max}.` : min !== null && min !== undefined ? `Use ${min} or more.` : `Use ${max} or less.`,
+  choice: (options: string[]) => `Choose one of: ${options.join(', ')}.`,
   configObject: 'Use a JSON object, such as {"feed_url": "https://…"}.',
 } as const;
 
@@ -111,21 +149,21 @@ function toText(kind: FieldKind, v: unknown): string | boolean {
   if (kind === 'boolean') return v === true;
   if (v === undefined || v === null) return '';
   if (kind === 'list') return Array.isArray(v) ? v.map(String).join(', ') : typeof v === 'string' ? v : JSON.stringify(v);
-  if (kind === 'json') return typeof v === 'string' ? JSON.stringify(v) : JSON.stringify(v);
+  if (kind === 'json') return JSON.stringify(v);
   return typeof v === 'object' ? JSON.stringify(v) : String(v);
 }
 
 export function fieldsFor(types: CollectorTypeInfo[] | undefined, type: CollectorType | ''): ConfigField[] | null {
   if (!type || !types) return null;
   const info = types.find((t) => t.type === type);
-  return info && info.fields.length ? info.fields : null;
+  return info && info.fields.length ? flattenFields(info.fields) : null;
 }
 
 /** The form values for a config, given the type's fields (or the whole config as JSON). */
 export function configValues(fields: ConfigField[] | null, config: Record<string, unknown>): ConfigValues {
   if (!fields) return { [WHOLE_CONFIG]: Object.keys(config).length ? JSON.stringify(config, null, 0) : '' };
   const out: ConfigValues = {};
-  for (const f of fields) out[f.name] = toText(fieldKind(f.type), getPath(config, f.name));
+  for (const f of fields) out[f.name] = toText(fieldKind(f.kind), getPath(config, f.name));
   return out;
 }
 
@@ -184,7 +222,7 @@ export function buildConfig(
   }
   const config = structuredClone(base);
   for (const f of fields) {
-    const kind = fieldKind(f.type);
+    const kind = fieldKind(f.kind);
     const raw = values[f.name];
     if (kind === 'boolean') {
       setPath(config, f.name, raw === true);
@@ -196,13 +234,24 @@ export function buildConfig(
       if (f.required) errors[f.name] = FORM_COPY.required;
       continue;
     }
-    if (kind === 'integer') {
-      if (!/^-?\d+$/.test(text)) errors[f.name] = FORM_COPY.integer;
-      else setPath(config, f.name, Number(text));
-    } else if (kind === 'number') {
+    const outOfRange = (n: number) => (f.min !== null && f.min !== undefined && n < f.min) || (f.max !== null && f.max !== undefined && n > f.max);
+    if (kind === 'integer' || kind === 'number') {
       const n = Number(text);
-      if (!Number.isFinite(n)) errors[f.name] = FORM_COPY.number;
+      if (kind === 'integer' && !/^-?\d+$/.test(text)) errors[f.name] = FORM_COPY.integer;
+      else if (!Number.isFinite(n)) errors[f.name] = FORM_COPY.number;
+      else if (outOfRange(n)) errors[f.name] = FORM_COPY.range(f.min, f.max);
       else setPath(config, f.name, n);
+    } else if (kind === 'choice') {
+      if (f.options && f.options.length && !f.options.includes(text)) errors[f.name] = FORM_COPY.choice(f.options);
+      else setPath(config, f.name, text);
+    } else if (kind === 'selector') {
+      if (text.startsWith('{')) {
+        try {
+          setPath(config, f.name, JSON.parse(text));
+        } catch {
+          errors[f.name] = FORM_COPY.json;
+        }
+      } else setPath(config, f.name, text);
     } else if (kind === 'list') {
       const items = text
         .split(',')
@@ -255,15 +304,15 @@ export function validate(
     errors,
     body: {
       name: form.name.trim(),
-      home_url: form.homeUrl.trim(),
+      homeUrl: form.homeUrl.trim(),
       publisher: form.publisher.trim() || null,
       streams: form.streams,
       kind: form.kind,
-      collector_type: form.collectorType,
+      collectorType: form.collectorType,
       config: built.config,
       schedule: form.schedule.trim() || null,
-      rate_limit: rateLimit,
-      access_note: form.accessNote.trim() || null,
+      rateLimit,
+      accessNote: form.accessNote.trim() || null,
     },
   };
 }

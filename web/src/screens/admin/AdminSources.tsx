@@ -13,12 +13,12 @@ import styles from '../sources/Sources.module.css';
 import {
   COLLECTOR_WORDS,
   formatWhen,
-  gateText,
   HEALTH_WORDS,
   itemsCount,
   KIND_WORDS,
   STATUS_HELP,
   STATUS_ORDER,
+  sourceGate,
   STATUS_WORDS,
   streamList,
 } from '../sources/words';
@@ -96,7 +96,7 @@ function Row({ source: s }: { source: AdminSource }) {
         <span className={styles.rowTitle}>{s.name}</span>
         <span className={styles.meta}>{about}</span>
         <span className={styles.meta}>{runs}</span>
-        {(s.status === 'testing' || s.status === 'paused') && <span className={styles.meta}>{gateText(s.promotionRuns)}</span>}
+        {(s.status === 'testing' || s.status === 'paused') && <span className={styles.meta}>{sourceGate(s)}</span>}
       </div>
       <div className={styles.side}>
         <Tag kind="profile">{ADMIN_SOURCES_COPY.health(HEALTH_WORDS[s.health])}</Tag>

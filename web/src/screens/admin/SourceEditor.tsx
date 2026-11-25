@@ -5,11 +5,12 @@ import {
   COLLECTOR_TYPES,
   SOURCE_KINDS,
   sourcesApi,
-  type AdminSource,
+  type SourceDetail,
   type CollectorType,
   type CollectorTypeInfo,
   type ConfigField,
   type Preview,
+  type RunPage,
   type SourceRun,
   type SourceStatus,
   type Suggestion,
@@ -32,7 +33,8 @@ import {
   COLLECTOR_WORDS,
   formatWhen,
   GATE_HELP,
-  gateText,
+  HISTORY_REASONS,
+  sourceGate,
   HEALTH_WORDS,
   KIND_WORDS,
   MOVE_DONE,
@@ -47,6 +49,7 @@ import {
   configValues,
   detailText,
   emptyForm,
+  fieldHint,
   fieldKind,
   fieldLabel,
   fieldsFor,
@@ -117,7 +120,12 @@ export const EDITOR_COPY = {
   runLine: (r: SourceRun) =>
     `${r.itemsFound} found · ${r.itemsNew} new${r.itemsFailed ? ` · ${r.itemsFailed} could not be read` : ''}`,
   errors: 'Error log',
-  noErrors: 'No errors in the runs shown.',
+  noErrors: 'No failed runs.',
+  moreRuns: (shown: number, total: number) => `Showing the latest ${shown} of ${total}.`,
+  history: 'Status history',
+  historyLine: (from: string | null, to: string, reason: string | null) =>
+    `${from ? `${from} to ${to}` : `Created as ${to.toLowerCase()}`}${reason && reason !== 'created' ? `, because ${HISTORY_REASONS[reason] ?? reason}` : ''}`,
+  notBuilt: 'This collector is not built yet: its test runs and scheduled runs fail until it is. The settings below are the ones the spec lists.',
   notFound: 'We could not find that source.',
   fromSuggestion: 'From a member’s suggestion',
 } as const;
@@ -154,7 +162,8 @@ function New() {
 function Existing({ id }: { id: string }) {
   const source = useResource(`admin-source-${id}`, (s) => sourcesApi.adminSource(id, s));
   const types = useResource('collector-types', (s) => sourcesApi.collectorTypes(s));
-  const runs = useResource(`admin-runs-${id}`, (s) => sourcesApi.runs(id, s));
+  const runs = useResource(`admin-runs-${id}`, (s) => sourcesApi.runs(id, {}, s));
+  const errorLog = useResource(`admin-run-errors-${id}`, (s) => sourcesApi.runs(id, { failed: true }, s));
   const path = `/admin/sources/${id}`;
   const failed = adminFailure(path, source.error, types.error, runs.error);
   if (failed) return failed;
@@ -180,6 +189,7 @@ function Existing({ id }: { id: string }) {
       types={types.data}
       typesFailed={!!types.error}
       runs={runs.data}
+      errorLog={errorLog.data}
       onSaved={(s) => {
         source.setData(() => s);
         primeCache('admin-sources', undefined);
@@ -207,15 +217,16 @@ type SaveStatus = { kind: 'idle' | 'saving' | 'saved' | 'invalid' | 'refused' | 
 type TestState = { kind: 'idle' } | { kind: 'running' } | { kind: 'done'; preview: Preview } | { kind: 'failed'; text: string };
 
 interface EditorProps {
-  source: AdminSource | null;
+  source: SourceDetail | null;
   suggestion: Suggestion | null;
   types: CollectorTypeInfo[] | undefined;
   typesFailed: boolean;
-  runs?: SourceRun[];
-  onSaved: (s: AdminSource) => void;
+  runs?: RunPage;
+  errorLog?: RunPage;
+  onSaved: (s: SourceDetail) => void;
 }
 
-function Editor({ source, suggestion, types, typesFailed, runs, onSaved }: EditorProps) {
+function Editor({ source, suggestion, types, typesFailed, runs, errorLog, onSaved }: EditorProps) {
   const navigate = useNavigate();
   const { state } = useLocation();
   const [form, setForm] = useState<SourceForm>(() => {
@@ -252,11 +263,11 @@ function Editor({ source, suggestion, types, typesFailed, runs, onSaved }: Edito
     setTest({ kind: 'running' });
     try {
       const preview = await sourcesApi.testRun({
-        collector_type: form.collectorType,
+        collectorType: form.collectorType,
         config: checked.config,
-        home_url: form.homeUrl.trim() || null,
+        homeUrl: form.homeUrl.trim() || null,
         streams: form.streams.length ? form.streams : ['tender'],
-        rate_limit: form.rateLimit.trim() ? Number(form.rateLimit) : null,
+        rateLimit: form.rateLimit.trim() ? Number(form.rateLimit) : null,
       });
       setTest({ kind: 'done', preview });
     } catch (err) {
@@ -282,7 +293,7 @@ function Editor({ source, suggestion, types, typesFailed, runs, onSaved }: Edito
         onSaved(saved);
         setSave({ kind: 'saved', text: source.status === 'active' && saved.status === 'testing' ? EDITOR_COPY.savedBackToTesting : EDITOR_COPY.saved });
       } else {
-        const created = await sourcesApi.createSource(suggestion ? { ...body, suggestion_id: suggestion.id } : body);
+        const created = await sourcesApi.createSource(suggestion ? { ...body, suggestionId: suggestion.id } : body);
         primeCache('admin-sources', undefined);
         primeCache('admin-suggestions-accepted', undefined);
         navigate(`/admin/sources/${encodeURIComponent(created.id)}`, { state: { notice: EDITOR_COPY.created } });
@@ -372,6 +383,7 @@ function Editor({ source, suggestion, types, typesFailed, runs, onSaved }: Edito
           </ChipGroup>
           {source?.status === 'active' && <div className={styles.status}>{EDITOR_COPY.activeWarning}</div>}
           {typesFailed && <div className={styles.alertStatus}>{EDITOR_COPY.typesFailed}</div>}
+          {types?.find((t) => t.type === form.collectorType)?.implemented === false && <div className={styles.status}>{EDITOR_COPY.notBuilt}</div>}
           {form.collectorType && (
             <ConfigFields fields={fields} values={form.config} errors={errors.config ?? {}} onChange={setConfig} />
           )}
@@ -391,7 +403,8 @@ function Editor({ source, suggestion, types, typesFailed, runs, onSaved }: Edito
       </form>
 
       <TestResult test={test} />
-      {source && <Runs runs={runs} />}
+      {source && <Runs runs={runs} errorLog={errorLog} />}
+      {source && source.statusHistory?.length > 0 && <History source={source} />}
     </AppShell>
   );
 }
@@ -423,14 +436,29 @@ function ConfigFields({
     <fieldset className={styles.group} style={{ gap: 14 }}>
       <legend className={styles.groupLabel}>{EDITOR_COPY.config}</legend>
       {fields.map((f) => {
-        const kind = fieldKind(f.type);
+        const kind = fieldKind(f.kind);
         const label = `${fieldLabel(f)}${f.required ? '' : ' (optional)'}`;
         if (kind === 'boolean') {
           return (
             <SwitchRow key={f.name} label={label} description={f.help ?? undefined} checked={values[f.name] === true} onChange={(v) => onChange(f.name, v)} />
           );
         }
-        const hint = [f.help, kind === 'list' ? 'Separate with commas.' : kind === 'json' ? 'JSON.' : null].filter(Boolean).join(' ') || undefined;
+        const hint = fieldHint(f);
+        if (kind === 'choice' && f.options?.length) {
+          return (
+            <ChipGroup key={f.name} label={label} error={errors[f.name]}>
+              {f.options.map((o) => (
+                <FilterChip
+                  key={o}
+                  stream="all"
+                  label={o}
+                  selected={values[f.name] === o}
+                  onClick={() => onChange(f.name, values[f.name] === o && !f.required ? '' : o)}
+                />
+              ))}
+            </ChipGroup>
+          );
+        }
         return (
           <Field
             key={f.name}
@@ -504,7 +532,7 @@ function TestResult({ test }: { test: TestState }) {
   );
 }
 
-function StatusCard({ source, onChanged }: { source: AdminSource; onChanged: (s: AdminSource) => void }) {
+function StatusCard({ source, onChanged }: { source: SourceDetail; onChanged: (s: SourceDetail) => void }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; alert: boolean } | null>(null);
   const moves = STATUS_MOVES[source.status] ?? [];
@@ -520,7 +548,7 @@ function StatusCard({ source, onChanged }: { source: AdminSource; onChanged: (s:
     } catch (err) {
       if (err instanceof ApiError && err.kind === 'conflict') {
         setMessage({
-          text: to === 'active' ? EDITOR_COPY.gateRefused(STATUS_WORDS[source.status], gateText(source.promotionRuns)) : EDITOR_COPY.moveRefused(detailText(err.detail)),
+          text: to === 'active' ? EDITOR_COPY.gateRefused(STATUS_WORDS[source.status], sourceGate(source)) : EDITOR_COPY.moveRefused(detailText(err.detail)),
           alert: true,
         });
       } else {
@@ -540,7 +568,7 @@ function StatusCard({ source, onChanged }: { source: AdminSource; onChanged: (s:
       <div className={styles.status}>{STATUS_HELP[source.status]}</div>
       {canPromote && (
         <div className={styles.status}>
-          {gateText(source.promotionRuns)} {GATE_HELP}
+          {sourceGate(source)} {GATE_HELP}
         </div>
       )}
       <div className={styles.actions}>
@@ -557,17 +585,18 @@ function StatusCard({ source, onChanged }: { source: AdminSource; onChanged: (s:
   );
 }
 
-function Runs({ runs }: { runs: SourceRun[] | undefined }) {
+function Runs({ runs, errorLog }: { runs: RunPage | undefined; errorLog: RunPage | undefined }) {
   if (!runs) return null;
-  const failed = runs.filter((r) => r.status === 'failed' || r.error);
   return (
     <>
       <Card label={EDITOR_COPY.runs} padding="22px 24px 12px" gap={4} aria-label={EDITOR_COPY.runs}>
-        {runs.length === 0 ? (
-          <div className={styles.status}>{EDITOR_COPY.noRuns}</div>
+        {runs.items.length === 0 ? (
+          <div className={styles.status} style={{ paddingBottom: 10 }}>
+            {EDITOR_COPY.noRuns}
+          </div>
         ) : (
           <div className={styles.rows}>
-            {runs.map((r) => (
+            {runs.items.map((r) => (
               <div key={r.id} className={styles.row}>
                 <div className={styles.rowText}>
                   <span className={styles.rowTitle}>{formatWhen(r.startedAt)}</span>
@@ -578,21 +607,52 @@ function Runs({ runs }: { runs: SourceRun[] | undefined }) {
             ))}
           </div>
         )}
-      </Card>
-      <Card label={EDITOR_COPY.errors} padding="22px 24px 12px" gap={4} aria-label={EDITOR_COPY.errors}>
-        {failed.length === 0 ? (
-          <div className={styles.status}>{EDITOR_COPY.noErrors}</div>
-        ) : (
-          <div className={styles.rows}>
-            {failed.map((r) => (
-              <div key={r.id} className={styles.stackRow}>
-                <span className={styles.rowTitle}>{formatWhen(r.startedAt)}</span>
-                <span className={styles.note}>{r.error ?? RUN_WORDS.failed}</span>
-              </div>
-            ))}
+        {runs.total > runs.items.length && (
+          <div className={styles.status} style={{ paddingBottom: 10 }}>
+            {EDITOR_COPY.moreRuns(runs.items.length, runs.total)}
           </div>
         )}
       </Card>
+      {errorLog && (
+        <Card label={EDITOR_COPY.errors} padding="22px 24px 12px" gap={4} aria-label={EDITOR_COPY.errors}>
+          {errorLog.items.length === 0 ? (
+            <div className={styles.status} style={{ paddingBottom: 10 }}>
+              {EDITOR_COPY.noErrors}
+            </div>
+          ) : (
+            <div className={styles.rows}>
+              {errorLog.items.map((r) => (
+                <div key={r.id} className={styles.stackRow}>
+                  <span className={styles.rowTitle}>{formatWhen(r.startedAt)}</span>
+                  <span className={styles.note}>{r.error ?? RUN_WORDS.failed}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {errorLog.total > errorLog.items.length && (
+            <div className={styles.status} style={{ paddingBottom: 10 }}>
+              {EDITOR_COPY.moreRuns(errorLog.items.length, errorLog.total)}
+            </div>
+          )}
+        </Card>
+      )}
     </>
+  );
+}
+
+function History({ source }: { source: SourceDetail }) {
+  return (
+    <Card label={EDITOR_COPY.history} padding="22px 24px 12px" gap={4} aria-label={EDITOR_COPY.history}>
+      <div className={styles.rows}>
+        {source.statusHistory.map((h, i) => (
+          <div key={`${h.at}-${i}`} className={styles.row}>
+            <div className={styles.rowText}>
+              <span className={styles.rowTitle}>{formatWhen(h.at)}</span>
+              <span className={styles.meta}>{EDITOR_COPY.historyLine(h.oldStatus ? STATUS_WORDS[h.oldStatus] : null, STATUS_WORDS[h.newStatus] ?? h.newStatus, h.reason)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }

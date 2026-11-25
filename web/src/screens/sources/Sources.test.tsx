@@ -8,29 +8,29 @@ import { SOURCES_COPY, suggestionNote, validUrl } from './Sources';
 
 const ME = { id: 'u', email: 'c@x.rw', name: 'Clet', role: 'member' };
 
-/** As GET /api/sources sends it (snake_case, api MemberSourceOut). */
+/** As GET /api/sources sends it (api MemberSourceOut). */
 const SOURCES = [
   {
     id: 's1',
     name: 'Umucyo e-procurement',
-    home_url: 'https://www.umucyo.gov.rw/',
+    homeUrl: 'https://www.umucyo.gov.rw/',
     publisher: 'Rwanda Public Procurement Authority',
     kind: 'original',
     streams: ['tender'],
-    last_success_at: '2026-11-24T04:00:00Z',
-    items_30d: 12,
+    lastSuccessAt: '2026-11-24T04:00:00Z',
+    items30d: 12,
     health: 'ok',
     muted: false,
   },
   {
     id: 's2',
     name: 'KT Press business',
-    home_url: 'https://www.ktpress.rw/',
+    homeUrl: 'https://www.ktpress.rw/',
     publisher: null,
     kind: 'news',
     streams: ['funding', 'event'],
-    last_success_at: null,
-    items_30d: 1,
+    lastSuccessAt: null,
+    items30d: 1,
     health: 'failing',
     muted: true,
   },
@@ -89,9 +89,9 @@ test('suggest a source: the address is checked, then sent with what it covers an
       url: body.url,
       note: body.note,
       status: 'suggested',
-      created_at: '2026-11-24T12:00:00Z',
-      reviewed_at: null,
-      source_id: null,
+      createdAt: '2026-11-24T12:00:00Z',
+      reviewedAt: null,
+      sourceId: null,
     }),
   });
   renderAt('/sources');
@@ -133,8 +133,8 @@ test('a refused suggestion and an unreachable server say so', async () => {
 test('your earlier suggestions show their status in words', async () => {
   routes({
     'GET /api/source-suggestions': [
-      { id: 'a', url: 'https://a.rw', note: null, status: 'accepted', created_at: '2026-11-20T08:00:00Z', reviewed_at: null, source_id: null },
-      { id: 'b', url: 'https://b.rw', note: null, status: 'rejected', created_at: '2026-11-19T08:00:00Z', reviewed_at: null, source_id: null },
+      { id: 'a', url: 'https://a.rw', note: null, status: 'accepted', createdAt: '2026-11-20T08:00:00Z', reviewedAt: null, sourceId: null },
+      { id: 'b', url: 'https://b.rw', note: null, status: 'rejected', createdAt: '2026-11-19T08:00:00Z', reviewedAt: null, sourceId: null },
     ],
   });
   renderAt('/sources');

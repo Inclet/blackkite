@@ -9,7 +9,7 @@ import { REVIEW_COPY } from './AdminReview';
 import { SUGGESTIONS_COPY } from './AdminSuggestions';
 import { USERS_COPY } from './AdminUsers';
 import { EDITOR_COPY } from './SourceEditor';
-import { ADMIN_ME, adminSource, COLLECTOR_TYPES, INVITES, MEMBER_ME, PREVIEW, REVIEW_ITEM, RUNS, SUGGESTION, USERS } from './testData';
+import { ADMIN_ME, adminSource, COLLECTOR_TYPES, FAILED_RUNS, INVITES, MEMBER_ME, PREVIEW, REVIEW_ITEM, RUNS, SUGGESTION, USERS } from './testData';
 
 beforeEach(() => setViewport('desktop'));
 afterEach(() => vi.unstubAllGlobals());
@@ -49,8 +49,8 @@ test('/admin/sources: grouped by status with health in words, last run and the g
     'GET /me': ADMIN_ME,
     'GET /api/admin/sources': [
       adminSource(),
-      adminSource({ id: 'src-2', name: 'RSE bonds', status: 'active', health: 'degraded', kind: 'original', streams: ['investment'], promotion_runs: 3 }),
-      adminSource({ id: 'src-3', name: 'Old board', status: 'retired', health: 'unknown', last_run_at: null }),
+      adminSource({ id: 'src-2', name: 'RSE bonds', status: 'active', health: 'degraded', kind: 'original', streams: ['investment'], promotionRuns: 3 }),
+      adminSource({ id: 'src-3', name: 'Old board', status: 'retired', health: 'unknown', lastRunAt: null }),
     ],
   });
   renderAt('/admin/sources');
@@ -73,7 +73,7 @@ function editorRoutes(extra: Record<string, unknown> = {}) {
     'GET /me': ADMIN_ME,
     'GET /api/admin/collector-types': COLLECTOR_TYPES,
     'GET /api/admin/sources/src-1': adminSource(),
-    'GET /api/admin/sources/src-1/runs': RUNS,
+    'GET /api/admin/sources/src-1/runs': (_b: unknown, url: string) => (url.includes('status=failed') ? FAILED_RUNS : RUNS),
     ...extra,
   });
 }
@@ -81,9 +81,9 @@ function editorRoutes(extra: Record<string, unknown> = {}) {
 test('new source: the config form is rendered from collector-types; a test run previews and saves nothing; save creates it as testing', async () => {
   const api = editorRoutes({
     'POST /api/admin/sources/test-run': PREVIEW,
-    'POST /api/admin/sources': (body: Record<string, unknown>) => adminSource({ ...body, id: 'src-9', status: 'testing', promotion_runs: 0 }),
-    'GET /api/admin/sources/src-9': adminSource({ id: 'src-9', name: 'NCST calls', status: 'testing', promotion_runs: 0 }),
-    'GET /api/admin/sources/src-9/runs': [],
+    'POST /api/admin/sources': (body: Record<string, unknown>) => adminSource({ ...body, id: 'src-9', status: 'testing', promotionRuns: 0 }),
+    'GET /api/admin/sources/src-9': adminSource({ id: 'src-9', name: 'NCST calls', status: 'testing', promotionRuns: 0 }),
+    'GET /api/admin/sources/src-9/runs': { total: 0, items: [] },
   });
   const router = renderAt('/admin/sources/new');
   const form = within(await screen.findByRole('form', { name: EDITOR_COPY.newTitle }));
@@ -108,11 +108,11 @@ test('new source: the config form is rendered from collector-types; a test run p
   expect(preview.getByText('Parsed 14 items with 1 request in 1.2 s. Showing the first 1.')).toBeInTheDocument();
   expect(preview.getByText(EDITOR_COPY.previewNothingSaved)).toBeInTheDocument();
   expect(api.calls.find((c) => c.key === 'POST /api/admin/sources/test-run')!.body).toEqual({
-    collector_type: 'html_list',
+    collectorType: 'html_list',
     config: { list_url: 'https://www.ncst.gov.rw/calls', selectors: { item: 'article', title: 'h2 a' } },
-    home_url: null,
+    homeUrl: null,
     streams: ['tender'],
-    rate_limit: null,
+    rateLimit: null,
   });
   expect(api.calls.some((c) => c.key === 'POST /api/admin/sources')).toBe(false);
 
@@ -127,21 +127,21 @@ test('new source: the config form is rendered from collector-types; a test run p
   await waitFor(() => expect(router.state.location.pathname).toBe('/admin/sources/src-9'));
   expect(api.calls.find((c) => c.key === 'POST /api/admin/sources')!.body).toEqual({
     name: 'NCST calls',
-    home_url: 'https://www.ncst.gov.rw/',
+    homeUrl: 'https://www.ncst.gov.rw/',
     publisher: null,
     streams: ['funding'],
     kind: 'original',
-    collector_type: 'html_list',
+    collectorType: 'html_list',
     config: { list_url: 'https://www.ncst.gov.rw/calls', selectors: { item: 'article', title: 'h2 a' } },
     schedule: null,
-    rate_limit: null,
-    access_note: null,
+    rateLimit: null,
+    accessNote: null,
   });
   expect(await screen.findByText(EDITOR_COPY.created)).toBeInTheDocument();
 });
 
 test('a failed test run shows its error; a refused one the API\'s reason', async () => {
-  const api = editorRoutes({ 'POST /api/admin/sources/test-run': { ...PREVIEW, ok: false, error: 'HTTP 403 from www.umucyo.gov.rw', items: [], total_parsed: 0 } });
+  const api = editorRoutes({ 'POST /api/admin/sources/test-run': { ...PREVIEW, ok: false, error: 'HTTP 403 from www.umucyo.gov.rw', items: [], totalParsed: 0 } });
   renderAt('/admin/sources/src-1');
   fireEvent.click(await screen.findByRole('button', { name: EDITOR_COPY.testRun }));
   expect(await screen.findByText(EDITOR_COPY.previewFailed('HTTP 403 from www.umucyo.gov.rw'))).toBeInTheDocument();
@@ -178,7 +178,7 @@ test('status change: pause, and the buttons follow the new status', async () => 
 
 test('saving an edit PATCHes the source; an active source warns that config changes send it back to testing', async () => {
   const api = editorRoutes({
-    'GET /api/admin/sources/src-1': adminSource({ status: 'active', promotion_runs: 2 }),
+    'GET /api/admin/sources/src-1': adminSource({ status: 'active', promotionRuns: 2, promotionGate: { goodRuns: 2, needed: 2, since: null, met: true } }),
     'PATCH /api/admin/sources/src-1': (body: Record<string, unknown>) => adminSource({ ...body, status: 'testing' }),
   });
   renderAt('/admin/sources/src-1');
@@ -229,11 +229,11 @@ test('suggestions: accept, then "Create source from this" opens the editor prefi
   const api = mockApi({
     'GET /me': ADMIN_ME,
     'GET /api/admin/source-suggestions': (_b: unknown, url: string) => (url.includes(`status=${current.status}`) ? [current] : []),
-    'POST /api/admin/source-suggestions/sg-1/accept': () => (current = { ...SUGGESTION, status: 'accepted', reviewed_by: 'u1' }),
+    'POST /api/admin/source-suggestions/sg-1/accept': () => (current = { ...SUGGESTION, status: 'accepted', reviewedBy: 'u1' }),
     'GET /api/admin/collector-types': COLLECTOR_TYPES,
     'POST /api/admin/sources': (body: Record<string, unknown>) => adminSource({ ...body, id: 'src-7' }),
     'GET /api/admin/sources/src-7': adminSource({ id: 'src-7' }),
-    'GET /api/admin/sources/src-7/runs': [],
+    'GET /api/admin/sources/src-7/runs': { total: 0, items: [] },
   });
   const router = renderAt('/admin/suggestions');
   const waiting = within(await screen.findByRole('region', { name: SUGGESTIONS_COPY.waiting }));
@@ -257,7 +257,7 @@ test('suggestions: accept, then "Create source from this" opens the editor prefi
   fireEvent.change(form.getByLabelText('Feed url'), { target: { value: 'https://www.rdb.rw/feed' } });
   fireEvent.click(form.getByRole('button', { name: EDITOR_COPY.create }));
   await waitFor(() => expect(router.state.location.pathname).toBe('/admin/sources/src-7'));
-  expect(api.calls.find((c) => c.key === 'POST /api/admin/sources')!.body).toMatchObject({ suggestion_id: 'sg-1', home_url: 'https://www.rdb.rw/calls', collector_type: 'rss' });
+  expect(api.calls.find((c) => c.key === 'POST /api/admin/sources')!.body).toMatchObject({ suggestionId: 'sg-1', homeUrl: 'https://www.rdb.rw/calls', collectorType: 'rss' });
 });
 
 test('suggestions: reject; one already reviewed says so', async () => {
@@ -343,4 +343,39 @@ test('phone: admin screens sit under More', async () => {
   renderAt('/admin');
   await screen.findByRole('region', { name: 'Admin screens' });
   expect(screen.getByRole('link', { name: 'More' })).toHaveAttribute('aria-current', 'page');
+});
+
+test('editor extras: status history, a collector not built yet, choice fields as chips', async () => {
+  editorRoutes();
+  renderAt('/admin/sources/src-1');
+  const history = within(await screen.findByRole('region', { name: EDITOR_COPY.history }));
+  expect(history.getByText('Created as testing')).toBeInTheDocument();
+  const form = within(screen.getByRole('form', { name: 'Umucyo e-procurement' }));
+  expect(screen.queryByText(EDITOR_COPY.notBuilt)).toBeNull();
+  fireEvent.click(form.getByRole('button', { name: 'Email alerts' }));
+  expect(screen.getByText(EDITOR_COPY.notBuilt)).toBeInTheDocument();
+  const format = within(form.getByRole('group', { name: 'Format (optional)' }));
+  fireEvent.click(format.getByRole('button', { name: 'text' }));
+  expect(format.getByRole('button', { name: 'text' })).toHaveAttribute('aria-pressed', 'true');
+  expect(form.getByRole('switch', { name: 'Strip footer (optional)' })).toHaveAttribute('aria-checked', 'false');
+});
+
+test('users: last sign-in, role change (PATCH), and the last-admin refusal', async () => {
+  const api = mockApi({
+    'GET /me': ADMIN_ME,
+    'GET /api/admin/users': USERS,
+    'GET /api/admin/invites': [],
+    'PATCH /api/admin/users/u2': (body: { role: string }) => ({ ...USERS[1], role: body.role }),
+  });
+  renderAt('/admin/users');
+  const accounts = within(await screen.findByRole('region', { name: USERS_COPY.users }));
+  expect(accounts.getByText('clet@example.rw · Joined 1 Nov 2026 · Last signed in 24 Nov 2026')).toBeInTheDocument();
+  expect(accounts.getByText('Joined 10 Nov 2026 · Never signed in')).toBeInTheDocument();
+  expect(accounts.queryByRole('button', { name: 'Make member: clet@example.rw' })).toBeNull();
+  fireEvent.click(accounts.getByRole('button', { name: 'Make admin: amina@example.rw' }));
+  expect(await screen.findByText(USERS_COPY.roleChanged('amina@example.rw', 'admin'))).toBeInTheDocument();
+  expect(api.calls.find((c) => c.key === 'PATCH /api/admin/users/u2')!.body).toEqual({ role: 'admin' });
+  api.on('PATCH /api/admin/users/u2', status(409, { detail: 'last admin' }));
+  fireEvent.click(accounts.getByRole('button', { name: 'Make member: amina@example.rw' }));
+  expect(await screen.findByText(USERS_COPY.lastAdmin)).toBeInTheDocument();
 });

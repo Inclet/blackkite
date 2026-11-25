@@ -31,6 +31,13 @@ export const USERS_COPY = {
   active: 'Active',
   deactivated: 'Deactivated',
   joined: (when: string) => `Joined ${when}`,
+  lastSignIn: (when: string) => `Last signed in ${when}`,
+  neverSignedIn: 'Never signed in',
+  makeAdmin: 'Make admin',
+  makeMember: 'Make member',
+  roleChanged: (email: string, role: string) => `${email} is now ${role === 'admin' ? 'an admin' : 'a member'}.`,
+  lastAdmin: 'Blackkite needs at least one active admin, so nothing changed.',
+  roleUnreachable: `${COPY.unreachableTitle}. The role did not change; try again.`,
   deactivate: 'Deactivate',
   confirm: (email: string) => `Deactivate ${email}? They are signed out and cannot sign in again.`,
   confirmButton: 'Deactivate this account',
@@ -73,8 +80,21 @@ function Users() {
       users.setData((list) => list?.map((x) => (x.id === u.id ? { ...x, ...done } : x)));
       setConfirming(null);
       setMessage({ text: USERS_COPY.didDeactivate(u.email), alert: false });
-    } catch {
-      setMessage({ text: USERS_COPY.deactivateUnreachable, alert: true });
+    } catch (err) {
+      setMessage({ text: err instanceof ApiError && err.kind === 'conflict' ? USERS_COPY.lastAdmin : USERS_COPY.deactivateUnreachable, alert: true });
+    }
+  };
+
+  /** PATCH /api/admin/users/{id} {role} (contract 4.1; for the owner to confirm). */
+  const changeRole = async (u: AdminUser) => {
+    setMessage(null);
+    const role = u.role === 'admin' ? 'member' : 'admin';
+    try {
+      const done = await sourcesApi.setRole(u.id, role);
+      users.setData((list) => list?.map((x) => (x.id === u.id ? { ...x, ...done } : x)));
+      setMessage({ text: USERS_COPY.roleChanged(u.email, done.role ?? role), alert: false });
+    } catch (err) {
+      setMessage({ text: err instanceof ApiError && err.kind === 'conflict' ? USERS_COPY.lastAdmin : USERS_COPY.roleUnreachable, alert: true });
     }
   };
 
@@ -107,12 +127,25 @@ function Users() {
                   <div className={styles.row} style={{ padding: 0 }}>
                     <div className={styles.rowText}>
                       <span className={styles.rowTitle}>{u.name || u.email}</span>
-                      <span className={styles.meta}>{[u.name ? u.email : null, USERS_COPY.joined(formatDay(u.createdAt))].filter(Boolean).join(' · ')}</span>
+                      <span className={styles.meta}>
+                        {[
+                          u.name ? u.email : null,
+                          USERS_COPY.joined(formatDay(u.createdAt)),
+                          u.lastSignInAt === undefined ? null : u.lastSignInAt ? USERS_COPY.lastSignIn(formatDay(u.lastSignInAt)) : USERS_COPY.neverSignedIn,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </span>
                     </div>
                     <div className={styles.side}>
                       {self && <Tag kind="profile">{USERS_COPY.you}</Tag>}
                       <Tag kind="profile">{u.role === 'admin' ? USERS_COPY.admin : USERS_COPY.member}</Tag>
                       <Tag kind="profile">{u.status === 'active' ? USERS_COPY.active : USERS_COPY.deactivated}</Tag>
+                      {!self && u.status === 'active' && (
+                        <Button variant="secondary" onClick={() => void changeRole(u)} aria-label={`${u.role === 'admin' ? USERS_COPY.makeMember : USERS_COPY.makeAdmin}: ${u.email}`}>
+                          {u.role === 'admin' ? USERS_COPY.makeMember : USERS_COPY.makeAdmin}
+                        </Button>
+                      )}
                       {!self && u.status === 'active' && confirming !== u.id && (
                         <Button variant="secondary" onClick={() => setConfirming(u.id)} aria-label={`${USERS_COPY.deactivate} ${u.email}`}>
                           {USERS_COPY.deactivate}

@@ -1,62 +1,93 @@
-/** Admin API answers in the shapes the API sends (snake_case for sources, users and invites). */
+/** Admin API answers in the shapes the API sends (camelCase; contract 4.1). GET /me stays snake_case. */
 export const ADMIN_ME = { id: 'u1', email: 'clet@example.rw', name: 'Clet', role: 'admin' };
 export const MEMBER_ME = { id: 'u2', email: 'amina@example.rw', name: 'Amina', role: 'member' };
 
+/** GET /api/admin/collector-types, as the API sends it (contract 4.1; a subset of the real fields). */
+const sel = (name: string, required: boolean, help: string) => ({ name, kind: 'selector', required, help, default: null, options: null, min: null, max: null, fields: null });
+const f = (name: string, kind: string, required: boolean, help: string, more: Record<string, unknown> = {}) => ({
+  name,
+  kind,
+  required,
+  help,
+  default: null,
+  options: null,
+  min: null,
+  max: null,
+  fields: null,
+  ...more,
+});
 export const COLLECTOR_TYPES = [
+  { type: 'rss', implemented: false, schemaSource: 'declared', fields: [f('feed_url', 'url', true, 'The feed address.')] },
   {
     type: 'html_list',
-    label: 'Web page list',
+    implemented: true,
+    schemaSource: 'model',
     fields: [
-      { name: 'list_url', type: 'url', required: true, help: 'The page that lists the notices.' },
-      { name: 'selectors.item', type: 'string', required: true, help: 'CSS for one notice.' },
-      { name: 'selectors.title', type: 'string', required: true, help: null },
-      { name: 'max_pages', type: 'integer', required: false, help: 'Pages to follow, 1 to 20.' },
+      f('list_url', 'url', true, 'The page that lists the notices.'),
+      f('max_pages', 'integer', false, 'Pages to fetch in total.', { default: 1, min: 1, max: 20 }),
+      f('selectors', 'object', true, 'Where each listing is.', {
+        fields: [f('item', 'string', true, 'CSS for one notice.'), sel('title', true, 'Selector for the title.'), sel('link', false, 'Selector for the link.')],
+      }),
+      f('detail', 'object', false, 'Optional: follow each listing.', {
+        fields: [f('selectors', 'object', true, 'Fields read from the detail page.', { fields: [sel('deadline', false, 'Selector for the closing date.')] }), f('max_items', 'integer', false, 'At most.', { default: 20, min: 1, max: 50 })],
+      }),
     ],
   },
   {
     type: 'search_query',
+    implemented: true,
+    schemaSource: 'model',
     fields: [
-      { name: 'queries', type: 'list', required: true, help: 'What to search for.' },
-      { name: 'domains', type: 'list', required: false, help: null },
-      { name: 'recency_days', type: 'integer', required: false, help: null },
+      f('queries', 'string_list', true, 'Search queries, one per line.'),
+      f('domains', 'string_list', false, 'Only these domains.', { default: [] }),
+      f('recency_days', 'integer', false, 'Only results from the last N days.', { min: 1, max: 365 }),
     ],
   },
-  { type: 'rss', fields: [{ name: 'feed_url', type: 'url', required: true, help: 'The feed address.' }] },
-  { type: 'email_ingest', fields: [{ name: 'sender', type: 'string', required: true, help: null }, { name: 'strip_footer', type: 'boolean', required: false, help: 'Drop the footer.' }] },
+  {
+    type: 'email_ingest',
+    implemented: false,
+    schemaSource: 'declared',
+    fields: [f('sender', 'string', true, 'Sender address.'), f('strip_footer', 'boolean', false, 'Drop the footer.'), f('format', 'choice', false, 'Body format.', { options: ['html', 'text'] })],
+  },
+  { type: 'json_api', implemented: false, schemaSource: 'declared', fields: [f('endpoint', 'url', true, 'The JSON endpoint.'), f('params', 'map', false, 'Query parameters.')] },
 ];
 
 export function adminSource(over: Record<string, unknown> = {}) {
   return {
     id: 'src-1',
     name: 'Umucyo e-procurement',
-    home_url: 'https://www.umucyo.gov.rw/',
+    homeUrl: 'https://www.umucyo.gov.rw/',
     publisher: 'RPPA',
     streams: ['tender'],
     kind: 'original',
-    collector_type: 'html_list',
+    collectorType: 'html_list',
     config: { list_url: 'https://www.umucyo.gov.rw/tenders', selectors: { item: 'tr', title: 'td a', link: 'td a' }, max_pages: 1 },
     schedule: null,
-    effective_schedule: '0 */6 * * *',
-    rate_limit: 5,
-    access_note: 'Tested from the host 24 Nov.',
+    effectiveSchedule: '0 */6 * * *',
+    rateLimit: 5,
+    accessNote: 'Tested from the host 24 Nov.',
     status: 'testing',
-    added_by: 'u1',
-    created_at: '2026-11-20T08:00:00Z',
-    updated_at: '2026-11-24T08:00:00Z',
-    config_changed_at: '2026-11-22T08:00:00Z',
+    addedBy: 'u1',
+    createdAt: '2026-11-20T08:00:00Z',
+    updatedAt: '2026-11-24T08:00:00Z',
+    configChangedAt: '2026-11-22T08:00:00Z',
     health: 'ok',
-    last_success_at: '2026-11-24T04:00:00Z',
-    last_run_at: '2026-11-24T04:00:00Z',
-    items_30d: 9,
-    promotion_runs: 1,
+    lastSuccessAt: '2026-11-24T04:00:00Z',
+    lastRunAt: '2026-11-24T04:00:00Z',
+    items30d: 9,
+    promotionRuns: 1,
+    promotionGate: { goodRuns: 1, needed: 2, since: '2026-11-22T08:00:00Z', met: false },
+    statusHistory: [{ at: '2026-11-20T08:00:00Z', oldStatus: null, newStatus: 'testing', changedBy: 'u1', reason: 'created' }],
     ...over,
   };
 }
 
-export const RUNS = [
-  { id: 'r2', started_at: '2026-11-24T04:00:00Z', finished_at: '2026-11-24T04:01:00Z', status: 'succeeded', items_found: 9, items_new: 2, items_failed: 0, error: null },
-  { id: 'r1', started_at: '2026-11-23T22:00:00Z', finished_at: '2026-11-23T22:00:30Z', status: 'failed', items_found: 0, items_new: 0, items_failed: 0, error: 'HTTP 503 from www.umucyo.gov.rw' },
+export const RUN_ITEMS = [
+  { id: 'r2', startedAt: '2026-11-24T04:00:00Z', finishedAt: '2026-11-24T04:01:00Z', status: 'succeeded', itemsFound: 9, itemsNew: 2, itemsFailed: 0, error: null },
+  { id: 'r1', startedAt: '2026-11-23T22:00:00Z', finishedAt: '2026-11-23T22:00:30Z', status: 'failed', itemsFound: 0, itemsNew: 0, itemsFailed: 0, error: 'HTTP 503 from www.umucyo.gov.rw' },
 ];
+export const RUNS = { total: 2, items: RUN_ITEMS };
+export const FAILED_RUNS = { total: 1, items: RUN_ITEMS.filter((r) => r.status === 'failed') };
 
 export const PREVIEW = {
   ok: true,
@@ -66,28 +97,28 @@ export const PREVIEW = {
       url: 'https://www.umucyo.gov.rw/t/1',
       title: 'Supply of cold-chain transport',
       organisation: 'Rwanda Agriculture Board',
-      listed_published: '20 Nov 2026',
-      listed_deadline: '8 Dec 2026',
+      listedPublished: '20 Nov 2026',
+      listedDeadline: '8 Dec 2026',
       snippet: 'Transport of vaccines',
-      detail_url: null,
+      detailUrl: null,
       extra: {},
     },
   ],
-  total_parsed: 14,
-  requests_made: 1,
-  elapsed_seconds: 1.24,
+  totalParsed: 14,
+  requestsMade: 1,
+  elapsedSeconds: 1.24,
 };
 
 export const SUGGESTION = {
   id: 'sg-1',
-  user_id: 'u2',
+  userId: 'u2',
   url: 'https://www.rdb.rw/calls',
   note: 'Covers: RDB calls\nWhy it is useful: funding calls',
   status: 'suggested',
-  created_at: '2026-11-23T08:00:00Z',
-  reviewed_at: null,
-  reviewed_by: null,
-  source_id: null,
+  createdAt: '2026-11-23T08:00:00Z',
+  reviewedAt: null,
+  reviewedBy: null,
+  sourceId: null,
 };
 
 export const REVIEW_ITEM = {
@@ -111,10 +142,10 @@ export const REVIEW_ITEM = {
 };
 
 export const USERS = [
-  { id: 'u1', email: 'clet@example.rw', name: 'Clet', role: 'admin', status: 'active', created_at: '2026-11-01T08:00:00Z' },
-  { id: 'u2', email: 'amina@example.rw', name: null, role: 'member', status: 'active', created_at: '2026-11-10T08:00:00Z' },
+  { id: 'u1', email: 'clet@example.rw', name: 'Clet', role: 'admin', status: 'active', createdAt: '2026-11-01T08:00:00Z', lastSignInAt: '2026-11-24T07:00:00Z' },
+  { id: 'u2', email: 'amina@example.rw', name: null, role: 'member', status: 'active', createdAt: '2026-11-10T08:00:00Z', lastSignInAt: null },
 ];
 
 export const INVITES = [
-  { id: 'i1', email: 'eric@example.rw', invited_by: 'u1', created_at: '2026-11-20T08:00:00Z', expires_at: '2026-11-27T08:00:00Z', accepted_at: null, status: 'pending' },
+  { id: 'i1', email: 'eric@example.rw', invitedBy: 'u1', createdAt: '2026-11-20T08:00:00Z', expiresAt: '2026-11-27T08:00:00Z', acceptedAt: null, status: 'pending' },
 ];

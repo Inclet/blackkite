@@ -98,10 +98,21 @@ export function itemsCount(n: number): string {
 /** The promotion gate (spec 4.3 step 4; api sources/service.py PROMOTE_MIN_RUNS). */
 export const PROMOTE_MIN_RUNS = 2;
 
-export function gateText(runs: number): string {
-  if (runs >= PROMOTE_MIN_RUNS) return `Ready to make active: ${runs} good runs since the last config change.`;
-  return `Needs ${PROMOTE_MIN_RUNS} good runs since the last config change: ${runs} so far.`;
+export function gateText(runs: number, needed: number = PROMOTE_MIN_RUNS): string {
+  if (runs >= needed) return `Ready to make active: ${runs} good runs since the last config change.`;
+  return `Needs ${needed} good runs since the last config change: ${runs} so far.`;
 }
+
+/** The gate from GET /api/admin/sources/{id} (promotionGate), else the list's promotionRuns. */
+export function sourceGate(s: { promotionRuns: number; promotionGate?: { goodRuns: number; needed: number } | null }): string {
+  return s.promotionGate ? gateText(s.promotionGate.goodRuns, s.promotionGate.needed) : gateText(s.promotionRuns);
+}
+
+/** A status-history line: "24 Nov 2026, 10:00: Testing to Active". */
+export const HISTORY_REASONS: Record<string, string> = {
+  created: 'created',
+  'config changed': 'the settings changed',
+};
 
 export const GATE_HELP = 'A good run finished without an error and found at least one item.';
 
