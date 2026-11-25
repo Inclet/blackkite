@@ -27,7 +27,7 @@ One `user_opportunity_score` row per (user, opportunity, profile). Columns: `sco
 
 ## 2. Member API (member-API track builds, web track consumes)
 
-All JSON in camelCase. **Every member route below lives under `/api`** (e.g. `GET /api/feed`), so no API path collides with a web page (`/shortlist`, `/profiles` are also screens). `/auth/*`, `GET /me` and the Phase 3 admin routes (`/admin/sources*`, `/admin/source-suggestions*`) keep their paths; `/admin/catalogue` moves to `/api/admin/catalogue`, and the Phase 3 member source routes move too: `/api/sources`, `/api/sources/{id}/mute`, `/api/source-suggestions` (`/sources` is also a screen). Every route requires a session; every query filters by the caller (spec 6) and by `pipeline/visibility.py`.
+All JSON in camelCase. **Every member route below lives under `/api`** (e.g. `GET /api/feed`), so no API path collides with a web page (`/shortlist`, `/profiles` are also screens). `/auth/*` and `GET /me` keep their paths. **M3: every admin route moves under `/api/admin`** (`/api/admin/sources*`, `/api/admin/source-suggestions*`, `/api/admin/users*`, `/api/admin/invites*`, `/api/admin/catalogue*`) because `/admin/...` becomes the admin screens; and the Phase 3 member source routes move too: `/api/sources`, `/api/sources/{id}/mute`, `/api/source-suggestions` (`/sources` is also a screen). Every route requires a session; every query filters by the caller (spec 6) and by `pipeline/visibility.py`.
 
 | Route | Returns |
 |---|---|
@@ -46,3 +46,9 @@ Field mapping for `FeedItem`: `provisional` = true when the matched profile is p
 ## 3. Digest (member-API track)
 
 `DigestView` from `api/blackkite/delivery/digest.py` is built from scores: top items across the user's profiles, capped at 12, each stream capped (investments and events at 3 each, spec 7.1), plus a "closing in 7 days" block for saved items and the value line (spec 8). Weekly on Monday; urgent alert for items above the user's threshold closing within 5 days, the day they are found. Delivery is Mailpit/console only; nothing real is sent without the owner's go-ahead.
+
+## 4. M3: sources and admin screens (added 2026-11-25)
+
+Web screens (undesigned; existing components only; design review): `/sources` (members: active sources with publisher, kind, streams, last successful run, items in 30 days, health, mute; suggest-a-source form), `/admin/sources` (all sources by status), `/admin/sources/new` and `/admin/sources/{id}` (record and config editor per collector type, test-run preview that writes nothing, status changes with the promotion gate, run history and error log), `/admin/suggestions`, `/admin/review` (catalogue items with needs_review reasons; "Mark reviewed"), `/admin/users` (users, invite, deactivate). Admin links appear only for admins; the server enforces roles regardless.
+
+Collector types completed in M3 (spec 4.2): `rss`, `browser_list` (Playwright, same URL guard, robots, rate limit and size caps as `html_list`), `json_api`, `email_ingest` (a shared inbox over IMAP; sender address/pattern per source), `custom` (a named class from an allowlist in code; config never names arbitrary import paths). Each returns `RawItem` and raises `CollectorError` on failure.
