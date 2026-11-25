@@ -27,7 +27,7 @@ One `user_opportunity_score` row per (user, opportunity, profile). Columns: `sco
 
 ## 2. Member API (member-API track builds, web track consumes)
 
-All JSON in camelCase. **Every member route below lives under `/api`** (e.g. `GET /api/feed`), so no API path collides with a web page (`/shortlist`, `/profiles` are also screens). `/auth/*` and the earlier `/admin/*` routes keep their paths; `/admin/catalogue` moves to `/api/admin/catalogue`. Every route requires a session; every query filters by the caller (spec 6) and by `pipeline/visibility.py`.
+All JSON in camelCase. **Every member route below lives under `/api`** (e.g. `GET /api/feed`), so no API path collides with a web page (`/shortlist`, `/profiles` are also screens). `/auth/*`, `GET /me` and the Phase 3 admin routes (`/admin/sources*`, `/admin/source-suggestions*`) keep their paths; `/admin/catalogue` moves to `/api/admin/catalogue`, and the Phase 3 member source routes move too: `/api/sources`, `/api/sources/{id}/mute`, `/api/source-suggestions` (`/sources` is also a screen). Every route requires a session; every query filters by the caller (spec 6) and by `pipeline/visibility.py`.
 
 | Route | Returns |
 |---|---|
