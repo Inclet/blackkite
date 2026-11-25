@@ -560,7 +560,7 @@
           },
           {
             "name": "url",
-            "kind": "url",
+            "kind": "string",
             "required": true,
             "help": "Link to the notice, or an id for url_template. Dotted path into each item (for example buyer.name or tags.0).",
             "default": null,

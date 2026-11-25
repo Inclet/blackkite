@@ -65,13 +65,22 @@ def _variants_help(f: dict[str, Any]) -> str:
     return "JSON object, one of: " + "; ".join(parts) + "."
 
 
-def _kind(f: dict[str, Any]) -> str:
+def _is_url_field(f: dict[str, Any], top_level: bool) -> bool:
+    """An address the editor should check as a URL: a top-level config field named
+    url/endpoint/feed_url/list_url or ending in ``_url``. The config models type
+    these as plain ``str`` (validated by ``safe_url``), so the name is the signal.
+    Fields nested inside an object (a json_api ``mapping``, a selector set) are
+    never URLs: there ``url`` is a dotted path or a CSS selector for the link."""
+    name = f["name"]
+    return top_level and (name in URL_NAMES or name.endswith("_url"))
+
+
+def _kind(f: dict[str, Any], top_level: bool = True) -> str:
     t = f["type"]
     if t == "enum":
         return "choice"
     if t == "string":
-        name = f["name"]
-        return "url" if name in URL_NAMES or name.endswith("_url") else "string"
+        return "url" if _is_url_field(f, top_level) else "string"
     if t in ("integer", "number", "boolean"):
         return t
     if t == "array":
@@ -91,9 +100,10 @@ def _kind(f: dict[str, Any]) -> str:
     return "json"
 
 
-def to_field(f: dict[str, Any]) -> ConfigField:
-    """One field of ``forms.describe`` in the editor's format."""
-    kind = _kind(f)
+def to_field(f: dict[str, Any], top_level: bool = True) -> ConfigField:
+    """One field of ``forms.describe`` in the editor's format. ``top_level`` is
+    False for fields nested inside an object or a list of objects."""
+    kind = _kind(f, top_level)
     help_text = f["help"]
     if "variants" in f:
         help_text = f"{help_text} {_variants_help(f)}"
@@ -112,7 +122,9 @@ def to_field(f: dict[str, Any]) -> ConfigField:
         options=[str(c) for c in choices] if kind == "choice" and choices else None,
         min=f.get("minimum"),
         max=f.get("maximum"),
-        fields=[to_field(n) for n in nested] if nested is not None else None,
+        fields=[to_field(n, top_level=False) for n in nested]
+        if nested is not None
+        else None,
     )
 
 

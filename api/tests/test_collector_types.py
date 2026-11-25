@@ -108,6 +108,45 @@ def test_json_api_fields(admin_client):
     assert mapping["kind"] == "object" and mapping["required"] is True
     assert _field(mapping["fields"], "title")["kind"] == "string"
     assert _field(mapping["fields"], "extra")["kind"] == "map"
+    # mapping.url is a dotted path into each item ("link"), not an address.
+    assert _field(mapping["fields"], "url")["kind"] == "string"
+    assert _field(mapping["fields"], "url_template")["kind"] == "string"
+
+
+def test_only_top_level_address_fields_are_urls(admin_client):
+    by = _by_type(admin_client.get("/api/admin/collector-types").json())
+    assert _field(by["html_list"]["fields"], "list_url")["kind"] == "url"
+    assert _field(by["browser_list"]["fields"], "list_url")["kind"] == "url"
+    assert _field(by["json_api"]["fields"], "endpoint")["kind"] == "url"
+    assert _field(by["rss"]["fields"], "feed_url")["kind"] == "url"
+
+    def nested_urls(fields):
+        for f in fields:
+            for n in f.get("fields") or []:
+                if n["kind"] == "url":
+                    yield f"{f['name']}.{n['name']}"
+                yield from nested_urls([n])
+
+    for s in by.values():
+        assert list(nested_urls(s["fields"])) == [], s["type"]
+
+
+def test_nested_field_named_url_is_a_string():
+    f = ct.to_field(
+        {
+            "name": "mapping",
+            "type": "object",
+            "required": True,
+            "help": "h",
+            "fields": [
+                {"name": "url", "type": "string", "required": True, "help": "p"},
+                {"name": "page_url", "type": "string", "required": False, "help": "p"},
+            ],
+        }
+    )
+    assert [n.kind for n in f.fields] == ["string", "string"]
+    top = ct.to_field({"name": "url", "type": "string", "required": True, "help": "h"})
+    assert top.kind == "url"
 
 
 def test_email_ingest_fields(admin_client):
