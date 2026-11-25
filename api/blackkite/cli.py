@@ -104,6 +104,152 @@ def digest_preview(
     typer.echo(f"wrote {out} and {logo_path}")
 
 
+# --- sources and worker -------------------------------------------------------------
+
+
+def _fetch_client(settings, sessions, *, persistent_cache: bool):
+    """HTTP client for CLI runs. Tests replace this to inject a fake transport."""
+    from blackkite.collectors.http import (
+        DbHttpCache,
+        MemoryHttpCache,
+        make_fetch_client,
+    )
+
+    cache = DbHttpCache(sessions) if persistent_cache else MemoryHttpCache()
+    return make_fetch_client(settings, cache=cache)
+
+
+def _find_source(db, ref: str):
+    import uuid
+
+    import sqlalchemy as sa
+
+    from blackkite.db.models import Source
+
+    try:
+        found = db.get(Source, uuid.UUID(ref))
+    except ValueError:
+        found = db.scalars(
+            sa.select(Source).where(sa.func.lower(Source.name) == ref.lower())
+        ).first()
+    if found is None:
+        typer.echo(f"error: no source {ref!r} (give its name or id)", err=True)
+        raise typer.Exit(1)
+    return found
+
+
+@app.command("sources")
+def list_sources() -> None:
+    """List every source with status, collector, health and last successful run."""
+    import sqlalchemy as sa
+
+    from blackkite.db.models import Source
+    from blackkite.db.session import get_sessionmaker
+    from blackkite.sources.service import source_stats
+
+    with get_sessionmaker()() as db:
+        rows = db.scalars(sa.select(Source).order_by(Source.name)).all()
+        stats = source_stats(db, [s.id for s in rows])
+    if not rows:
+        typer.echo("no sources")
+        return
+    width = max(len(s.name) for s in rows)
+    typer.echo(
+        f"{'name':<{width}}  {'status':<9} {'collector':<13} {'health':<9} "
+        f"{'items 30d':>9}  last success"
+    )
+    for s in rows:
+        st = stats[s.id]
+        last = (
+            st.last_success_at.strftime("%Y-%m-%d %H:%M UTC")
+            if st.last_success_at
+            else "never"
+        )
+        typer.echo(
+            f"{s.name:<{width}}  {s.status:<9} {s.collector_type:<13} {st.health:<9} "
+            f"{st.items_30d:>9}  {last}"
+        )
+
+
+@app.command("run-source")
+def run_source_cmd(
+    source: str = typer.Argument(..., help="Source name or id."),
+) -> None:
+    """Run one source now (any status), recording a source_run row."""
+    from blackkite.db.session import get_sessionmaker
+    from blackkite.worker.runner import run_source_locked
+
+    settings = get_settings()
+    sessions = get_sessionmaker()
+    with sessions() as db:
+        sid = _find_source(db, source).id
+    client = _fetch_client(settings, sessions, persistent_cache=True)
+    try:
+        out = run_source_locked(
+            sessions, sid, client=client, brave_api_key=settings.brave_api_key
+        )
+    finally:
+        client.close()
+    if out.status == "skipped_locked":
+        typer.echo(
+            f"{out.name}: another worker is running it; try again later", err=True
+        )
+        raise typer.Exit(2)
+    typer.echo(
+        f"{out.name}: {out.status}, found {out.items_found}, new {out.items_new}"
+    )
+    if out.error:
+        typer.echo(f"error: {out.error}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command("test-source")
+def test_source_cmd(
+    source: str = typer.Argument(..., help="Source name or id."),
+) -> None:
+    """Fetch once and print the parsed preview. Writes nothing."""
+    from blackkite.db.session import get_sessionmaker
+    from blackkite.sources.testrun import preview_source
+
+    settings = get_settings()
+    sessions = get_sessionmaker()
+    with sessions() as db:
+        src = _find_source(db, source)
+        db.expunge(src)
+    result = preview_source(
+        src,
+        _fetch_client(settings, sessions, persistent_cache=False),
+        brave_api_key=settings.brave_api_key,
+    )
+    if not result.ok:
+        typer.echo(f"{src.name}: test run failed: {result.error}", err=True)
+        raise typer.Exit(1)
+    typer.echo(
+        f"{src.name}: {result.total_parsed} items parsed "
+        f"({result.requests_made} requests, {result.elapsed_seconds}s); "
+        f"showing {len(result.items)}"
+    )
+    for i, item in enumerate(result.items, 1):
+        typer.echo(f"{i:>2}. {item.title}")
+        typer.echo(f"    {item.url}")
+        details = [
+            f"org: {item.organisation}" if item.organisation else None,
+            f"published: {item.listed_published}" if item.listed_published else None,
+            f"deadline: {item.listed_deadline}" if item.listed_deadline else None,
+        ]
+        if line := "; ".join(d for d in details if d):
+            typer.echo(f"    {line}")
+
+
+@app.command()
+def worker() -> None:
+    """Run the scheduler: every active/testing source on its schedule."""
+    from blackkite.db.session import get_sessionmaker
+    from blackkite.worker.main import main as worker_main
+
+    worker_main(get_settings(), get_sessionmaker())
+
+
 def main() -> None:
     app()
 
