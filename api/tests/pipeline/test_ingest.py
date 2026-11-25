@@ -741,3 +741,220 @@ def test_collected_items_never_merge_into_private_items(db, make_source, deps):
     )
     assert r.items_new == 1
     assert len(opps(db)) == 2
+
+
+# --- deadline changes between runs ------------------------------------------------------
+
+
+def _listed(src, url, deadline, title=ORIG_TITLE):
+    return raw(src, url, title, organisation=ORG, listed_deadline=deadline)
+
+
+def _source_deadline_events(db, opp) -> list[ChangeEvent]:
+    return list(
+        db.scalars(
+            sa.select(ChangeEvent).where(
+                ChangeEvent.opportunity_id == opp.id,
+                ChangeEvent.field == "source_deadline",
+            )
+        )
+    )
+
+
+def _extract_reply(deadline_iso, snippet):
+    return {
+        "title": q(ORIG_TITLE),
+        "organisation": q(ORG),
+        "deadline_at": q(deadline_iso, snippet),
+    }
+
+
+def test_extension_on_the_original_source_moves_the_deadline(
+    db, make_source, deps, embedder
+):
+    orig = make_source("original", name="Example e-procurement")
+    url = "https://orig.example.org/t/1"
+    text = "Bids close on 14 December 2026."
+    fetcher = FakeFetcher({url: ("text/html", f"<p>{text}</p>".encode())})
+    ingest(
+        db,
+        orig,
+        [_listed(orig, url, "14 Dec 2026")],
+        deps(
+            llm=FakeLLM(_extract_reply("2026-12-14", text)),
+            embedder=embedder,
+            fetcher=fetcher,
+        ),
+    )
+    [opp] = opps(db)
+    assert opp.deadline_at.date().isoformat() == "2026-12-14"
+    assert "deadline_extracted" in opp.evidence["_sources"][str(orig.id)]
+    assert opp.needs_review is False, opp.evidence["_review"]
+
+    llm = FakeLLM(_extract_reply("2026-12-14", text))
+    later = NOW + timedelta(days=1)
+    ingest(
+        db,
+        orig,
+        [_listed(orig, url, "21 Dec 2026")],
+        deps(llm=llm, embedder=embedder, fetcher=fetcher),
+        now=later,
+    )
+    db.refresh(opp)
+    assert opp.deadline_at.date().isoformat() == "2026-12-21"
+    assert opp.evidence["deadline_at"]["source_id"] == str(orig.id)
+    assert opp.needs_review is True
+    [reason] = [r for r in opp.evidence["_review"] if r["code"] == "deadline_changed"]
+    assert "deadline changed at Example e-procurement" in reason["detail"]
+    assert "2026-12-14 -> 2026-12-21" in reason["detail"]
+    entry = opp.evidence["_sources"][str(orig.id)]
+    assert "deadline_extracted" not in entry
+    assert [h["kind"] for h in entry["deadline_history"]] == ["listed", "extracted"]
+    [ce] = db.scalars(
+        sa.select(ChangeEvent).where(ChangeEvent.field == "deadline_at")
+    ).all()
+    assert ce.old.startswith("2026-12-14") and ce.new.startswith("2026-12-21")
+    [sce] = _source_deadline_events(db, opp)
+    assert sce.old["source_id"] == str(orig.id)
+    assert sce.old["value"].startswith("2026-12-14")
+    assert sce.new["value"].startswith("2026-12-21")
+
+    # Same listing again: no further change, the newer value stays.
+    ingest(db, orig, [_listed(orig, url, "21 Dec 2026")], deps(), now=later)
+    db.refresh(opp)
+    assert opp.deadline_at.date().isoformat() == "2026-12-21"
+    assert len(_source_deadline_events(db, opp)) == 1
+
+
+def test_extension_on_an_aggregator_only_keeps_the_original_and_flags(
+    db, make_source, deps
+):
+    orig = make_source("original")
+    agg = make_source("aggregator", name="Example aggregator")
+    ingest(db, orig, [_listed(orig, "https://o.example.org/1", "14 Dec 2026")], deps())
+    ingest(
+        db,
+        agg,
+        [_listed(agg, "https://a.example.com/1", "14 Dec 2026", AGG_TITLE)],
+        deps(),
+    )
+    [opp] = opps(db)
+    assert opp.evidence["_deadline_conflict"] is False
+
+    ingest(
+        db,
+        agg,
+        [_listed(agg, "https://a.example.com/1", "21 Dec 2026", AGG_TITLE)],
+        deps(),
+        now=NOW + timedelta(days=1),
+    )
+    db.refresh(opp)
+    assert opp.deadline_at.date().isoformat() == "2026-12-14"
+    assert opp.evidence["deadline_at"]["rule"] == "original"
+    assert opp.evidence["_deadline_conflict"] is True
+    assert opp.evidence["_trust"] == "disagree"
+    assert {"deadline_changed", "deadline_conflict"} <= codes(opp)
+    assert opp.needs_review is True
+    [sce] = _source_deadline_events(db, opp)
+    assert sce.new["source_id"] == str(agg.id)
+    # The catalogue deadline did not move.
+    assert not db.scalars(
+        sa.select(ChangeEvent).where(ChangeEvent.field == "deadline_at")
+    ).all()
+
+
+def test_shortened_deadline_is_taken_and_flagged(db, make_source, deps):
+    pub = make_source("publisher")
+    url = "https://p.example.org/1"
+    ingest(db, pub, [_listed(pub, url, "21 Dec 2026")], deps())
+    ingest(db, pub, [_listed(pub, url, "10 Dec 2026")], deps(), now=NOW + timedelta(1))
+    [opp] = opps(db)
+    assert opp.deadline_at.date().isoformat() == "2026-12-10"
+    assert "deadline_changed" in codes(opp)
+    assert len(_source_deadline_events(db, opp)) == 1
+
+
+def test_listed_deadline_without_a_year_does_not_override_extracted(
+    db, make_source, deps, embedder
+):
+    orig = make_source("original")
+    url = "https://o.example.org/t/9"
+    text = "Bids close on 14 December 2026."
+    fetcher = FakeFetcher({url: ("text/html", f"<p>{text}</p>".encode())})
+    ingest(
+        db,
+        orig,
+        [_listed(orig, url, "14 Dec")],
+        deps(
+            llm=FakeLLM(_extract_reply("2026-12-14", text)),
+            embedder=embedder,
+            fetcher=fetcher,
+        ),
+    )
+    ingest(db, orig, [_listed(orig, url, "21 Dec")], deps(), now=NOW + timedelta(1))
+    [opp] = opps(db)
+    assert opp.deadline_at.date().isoformat() == "2026-12-14"
+    assert "deadline_changed" not in codes(opp)
+    assert _source_deadline_events(db, opp) == []
+
+    # A dated listing followed by an undated one keeps the dated value as well.
+    pub = make_source("publisher")
+    purl = "https://p.example.org/2"
+    title = "Supply of diesel generators to district offices"
+    ingest(db, pub, [_listed(pub, purl, "12 Dec 2026", title)], deps())
+    ingest(
+        db, pub, [_listed(pub, purl, "19 Dec", title)], deps(), now=NOW + timedelta(1)
+    )
+    [gen] = [o for o in opps(db) if o.title == title]
+    assert gen.deadline_at.date().isoformat() == "2026-12-12"
+    assert "deadline_changed" not in codes(gen)
+
+
+def test_extension_moves_status_back_to_open(db, make_source, deps):
+    pub = make_source("publisher")
+    ingest(
+        db,
+        pub,
+        [
+            _listed(pub, "https://p.example.org/x", "20 Nov 2026"),
+            _listed(
+                pub,
+                "https://p.example.org/y",
+                "28 Nov 2026",
+                "Supply of laboratory reagents to referral hospitals",
+            ),
+        ],
+        deps(),
+    )
+    by_url = {}
+    for o in opps(db):
+        [link] = links(db, o)
+        by_url[link.url] = o
+    expired, soon = by_url["https://p.example.org/x"], by_url["https://p.example.org/y"]
+    assert (expired.status, soon.status) == ("expired", "closing_soon")
+
+    ingest(
+        db,
+        pub,
+        [
+            _listed(pub, "https://p.example.org/x", "10 Jan 2027"),
+            _listed(
+                pub,
+                "https://p.example.org/y",
+                "21 Dec 2026",
+                "Supply of laboratory reagents to referral hospitals",
+            ),
+        ],
+        deps(),
+        now=NOW + timedelta(hours=1),
+    )
+    for opp, old in ((expired, "expired"), (soon, "closing_soon")):
+        db.refresh(opp)
+        assert opp.status == "open"
+        [ce] = db.scalars(
+            sa.select(ChangeEvent).where(
+                ChangeEvent.opportunity_id == opp.id, ChangeEvent.field == "status"
+            )
+        ).all()
+        assert (ce.old, ce.new) == (old, "open")
+        assert "deadline_changed" in codes(opp)

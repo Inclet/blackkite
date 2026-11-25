@@ -19,7 +19,8 @@ Cost: enrichment and the extraction call run only for items that create a record
 for the first item an ``original`` source contributes to a record (its dates and
 fields take precedence, spec 2.3), and for records never extracted (for example
 while ANTHROPIC_API_KEY was unset). A re-seen URL only refreshes ``last_seen`` and
-the deadline that source lists.
+the deadline that source lists (a changed deadline is not re-extracted; the newer
+listed value is used).
 
 Evidence layout (``opportunity.evidence``):
 
@@ -27,8 +28,10 @@ Evidence layout (``opportunity.evidence``):
   (dates that failed validation also keep ``"raw"`` and ``"status"``);
 * ``requirements`` / ``tags``: ``{"snippets": [...]}`` / ``{"snippets": {tag: ...}}``;
 * ``_sources``: per source id, what that source listed (title, organisation,
-  listed and extracted deadline) - the record of each source's deadline used for
-  conflict checks;
+  listed and extracted deadline, ``deadline_history`` of superseded values) - the
+  record of each source's deadline used for conflict checks. When a source's
+  dated listed deadline changes between runs, the newer listed value wins over an
+  older extracted one (see ``_record_listed_deadline``);
 * ``_deadline_conflict``, ``_trust`` (see validate.py), ``_extraction`` (model,
   prompt version, source, time, dropped fields), ``_embedding`` (model, time),
   ``_enrich`` (fetch errors), ``_review`` (list of ``{"code", "detail"}``: why
@@ -375,10 +378,10 @@ def _ingest_one(
             "url": item.url,
             "title": item.title,
             "organisation": item.organisation,
-            "deadline_listed": _date_entry(listed_deadline),
             "seen_at": now.isoformat(),
         }
     )
+    _record_listed_deadline(session, opp, entry, listed_deadline, source, now, review)
     if listed_deadline.reviewable:
         review(
             "date", review_reason("deadline_at", listed_deadline) + f" [{source.name}]"
@@ -423,6 +426,67 @@ def _ingest_one(
                 )
     session.flush()
     return created
+
+
+def _source_current_deadline(entry: dict[str, Any]) -> datetime | None:
+    """The deadline this source currently counts for: its extracted value, else the
+    value it listed (same order as ``_finalise``)."""
+    for key in ("deadline_extracted", "deadline_listed"):
+        value = _date_value(entry.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _record_listed_deadline(
+    session: Session,
+    opp: Opportunity,
+    entry: dict[str, Any],
+    listed: DateCheck,
+    source: Source,
+    now: datetime,
+    review: _Review,
+) -> None:
+    """Store what this source lists as the deadline now, and notice when it moved.
+
+    * A sighting whose listed deadline has no usable value (no year, unparsed, out
+      of window, absent) never replaces a dated value seen earlier.
+    * When the dated value differs from what the source listed last time, the newer
+      listed value becomes that source's deadline: an older extracted value is
+      superseded (moved to ``deadline_history``), a ``change_event`` with field
+      ``source_deadline`` is written and the item is flagged ``deadline_changed``.
+      ``_finalise`` then resolves the deadline across sources again.
+    """
+    previous = _date_value(entry.get("deadline_listed"))
+    if listed.value is None and previous is not None:
+        return  # keep the last dated listing
+    if previous is not None and listed.value is not None and previous != listed.value:
+        old_current = _source_current_deadline(entry)
+        history = entry.setdefault("deadline_history", [])
+        history.append(
+            {**entry["deadline_listed"], "kind": "listed", "until": now.isoformat()}
+        )
+        extracted = entry.pop("deadline_extracted", None)
+        if extracted is not None:
+            history.append({**extracted, "kind": "extracted", "until": now.isoformat()})
+        del history[:-20]
+        old_day = kigali_date(old_current).isoformat() if old_current else "none"
+        new_day = kigali_date(listed.value).isoformat()
+        review(
+            "deadline_changed",
+            f"deadline changed at {source.name}: {old_day} -> {new_day}"
+            + (f" (listed {listed.raw!r})" if listed.raw else ""),
+        )
+        session.add(
+            ChangeEvent(
+                opportunity_id=opp.id,
+                field="source_deadline",
+                old={"source_id": str(source.id), "value": _iso(old_current)},
+                new={"source_id": str(source.id), "value": _iso(listed.value)},
+                at=now,
+            )
+        )
+    entry["deadline_listed"] = _date_entry(listed)
 
 
 def _apply_extraction(
