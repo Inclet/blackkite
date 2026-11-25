@@ -14,11 +14,15 @@ holding the source's lock, they are marked failed with "worker stopped".
 A second job runs once a day (and once at start-up) to move catalogue statuses on
 as deadlines pass (open -> closing_soon -> expired), under its own advisory lock.
 
+Pending profile backfills (worker/backfills.py: new or edited profiles, mute
+changes) run on every tick after the sources, debounced and under a lock per
+profile; they are never run in an HTTP request (spec 5 cost guard).
+
 Delivery (delivery/jobs.py): the weekly digest runs on Mondays at
 ``BK_DIGEST_HOUR`` Africa/Kigali (and at start-up, where it does nothing unless it
 is Monday after that hour and a user's digest has not gone yet); urgent alerts run
-at the end of every tick in which a source run succeeded, after ingest (and
-scoring). Both take their own advisory lock and are idempotent per user per day.
+at the end of every tick in which a source run succeeded or a backfill ran,
+after ingest (and scoring). Both take their own advisory lock and are idempotent per user per day.
 """
 
 from __future__ import annotations
@@ -36,6 +40,7 @@ from blackkite.collectors.http import DbHttpCache, FetchClient, make_fetch_clien
 from blackkite.config import Settings
 from blackkite.delivery.jobs import alerts_job, weekly_digest_job
 from blackkite.delivery.mail import MailTransport, make_transport
+from blackkite.worker.backfills import run_pending_backfills
 from blackkite.worker.runner import (
     fail_stale_runs,
     refresh_statuses_locked,
@@ -82,8 +87,21 @@ def tick(
             o.items_failed,
             f" error: {o.error}" if o.error else "",
         )
-    if any(o.status == "succeeded" for o in outcomes):
+    backfilled = backfills(sessions)
+    if backfilled or any(o.status == "succeeded" for o in outcomes):
         alerts(sessions, settings, transport or make_transport(settings))
+
+
+def backfills(sessions: sessionmaker[Session]) -> int:
+    """Pending profile backfills. Never lets a failure stop the tick."""
+    try:
+        done = run_pending_backfills(sessions)
+    except Exception:
+        log.exception("profile backfills failed")
+        return 0
+    if done:
+        log.info("backfills: %d profile(s) scored", len(done))
+    return len(done)
 
 
 def alerts(

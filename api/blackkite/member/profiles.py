@@ -5,14 +5,18 @@ scoring track read it that way); the API speaks camelCase. Unknown keys are
 refused so a typo never silently drops a requirement. ``null`` means "not yet
 provided" and is kept as given (spec 7: missing data never hard-filters).
 
-Every create or edit bumps ``version`` (edits only) and triggers a backfill of
-match and score for that profile (spec 5).
+Every edit bumps ``version``. Match and score (spec 5) are not run here: a
+backfill is requested and the worker runs it off the request path
+(scoring/backfill.py). Only scoring-relevant changes ask for one: creating an
+active profile, changing its type or data while active, or activating a profile
+not yet scored at its version. A rename or deactivation asks for nothing; when
+the profile was up to date, it stays up to date (``scored_version`` follows).
 """
 
 from __future__ import annotations
 
-import logging
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 import sqlalchemy as sa
@@ -27,11 +31,9 @@ from pydantic import (
 from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
 
-from blackkite import scoring
 from blackkite.db.models import Profile, User
 from blackkite.member.schemas import CamelIn, CamelModel
-
-log = logging.getLogger("blackkite.member.profiles")
+from blackkite.scoring.backfill import request_backfill
 
 Stream = Literal["tender", "investment", "funding", "event"]
 Text = Annotated[str, Field(min_length=1, max_length=200)]
@@ -206,18 +208,13 @@ def _name_taken(
     return db.scalar(q) is not None
 
 
-def backfill(db: Session, profile_id: uuid.UUID) -> None:
-    """Re-match and re-score this profile (spec 5). A failure is logged and does
-    not undo the saved profile."""
-    try:
-        scoring.backfill_profile(db, profile_id)
-        db.commit()
-    except Exception:
-        db.rollback()
-        log.exception("backfill failed for profile %s", profile_id)
+def _now() -> datetime:
+    return datetime.now(UTC)
 
 
-def create_profile(db: Session, user: User, body: ProfileIn) -> Profile:
+def create_profile(
+    db: Session, user: User, body: ProfileIn, now: datetime | None = None
+) -> Profile:
     name = body.name.strip()
     if _name_taken(db, user, name):
         raise NameTaken(name)
@@ -228,39 +225,54 @@ def create_profile(db: Session, user: User, body: ProfileIn) -> Profile:
         data=validate_data(body.type, body.data),
         active=body.active,
     )
+    if p.active:
+        request_backfill(p, now or _now())
     db.add(p)
     db.commit()
     db.refresh(p)
-    backfill(db, p.id)
     return p
 
 
-def update_profile(db: Session, user: User, p: Profile, body: ProfilePatch) -> Profile:
+def update_profile(
+    db: Session,
+    user: User,
+    p: Profile,
+    body: ProfilePatch,
+    now: datetime | None = None,
+) -> Profile:
     new_type = body.type or p.type
     if body.type is not None and body.type != p.type and body.data is None:
         raise ValueError("changing the type needs new data for that type")
-    changed = False
+    renamed = content_changed = activated = deactivated = False
     if body.name is not None and body.name.strip() != p.name:
         name = body.name.strip()
         if _name_taken(db, user, name, except_id=p.id):
             raise NameTaken(name)
         p.name = name
-        changed = True
+        renamed = True
     if body.data is not None:
         data = validate_data(new_type, body.data)
         if data != p.data or new_type != p.type:
             p.type = new_type
             p.data = data
-            changed = True
+            content_changed = True
     if body.active is not None and body.active != p.active:
         p.active = body.active
-        changed = True
-    if not changed:
+        activated, deactivated = body.active, not body.active
+    if not (renamed or content_changed or activated or deactivated):
         return p
+    up_to_date = p.scored_version is not None and p.scored_version == p.version
     p.version = p.version + 1
+    if content_changed:
+        if p.active:
+            request_backfill(p, now or _now())
+    elif up_to_date:
+        # Name and active do not change scores: still scored at this version.
+        p.scored_version = p.version
+    elif activated:
+        request_backfill(p, now or _now())
     db.commit()
     db.refresh(p)
-    backfill(db, p.id)
     return p
 
 

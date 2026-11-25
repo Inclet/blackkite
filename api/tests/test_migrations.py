@@ -305,3 +305,23 @@ def test_0008_maps_alert_threshold_to_fit_word_and_back(make_database):
     )
     assert [t for _, t in rows] == [75, 75, 60, 60, None, None, None]
     command.upgrade(cfg, "head")
+
+
+def test_0009_existing_profiles_start_up_to_date(make_database):
+    url = make_database("bk_migr")
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0008")
+    _exec(url, "INSERT INTO \"user\" (email) VALUES ('a@example.com')")
+    _exec(
+        url,
+        """INSERT INTO profile (user_id, name, type, version, updated_at)
+           SELECT id, 'P', 'business', 3, '2026-11-01 00:00:00+00' FROM "user" """,
+    )
+    command.upgrade(cfg, "0009")
+    assert _exec(
+        url,
+        "SELECT scored_version, backfill_requested_at, updated_at::text FROM profile",
+    ) == [(3, None, "2026-11-01 00:00:00+00")]
+    command.downgrade(cfg, "0008")
+    assert _exec(url, "SELECT count(*) FROM profile") == [(1,)]
+    command.upgrade(cfg, "head")

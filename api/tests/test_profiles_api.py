@@ -1,12 +1,13 @@
-"""/profiles: the caller's own profiles, validated data, version bump, backfill."""
+"""/profiles: the caller's own profiles, validated data, version bump, and the
+backfill request (run later by the worker, never in the request)."""
 
 from __future__ import annotations
 
 import uuid
 
 import pytest
+import sqlalchemy as sa
 
-from blackkite import scoring
 from blackkite.db.models import Profile, UserOpportunityScore
 from blackkite.member.profiles import validate_data
 from blackkite.seed.loader import load_seed_profiles
@@ -24,10 +25,42 @@ IRONJI = {
 
 
 @pytest.fixture
-def backfills(monkeypatch):
-    calls: list[uuid.UUID] = []
-    monkeypatch.setattr(scoring, "backfill_profile", lambda s, pid: calls.append(pid))
-    return calls
+def backfills(db, monkeypatch):
+    """Profiles with a pending backfill request. Scoring in the request fails the
+    test."""
+    from blackkite.scoring import service
+
+    def inline(*a, **k):
+        raise AssertionError("scoring ran in the HTTP request")
+
+    monkeypatch.setattr(service, "backfill_profile", inline)
+    monkeypatch.setattr(service, "score_user", inline)
+
+    class Pending:
+        def ids(self) -> list[uuid.UUID]:
+            db.expire_all()
+            return list(
+                db.scalars(
+                    sa.select(Profile.id)
+                    .where(Profile.backfill_requested_at.is_not(None))
+                    .order_by(Profile.created_at)
+                )
+            )
+
+        def clear(self) -> None:
+            db.execute(sa.update(Profile).values(backfill_requested_at=None))
+            db.commit()
+
+        def scored(self, pid) -> None:
+            """As the worker leaves it: done, up to date at this version."""
+            db.execute(
+                sa.update(Profile)
+                .where(Profile.id == pid)
+                .values(backfill_requested_at=None, scored_version=Profile.version)
+            )
+            db.commit()
+
+    return Pending()
 
 
 @pytest.fixture
@@ -59,7 +92,8 @@ def test_create_list_and_camel_case_round_trip(db, client, ana, backfills):
         "tonnage": None,
     }
     assert stored.data["min_contract_rwf"] == 5000000
-    assert backfills == [stored.id]
+    assert backfills.ids() == [stored.id]
+    assert stored.scored_version is None
     assert [p["name"] for p in client.get("/api/profiles").json()] == ["Ironji-Trade"]
     assert client.get(f"/api/profiles/{stored.id}").json()["data"] == IRONJI
 
@@ -83,7 +117,7 @@ def test_business_data_is_validated(client, ana, data, backfills):
         "/api/profiles", json={"name": "B", "type": "business", "data": data}
     )
     assert r.status_code == 422, r.text
-    assert backfills == []
+    assert backfills.ids() == []
 
 
 def test_personal_data_shape(client, ana, backfills):
@@ -107,22 +141,24 @@ def test_personal_data_shape(client, ana, backfills):
     assert r.status_code == 422
 
 
-def test_edit_bumps_version_and_backfills(db, client, ana, backfills):
+def test_edit_bumps_version_and_requests_a_backfill(db, client, ana, backfills):
     pid = client.post(
         "/api/profiles",
         json={"name": "Ironji-Trade", "type": "business", "data": IRONJI},
     ).json()["id"]
-    backfills.clear()
+    backfills.scored(pid)
     r = client.patch(
         f"/api/profiles/{pid}", json={"data": {**IRONJI, "minContractRwf": 1}}
     )
     assert r.status_code == 200 and r.json()["version"] == 2
-    assert backfills == [uuid.UUID(pid)]
+    assert backfills.ids() == [uuid.UUID(pid)]
+    backfills.scored(pid)
     # No change: no new version, no backfill.
     r = client.patch(f"/api/profiles/{pid}", json={"name": "Ironji-Trade"})
-    assert r.json()["version"] == 2 and len(backfills) == 1
+    assert r.json()["version"] == 2 and backfills.ids() == []
     r = client.patch(f"/api/profiles/{pid}", json={"active": False})
     assert r.json()["version"] == 3 and r.json()["active"] is False
+    assert backfills.ids() == []
     # Type change needs data for the new type.
     assert (
         client.patch(f"/api/profiles/{pid}", json={"type": "personal"}).status_code
@@ -152,17 +188,50 @@ def test_names_are_unique_per_user(db, client, ana, outbox, app, backfills):
     assert client.patch(f"/api/profiles/{pid}", json={"name": "B"}).status_code == 200
 
 
-def test_a_failing_backfill_keeps_the_profile(client, ana, monkeypatch):
-    def boom(s, pid):
-        raise RuntimeError("scoring down")
+def _edit(client, pid, **body):
+    r = client.patch(f"/api/profiles/{pid}", json=body)
+    assert r.status_code == 200, r.text
+    return r.json()
 
-    monkeypatch.setattr(scoring, "backfill_profile", boom)
+
+def test_rename_requests_no_backfill(db, client, ana, backfills):
+    pid = client.post(
+        "/api/profiles", json={"name": "A", "type": "business", "data": IRONJI}
+    ).json()["id"]
+    backfills.scored(pid)
+    assert _edit(client, pid, name="Ironji")["version"] == 2
+    assert backfills.ids() == []
+    # Still up to date: activating after a rename and a pause asks for nothing.
+    assert db.get(Profile, uuid.UUID(pid)).scored_version == 2
+    _edit(client, pid, active=False)
+    _edit(client, pid, active=True)
+    assert backfills.ids() == []
+
+
+def test_activation_backfills_only_when_not_scored_at_its_version(
+    db, client, ana, backfills
+):
+    pid = client.post(
+        "/api/profiles", json={"name": "A", "type": "business", "data": IRONJI}
+    ).json()["id"]
+    backfills.scored(pid)
+    _edit(client, pid, active=False)
+    # Data edited while paused: nothing now (inactive profiles are not scored)...
+    _edit(client, pid, data={**IRONJI, "minContractRwf": 7})
+    assert backfills.ids() == []
+    # ...and a backfill when it comes back.
+    _edit(client, pid, active=True)
+    assert backfills.ids() == [uuid.UUID(pid)]
+
+
+def test_inactive_new_profile_requests_nothing(client, ana, backfills):
     r = client.post(
         "/api/profiles",
-        json={"name": "A", "type": "business", "data": {"streams": ["tender"]}},
+        json={"name": "A", "type": "business", "data": IRONJI, "active": False},
     )
-    assert r.status_code == 201
-    assert client.get("/api/profiles").json()[0]["name"] == "A"
+    assert r.status_code == 201 and backfills.ids() == []
+    _edit(client, r.json()["id"], active=True)  # never scored
+    assert backfills.ids() == [uuid.UUID(r.json()["id"])]
 
 
 def test_other_users_profiles_are_404(db, client, ana, backfills):

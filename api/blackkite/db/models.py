@@ -160,6 +160,11 @@ class Profile(Base):
         sa.UniqueConstraint("user_id", "name"),
         # Target for composite FKs that keep a profile reference inside one user's data.
         sa.UniqueConstraint("id", "user_id"),
+        sa.Index(
+            "ix_profile_backfill_requested_at",
+            "backfill_requested_at",
+            postgresql_where=sa.text("backfill_requested_at IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -173,6 +178,12 @@ class Profile(Base):
     active: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.true()
     )
+    # Pending backfill of match and score (spec 5), run by the worker off the
+    # request path (scoring/backfill.py). NULL = nothing pending.
+    backfill_requested_at: Mapped[datetime | None] = _ts()
+    # The version whose scoring-relevant content was last fully scored. NULL =
+    # never scored.
+    scored_version: Mapped[int | None] = mapped_column(sa.Integer)
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 
@@ -552,6 +563,10 @@ class UserOpportunityScore(Base):
     score: Mapped[int | None] = mapped_column(sa.SmallInteger)
     score_breakdown: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     score_reason: Mapped[str | None] = mapped_column(sa.Text)
+    # scoring.service.profile_hash of the profile when this row was written: the
+    # key for reusing its model judgement (a rename does not change it). NULL for
+    # rows written before it existed.
+    profile_hash: Mapped[str | None] = mapped_column(sa.String(64))
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 

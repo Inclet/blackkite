@@ -1,5 +1,5 @@
 """The caller's profiles (spec 7, contract section 2): list, create, edit, delete.
-Editing bumps the version and triggers a backfill (spec 5)."""
+Editing bumps the version and requests a backfill (spec 5), run by the worker."""
 
 from __future__ import annotations
 
