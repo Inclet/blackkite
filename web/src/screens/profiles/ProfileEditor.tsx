@@ -48,7 +48,8 @@ export const EDITOR_COPY = {
   trucks: 'Trucks in your network',
   refrigerated: 'Refrigerated trucks',
   owned: 'Trucks you own',
-  tonnage: 'Tonnage',
+  tonnageMin: 'Smallest load (tonnes)',
+  tonnageMax: 'Largest load (tonnes)',
   minContract: 'Smallest contract worth bidding (FRW)',
   interests: 'Interests',
   instruments: 'Instruments',
@@ -144,7 +145,7 @@ function Editor({ profile, type, onSaved }: { profile: Profile | null; type: Pro
     set(key, form[key].includes(v) ? form[key].filter((x) => x !== v) : [...form[key], v]);
   const toggleStream = (s: Stream) => set('streams', form.streams.includes(s) ? form.streams.filter((x) => x !== s) : [...form.streams, s]);
 
-  const text = (key: TextKey, label: string, extra: { inputMode?: 'numeric' } = {}) => (
+  const text = (key: TextKey, label: string, extra: { inputMode?: 'numeric' | 'decimal' } = {}) => (
     <Field
       label={label}
       name={key}
@@ -154,7 +155,7 @@ function Editor({ profile, type, onSaved }: { profile: Profile | null; type: Pro
       {...extra}
     />
   );
-  const number = (key: NumberField, label: string) => text(key, label, { inputMode: 'numeric' });
+  const number = (key: NumberField, label: string, inputMode: 'numeric' | 'decimal' = 'numeric') => text(key, label, { inputMode });
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -245,7 +246,8 @@ function Editor({ profile, type, onSaved }: { profile: Profile | null; type: Pro
                 {number('trucksInNetwork', EDITOR_COPY.trucks)}
                 {number('refrigeratedInNetwork', EDITOR_COPY.refrigerated)}
                 {number('ownedTrucks', EDITOR_COPY.owned)}
-                {number('tonnage', EDITOR_COPY.tonnage)}
+                {number('tonnageMin', EDITOR_COPY.tonnageMin, 'decimal')}
+                {number('tonnageMax', EDITOR_COPY.tonnageMax, 'decimal')}
               </div>
             </Card>
           </>

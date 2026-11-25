@@ -70,22 +70,25 @@ test('profile edit round trip', async ({ page }, testInfo) => {
   await expect(page.getByRole('heading', { level: 1, name: 'Ironji-Trade' })).toBeVisible();
   await expect(page.getByLabel('Services, separated by commas')).toHaveValue('dry freight, cold chain, last-mile distribution');
 
-  await page.getByLabel('Tonnage').fill('about thirty');
+  await page.getByLabel('Smallest load (tonnes)').fill('about thirty');
   await page.getByRole('button', { name: 'Save profile' }).click();
-  await expect(page.getByLabel('Tonnage')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByLabel('Smallest load (tonnes)')).toHaveAttribute('aria-invalid', 'true');
   await expect(page.getByText('Use a number, such as 100.')).toBeVisible();
 
-  await page.getByLabel('Tonnage').fill('30');
+  await page.getByLabel('Smallest load (tonnes)').fill('10');
+  await page.getByLabel('Largest load (tonnes)').fill('30');
   await page.getByLabel('Keywords').fill('mining, quarry');
   await page.getByRole('button', { name: 'Events' }).click();
   await page.getByRole('button', { name: 'Save profile' }).click();
   await expect(page.getByText('Saved. Open items are being ranked against it again.')).toBeVisible();
   const patch = (await api.seen()).find((r) => r.method === 'PATCH');
   expect(patch?.url).toBe('/api/profiles/p1');
+  expect(JSON.parse(patch!.body).data.capacity.tonnage).toEqual({ min: 10, max: 30 });
 
   // A page load of /profiles/p1 is the app; the values come back from the API.
   await open(page, '/profiles/p1');
-  await expect(page.getByLabel('Tonnage')).toHaveValue('30');
+  await expect(page.getByLabel('Smallest load (tonnes)')).toHaveValue('10');
+  await expect(page.getByLabel('Largest load (tonnes)')).toHaveValue('30');
   await expect(page.getByLabel('Keywords')).toHaveValue('mining, quarry');
   await expect(page.getByRole('button', { name: 'Events' })).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByRole('button', { name: 'Tenders' })).toHaveAttribute('aria-pressed', 'true');

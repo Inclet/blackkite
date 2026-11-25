@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { Profile } from '../../api/types';
-import { chipOptions, DATA_KEYS, DEFAULT_STREAMS, ERRORS, parseList, parseNumber, toForm, toInput, validate } from './profileForm';
+import { chipOptions, DATA_KEYS, DEFAULT_STREAMS, ERRORS, parseList, parseNumber, parseTonnage, toForm, toInput, validate } from './profileForm';
 
 /** Spec 7.1's Ironji-Trade, camelCase. */
 const IRONJI: Profile = {
@@ -102,4 +102,27 @@ test('same type: extra keys the API accepts are kept (business sectors and locat
   expect(d).toMatchObject(extra);
   const biz = { ...IRONJI.data, sectors: ['logistics'], locations: ['Kigali', 'Rubavu'] };
   expect(toInput(toForm({ ...IRONJI, data: biz }, 'business'), biz).data).toMatchObject({ sectors: ['logistics'], locations: ['Kigali', 'Rubavu'] });
+});
+
+test('tonnage: one figure or a range, as the API takes it (float | {min, max})', () => {
+  expect(parseTonnage('', '')).toBeNull();
+  expect(parseTonnage('12.5', '12.5')).toBe(12.5);
+  expect(parseTonnage('10', '30')).toEqual({ min: 10, max: 30 });
+  expect(parseTonnage('10', '')).toEqual({ min: 10, max: null });
+  expect(parseTonnage('', '30')).toEqual({ min: null, max: 30 });
+
+  const one = { ...IRONJI, data: { ...IRONJI.data, capacity: { tonnage: 12.5 } } };
+  expect(toForm(one, 'business')).toMatchObject({ tonnageMin: '12.5', tonnageMax: '12.5' });
+  expect(toInput(toForm(one, 'business'), one.data).data.capacity?.tonnage).toBe(12.5);
+  const range = { ...IRONJI, data: { ...IRONJI.data, capacity: { tonnage: { min: 10, max: null } } } };
+  expect(toForm(range, 'business')).toMatchObject({ tonnageMin: '10', tonnageMax: '' });
+  expect(toInput(toForm(range, 'business'), range.data).data.capacity?.tonnage).toEqual({ min: 10, max: null });
+});
+
+test('tonnage validation: whole tonnes for a range, largest not below smallest', () => {
+  const f = toForm(IRONJI, 'business');
+  expect(validate({ ...f, tonnageMin: '2.5', tonnageMax: '10' })).toEqual({ tonnageMin: ERRORS.tonnageWhole });
+  expect(validate({ ...f, tonnageMin: '20', tonnageMax: '10' })).toEqual({ tonnageMax: ERRORS.tonnageOrder });
+  expect(validate({ ...f, tonnageMin: 'lots', tonnageMax: '' })).toEqual({ tonnageMin: ERRORS.number });
+  expect(validate({ ...f, tonnageMin: '2.5', tonnageMax: '2.5' })).toEqual({});
 });

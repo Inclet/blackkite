@@ -40,7 +40,9 @@ export interface ProfileForm {
   trucksInNetwork: string;
   refrigeratedInNetwork: string;
   ownedTrucks: string;
-  tonnage: string;
+  /** Capacity tonnage as a range; equal ends (or a stored single figure) are one figure. */
+  tonnageMin: string;
+  tonnageMax: string;
   minContractRwf: string;
   provisional: boolean;
   instruments: string[];
@@ -52,7 +54,15 @@ export interface ProfileForm {
   excludeKeywords: string;
 }
 
-export type NumberField = 'trucksInNetwork' | 'refrigeratedInNetwork' | 'ownedTrucks' | 'tonnage' | 'minContractRwf' | 'ticketMin' | 'ticketMax';
+export type NumberField =
+  | 'trucksInNetwork'
+  | 'refrigeratedInNetwork'
+  | 'ownedTrucks'
+  | 'tonnageMin'
+  | 'tonnageMax'
+  | 'minContractRwf'
+  | 'ticketMin'
+  | 'ticketMax';
 export type FormErrors = Partial<Record<'name' | 'streams' | NumberField, string>>;
 
 export const ERRORS = {
@@ -62,6 +72,9 @@ export const ERRORS = {
   number: 'Use a number, such as 100.',
   rwf: 'Use an amount in Rwandan francs, such as 5,000,000.',
   ticketOrder: 'Make this at least the smallest ticket.',
+  tonnageOrder: 'Make this at least the smallest load.',
+  /** The API takes a tonnage range in whole tonnes; one figure may have decimals. */
+  tonnageWhole: 'Use whole tonnes for a range, such as 20.',
 } as const;
 
 /**
@@ -86,6 +99,20 @@ export function keysFor(type: ProfileType, data: Partial<ProfileData> | undefine
 const list = (v: string[] | null | undefined) => (v ?? []).join(', ');
 const num = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v));
 
+function tonnageEnd(t: ProfileCapacity['tonnage'], end: 'min' | 'max'): string {
+  if (t === null || t === undefined) return '';
+  return typeof t === 'number' ? String(t) : num(t[end]);
+}
+
+/** The two tonnage answers as the API takes them: null, one figure, or {min, max}. */
+export function parseTonnage(minText: string, maxText: string): ProfileCapacity['tonnage'] {
+  const lo = parseNumber(minText);
+  const hi = parseNumber(maxText);
+  if (lo === null && hi === null) return null;
+  if (lo !== null && lo === hi) return lo;
+  return { min: lo, max: hi };
+}
+
 export function toForm(profile: Pick<Profile, 'name' | 'type' | 'data' | 'active'> | null, type: ProfileType): ProfileForm {
   const d: Partial<ProfileData> = profile?.data ?? {};
   const t = profile?.type ?? type;
@@ -102,7 +129,8 @@ export function toForm(profile: Pick<Profile, 'name' | 'type' | 'data' | 'active
     trucksInNetwork: num(d.capacity?.trucksInNetwork),
     refrigeratedInNetwork: num(d.capacity?.refrigeratedInNetwork),
     ownedTrucks: num(d.capacity?.ownedTrucks),
-    tonnage: num(d.capacity?.tonnage),
+    tonnageMin: tonnageEnd(d.capacity?.tonnage, 'min'),
+    tonnageMax: tonnageEnd(d.capacity?.tonnage, 'max'),
     minContractRwf: num(d.minContractRwf),
     provisional: d.provisional ?? false,
     instruments: d.instruments ?? [],
@@ -131,7 +159,7 @@ export function parseNumber(s: string): number | null {
   return /^\d+(\.\d+)?$/.test(t) ? Number(t) : NaN;
 }
 
-const BUSINESS_NUMBERS: NumberField[] = ['trucksInNetwork', 'refrigeratedInNetwork', 'ownedTrucks', 'tonnage', 'minContractRwf'];
+const BUSINESS_NUMBERS: NumberField[] = ['trucksInNetwork', 'refrigeratedInNetwork', 'ownedTrucks', 'tonnageMin', 'tonnageMax', 'minContractRwf'];
 const PERSONAL_NUMBERS: NumberField[] = ['ticketMin', 'ticketMax'];
 
 export function validate(f: ProfileForm): FormErrors {
@@ -145,6 +173,14 @@ export function validate(f: ProfileForm): FormErrors {
     const lo = parseNumber(f.ticketMin);
     const hi = parseNumber(f.ticketMax);
     if (lo !== null && hi !== null && hi < lo) e.ticketMax = ERRORS.ticketOrder;
+  }
+  if (f.type === 'business' && !e.tonnageMin && !e.tonnageMax) {
+    const t = parseTonnage(f.tonnageMin, f.tonnageMax);
+    if (t !== null && typeof t === 'object') {
+      if (t.min != null && !Number.isInteger(t.min)) e.tonnageMin = ERRORS.tonnageWhole;
+      if (t.max != null && !Number.isInteger(t.max)) e.tonnageMax = ERRORS.tonnageWhole;
+      if (!e.tonnageMax && t.min != null && t.max != null && t.max < t.min) e.tonnageMax = ERRORS.tonnageOrder;
+    }
   }
   return e;
 }
@@ -176,7 +212,7 @@ export function toInput(f: ProfileForm, original?: Partial<ProfileData>): Profil
         trucksInNetwork: parseNumber(f.trucksInNetwork),
         refrigeratedInNetwork: parseNumber(f.refrigeratedInNetwork),
         ownedTrucks: parseNumber(f.ownedTrucks),
-        tonnage: parseNumber(f.tonnage),
+        tonnage: parseTonnage(f.tonnageMin, f.tonnageMax),
       },
       minContractRwf: parseNumber(f.minContractRwf),
       provisional: f.provisional,

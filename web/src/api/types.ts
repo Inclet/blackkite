@@ -72,7 +72,8 @@ export interface ProfileCapacity {
   trucksInNetwork?: number | null;
   refrigeratedInNetwork?: number | null;
   ownedTrucks?: number | null;
-  tonnage?: number | null;
+  /** Tonnes: one figure (any number from 0) or a range of whole tonnes (api `float | Range`). */
+  tonnage?: number | Range | null;
 }
 
 export interface ProfileExclusions {

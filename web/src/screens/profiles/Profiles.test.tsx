@@ -79,7 +79,8 @@ test('edit: the form shows the profile, PATCH sends every field, and it says it 
 
   type(EDITOR_COPY.services, 'dry freight, cold chain, warehousing');
   type(EDITOR_COPY.held, 'RDB company registration, RRA tax clearance');
-  type(EDITOR_COPY.tonnage, '30');
+  type(EDITOR_COPY.tonnageMin, '30');
+  type(EDITOR_COPY.tonnageMax, '30');
   fireEvent.click(screen.getByRole('button', { name: 'Events' }));
   type(EDITOR_COPY.excludeKeywords, 'mining');
   fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.save }));
@@ -117,14 +118,31 @@ test('validation in the field-error style; nothing is sent until it is fixed', a
   expect(api.calls.some((c) => c.key.startsWith('PATCH'))).toBe(false);
 });
 
+test('tonnage: a range of whole tonnes is sent as {min, max}, checked in the field-error style', async () => {
+  const api = mockApi({ 'GET /api/profiles': [IRONJI], 'GET /me': ME, 'PATCH /api/profiles/p1': (b: unknown) => ({ ...IRONJI, ...(b as object) }) });
+  renderAt('/profiles/p1');
+  await screen.findByRole('heading', { level: 1, name: 'Ironji-Trade' });
+  expect(field(EDITOR_COPY.tonnageMin)).toHaveAttribute('inputmode', 'decimal');
+  type(EDITOR_COPY.tonnageMin, '20');
+  type(EDITOR_COPY.tonnageMax, '5');
+  fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.save }));
+  expect(field(EDITOR_COPY.tonnageMax)).toHaveAccessibleDescription(ERRORS.tonnageOrder);
+  expect(api.calls.some((c) => c.key.startsWith('PATCH'))).toBe(false);
+  type(EDITOR_COPY.tonnageMax, '40');
+  fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.save }));
+  expect(await screen.findByText(EDITOR_COPY.saved)).toBeInTheDocument();
+  const patch = api.calls.find((c) => c.key === 'PATCH /api/profiles/p1')!.body as Profile;
+  expect(patch.data.capacity?.tonnage).toEqual({ min: 20, max: 40 });
+});
+
 test('a save that does not reach the server keeps the answers and says so', async () => {
   mockApi({ 'GET /api/profiles': [IRONJI], 'GET /me': ME, 'PATCH /api/profiles/p1': status(503) });
   renderAt('/profiles/p1');
   await screen.findByRole('heading', { level: 1, name: 'Ironji-Trade' });
-  type(EDITOR_COPY.tonnage, '12');
+  type(EDITOR_COPY.tonnageMin, '12');
   fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.save }));
   expect(await screen.findByText(new RegExp(COPY.unreachableTitle))).toBeInTheDocument();
-  expect(field(EDITOR_COPY.tonnage)).toHaveValue('12');
+  expect(field(EDITOR_COPY.tonnageMin)).toHaveValue('12');
 });
 
 test('the server refusing it (a name already used) gets its own plain message', async () => {
