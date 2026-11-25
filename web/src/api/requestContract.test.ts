@@ -4,11 +4,13 @@
  */
 import { expect, test } from 'vitest';
 import dump from '../../tests/contract/api-schemas.json';
+import { withPending } from '../../tests/contract/pending';
 import { check, type Schema } from '../../tests/contract/schemaCheck';
 import { toForm, toInput } from '../screens/profiles/profileForm';
-import type { Profile } from './types';
+import { DISMISS_REASONS, type Profile } from './types';
 
-const schemas = dump.schemas as unknown as Record<string, Schema>;
+// The API track's parallel changes (tests/contract/pending.ts) until api-schemas.json is regenerated.
+const { schemas } = withPending(dump as unknown as { schemas: Record<string, Schema> });
 const fits = (value: unknown, model: string) => check(value, schemas[model]!);
 
 const IRONJI: Profile = {
@@ -48,8 +50,14 @@ test('a change of type sends only the new type\'s keys', () => {
 });
 
 test('the digest settings body fits DigestSettingsIn', () => {
-  expect(fits({ channel: 'email', frequency: 'weekly', day: 'mon', alertThreshold: 75, streams: null }, 'DigestSettingsIn')).toEqual([]);
-  expect(fits({ channel: 'email', address: 'x@y.rw', frequency: 'weekly', day: 'mon', alertThreshold: null, streams: null }, 'DigestSettingsIn')).toEqual([
+  expect(fits({ channel: 'email', frequency: 'weekly', day: 'mon', alertMinFit: 'strong', streams: null }, 'DigestSettingsIn')).toEqual([]);
+  expect(fits({ channel: 'email', frequency: 'weekly', day: 'mon', alertMinFit: 'good', streams: null }, 'DigestSettingsIn')).toEqual([]);
+  expect(fits({ channel: 'email', address: 'x@y.rw', frequency: 'weekly', day: 'mon', alertMinFit: null, streams: null }, 'DigestSettingsIn')).toEqual([
     "$.address: not in the API's DigestSettingsIn",
   ]);
+});
+
+test('the state bodies fit StateIn: a dismiss with and without a reason code', () => {
+  expect(fits({ state: 'dismissed' }, 'StateIn')).toEqual([]);
+  for (const code of DISMISS_REASONS) expect(fits({ state: 'dismissed', dismissReason: code }, 'StateIn')).toEqual([]);
 });

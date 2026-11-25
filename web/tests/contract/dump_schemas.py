@@ -36,6 +36,7 @@ MODELS = {
     # Request bodies the web app sends.
     "ProfileIn": P.ProfileIn,
     "DigestSettingsIn": DigestSettingsIn,
+    "StateIn": S.StateIn,
 }
 
 

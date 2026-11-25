@@ -2,7 +2,7 @@
 
 `api-schemas.json` is the member API's JSON Schema for the responses the web app
 reads (feed, opportunity, profiles and their per-type data, digest settings,
-`/me`) and the bodies it sends (`ProfileIn`, `DigestSettingsIn`), dumped from the
+`/me`) and the bodies it sends (`ProfileIn`, `DigestSettingsIn`, `StateIn`), dumped from the
 API's own Pydantic models. `omitIfNone` lists, per model, the keys the API leaves
 out when empty instead of sending `null`.
 
@@ -23,3 +23,10 @@ After any change to the API's member models, from `web/`:
 which runs `cd ../api && uv run python ../web/tests/contract/dump_schemas.py`.
 Commit the new `api-schemas.json`, then run `npm test`; a failure names the path
 and the mismatch.
+
+## Pending changes
+
+`pending.ts` lays the API track's in-flight changes (alertMinFit, FeedItem.provisional,
+StateIn with the dismiss reason codes) over the dumped file until it is regenerated.
+Each patch applies only while the file has the old shape; once regenerated they are
+all no-ops, and `pending.ts` can be removed.

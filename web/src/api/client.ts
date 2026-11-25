@@ -6,6 +6,7 @@
  */
 import type {
   DigestSettings,
+  DismissReason,
   FeedContent,
   ItemState,
   LiveFeedItem,
@@ -111,7 +112,7 @@ export const api = {
   feed: (q: FeedQuery = {}, signal?: AbortSignal) =>
     request<FeedContent & { items: LiveFeedItem[] }>(`/api/feed${query({ ...q })}`, { signal }),
   opportunity: (id: string, signal?: AbortSignal) => request<OpportunityDetail>(`/api/opportunities/${enc(id)}`, { signal }),
-  setState: (id: string, state: ItemState, dismissReason?: string) =>
+  setState: (id: string, state: ItemState, dismissReason?: DismissReason) =>
     request<unknown>(`/api/opportunities/${enc(id)}/state`, {
       method: 'PUT',
       body: (dismissReason ? { state, dismissReason } : { state }) satisfies StateUpdate,

@@ -19,7 +19,11 @@ export type ItemState = 'unseen' | 'saved' | 'dismissed' | 'acting' | 'done';
  * section 2, on feed, shortlist and detail items). The screens read saved,
  * acting and done from it.
  */
-export type LiveFeedItem = FeedItem & { state: ItemState };
+export type LiveFeedItem = FeedItem & { state: ItemState; provisional: boolean };
+
+/** The dismiss reason codes PUT /opportunities/{id}/state accepts (contract section 2). */
+export const DISMISS_REASONS = ['not_my_sector', 'too_small', 'cant_meet_requirements', 'already_knew', 'other'] as const;
+export type DismissReason = (typeof DISMISS_REASONS)[number];
 
 /**
  * One extracted field with the passage(s) behind it (api member/schemas.py
@@ -63,13 +67,13 @@ export type OpportunityDetail = LiveFeedItem & {
     changes: OpportunityChange[];
     note: string | null;
     state: ItemState;
-    dismissReason?: string;
+    dismissReason?: DismissReason;
   };
 };
 
 export interface StateUpdate {
   state: ItemState;
-  dismissReason?: string;
+  dismissReason?: DismissReason;
 }
 
 export type ProfileType = 'business' | 'personal';
@@ -152,13 +156,18 @@ export type ProfileInput = Pick<Profile, 'name' | 'type' | 'data'> & { active?: 
  * GET and PUT /api/digest-settings (api routes/digest_settings.py). No address:
  * the digest goes to the account's own email (GET /me), and PUT refuses unknown keys.
  */
+export type AlertMinFit = 'strong' | 'good';
+
 export interface DigestSettings {
   channel: 'email';
   /** Decision 18: weekly on Monday, or off. */
   frequency: 'weekly' | 'off';
   day: 'mon';
-  /** 0-100; null means no urgent alerts. */
-  alertThreshold: number | null;
+  /**
+   * Urgent alerts for items whose best active profile's fit word is at least this
+   * (never the numeric score); null means no urgent alerts.
+   */
+  alertMinFit: AlertMinFit | null;
   /** Null means "the streams of my profiles". */
   streams: Stream[] | null;
 }

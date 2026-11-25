@@ -48,6 +48,8 @@ export interface FeedItem {
   noDeadlineText?: 'No deadline' | 'No deadline stated';
   /** Not shown in the phone list (decision 4: the phone board omits develoPPP). */
   hideOnPhone?: boolean;
+  /** The matched profile is provisional (spec 7.1: AI lab); a label sits next to the profile tag. */
+  provisional?: boolean;
   /** Arrived since the last visit: drops in once. */
   isNew?: boolean;
   detail: FeedItemDetail;

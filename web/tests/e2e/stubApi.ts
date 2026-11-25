@@ -34,6 +34,10 @@ export interface Seed {
   notes: Record<string, string>;
   profiles: Record<string, unknown>[];
   digest: Record<string, unknown>;
+  /** The account's name; "" when unset (the feed sends "", GET /me sends null). */
+  userName: string;
+  /** Each dismiss reason the session sent, by item. */
+  dismissReasons: Record<string, string>;
 }
 
 export interface Seen {
@@ -50,6 +54,7 @@ export function defaultItems(): Item[] {
   return [
     {
       id: 'tbond-5y',
+      provisional: false,
       stream: 'investment',
       title: 'Five-year treasury bond',
       organisation: 'National Bank of Rwanda',
@@ -61,6 +66,7 @@ export function defaultItems(): Item[] {
     },
     {
       id: 't2s-call',
+      provisional: true,
       stream: 'funding',
       title: 'Transition to Scale research and innovation call',
       organisation: 'National Council for Science and Technology',
@@ -77,6 +83,7 @@ export function defaultItems(): Item[] {
     },
     {
       id: 'wfp-logistics',
+      provisional: false,
       stream: 'tender',
       title: 'Logistics, transport and warehousing support',
       organisation: 'World Food Programme',
@@ -93,6 +100,7 @@ export function defaultItems(): Item[] {
     },
     {
       id: 'abh-summit',
+      provisional: false,
       stream: 'event',
       title: 'ABH Summit and Grand Finale',
       organisation: "Africa's Business Heroes",
@@ -182,7 +190,9 @@ export function defaultSeed(): Seed {
       },
     ],
     // GET /api/digest-settings never sends an address (the account email is GET /me's).
-    digest: { channel: 'email', frequency: 'weekly', day: 'mon', alertThreshold: 70, streams: null },
+    digest: { channel: 'email', frequency: 'weekly', day: 'mon', alertMinFit: 'strong', streams: null },
+    userName: 'Clet',
+    dismissReasons: {},
   };
 }
 
@@ -232,7 +242,11 @@ function profileRefusal(body: unknown, currentType: string | undefined): string 
 /** The time the stub stamps on profiles (the run's frozen now). */
 const STAMP = '2026-11-24T08:00:00Z';
 
-const DIGEST_KEYS = new Set(['channel', 'frequency', 'day', 'alertThreshold', 'streams']);
+const DIGEST_KEYS = new Set(['channel', 'frequency', 'day', 'alertMinFit', 'streams']);
+const ALERT_MIN_FIT = new Set(['strong', 'good', null]);
+
+/** Like the API's StateIn: only these dismiss reason codes. */
+const DISMISS_REASONS = new Set(['not_my_sector', 'too_small', 'cant_meet_requirements', 'already_knew', 'other']);
 
 const STATES = new Set(['saved', 'dismissed', 'acting', 'done', 'unseen']);
 
@@ -245,7 +259,7 @@ function sortSoonest(items: Item[]): Item[] {
 function member(s: Session, method: string, fullPath: string, body: unknown, res: http.ServerResponse): void {
   // Earlier routes keep their paths; every other member route is under /api (contract section 2).
   if (method === 'GET' && fullPath === '/me') {
-    return send(res, 200, { id: 'u1', email: 'clet@example.rw', name: 'Clet', role: 'admin', status: 'active', created_at: '2026-11-01T08:00:00Z' });
+    return send(res, 200, { id: 'u1', email: 'clet@example.rw', name: s.userName || null, role: 'admin', status: 'active', created_at: '2026-11-01T08:00:00Z' });
   }
   if (method === 'POST' && fullPath === '/auth/logout') return send(res, 204);
   if (!fullPath.startsWith('/api/')) return send(res, 404, { detail: 'Not found' });
@@ -260,7 +274,7 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
   if (method === 'GET' && path === '/feed') {
     // Deliberately not in closing order: the web app ranks what it gets.
     const items = s.items.filter((i) => s.states[i.id] !== 'dismissed').map(withState);
-    return send(res, 200, { user: { name: 'Clet' }, sources: { checked: 3, when: 'this morning' }, digest: { channel: 'email' }, items });
+    return send(res, 200, { user: { name: s.userName }, sources: { checked: 3, when: 'this morning' }, digest: { channel: 'email' }, items });
   }
   if (method === 'GET' && path === '/shortlist') {
     return send(res, 200, sortSoonest(s.items.filter((i) => s.states[i.id] === 'saved' || s.states[i.id] === 'acting').map(withState)));
@@ -272,9 +286,17 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
       return send(res, 200, opportunityBody(withState(item), s.notes[item.id] ?? null));
     }
     if (method === 'PUT' && opp[2] === '/state') {
-      const state = (body as { state?: string } | null)?.state;
+      const b = (body ?? {}) as { state?: string; dismissReason?: unknown };
+      const state = b.state;
       if (!state || !STATES.has(state)) return send(res, 422, { detail: 'Unknown state' });
+      const extra = Object.keys(b).filter((k) => k !== 'state' && k !== 'dismissReason');
+      if (extra.length) return send(res, 422, { detail: `extra keys: ${extra.join(', ')}` });
+      if (b.dismissReason !== undefined && b.dismissReason !== null && !DISMISS_REASONS.has(b.dismissReason as string)) {
+        return send(res, 422, { detail: 'dismissReason' });
+      }
       s.states[item.id] = state;
+      if (state === 'dismissed' && typeof b.dismissReason === 'string') s.dismissReasons[item.id] = b.dismissReason;
+      else delete s.dismissReasons[item.id];
       return send(res, 200, { state });
     }
     if (method === 'PUT' && opp[2] === '/note') {
@@ -313,6 +335,7 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
       const unknown = Object.keys(b ?? {}).filter((k) => !DIGEST_KEYS.has(k));
       if (unknown.length) return send(res, 422, { detail: `extra keys: ${unknown.join(', ')}` });
       if (b.frequency !== 'weekly' && b.frequency !== 'off') return send(res, 422, { detail: 'frequency' });
+      if ('alertMinFit' in b && !ALERT_MIN_FIT.has(b.alertMinFit as string | null)) return send(res, 422, { detail: 'alertMinFit' });
       s.digest = { ...s.digest, ...b, day: 'mon', channel: 'email' };
       return send(res, 200, s.digest);
     }

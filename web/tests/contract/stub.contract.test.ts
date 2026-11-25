@@ -7,9 +7,11 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { defaultItems, startStubApi, STUB_COOKIE } from '../e2e/stubApi';
 import dump from './api-schemas.json' with { type: 'json' };
+import { DISMISS_REASON_CODES, withPending } from './pending';
 import { check, type Schema } from './schemaCheck';
 
-const schemas = dump.schemas as unknown as Record<string, Schema>;
+// The API track's parallel changes (pending.ts) until api-schemas.json is regenerated.
+const { schemas, applied } = withPending(dump as unknown as { schemas: Record<string, Schema> });
 const opts = { omitIfNone: dump.omitIfNone as Record<string, string[]> };
 const fits = (value: unknown, model: string) => check(value, schemas[model]!, opts);
 
@@ -53,9 +55,18 @@ describe('the checker', () => {
 });
 
 test('the schema file has every model the web app reads or sends', () => {
-  for (const m of ['FeedContent', 'FeedItem', 'OpportunityOut', 'ProfileOut', 'BusinessData', 'PersonalData', 'DigestSettingsOut', 'UserOut', 'ProfileIn', 'DigestSettingsIn']) {
+  for (const m of ['FeedContent', 'FeedItem', 'OpportunityOut', 'ProfileOut', 'BusinessData', 'PersonalData', 'DigestSettingsOut', 'UserOut', 'ProfileIn', 'DigestSettingsIn', 'StateIn']) {
     expect(schemas[m], m).toBeDefined();
   }
+});
+
+test('pending contract patches: each applies only while the dumped file has the old shape', () => {
+  // Remove pending.ts once this list is empty (after `npm run contract:schemas` at merge).
+  if (applied.length) console.info(`contract: pending patches still applied: ${applied.join(', ')}`);
+  const fresh = withPending({ schemas });
+  expect(fresh.applied).toEqual([]);
+  expect(Object.keys(schemas.DigestSettingsIn!.properties!)).not.toContain('alertThreshold');
+  expect(schemas.FeedItem!.required).toContain('provisional');
 });
 
 test('GET /api/feed and /api/shortlist', async () => {
@@ -83,12 +94,36 @@ test('the detail stub carries the shapes the screens must handle: documents by n
   expect(res.detail.fields.some((f) => typeof f.value === 'number')).toBe(true);
 });
 
+test('every feed item says whether its profile is provisional', async () => {
+  const feed = (await call('GET', '/api/feed')).json as { items: Record<string, unknown>[]; user: { name: string } };
+  for (const i of feed.items) expect(typeof i.provisional).toBe('boolean');
+  expect(feed.items.find((i) => i.id === 't2s-call')!.provisional).toBe(true);
+  const { provisional: _p, ...without } = feed.items[0]!;
+  expect(fits(without, 'FeedItem')).toEqual(['$.provisional: missing (always sent by the API)']);
+});
+
+test('PUT state: the five dismiss reason codes, nothing else', async () => {
+  for (const code of DISMISS_REASON_CODES) {
+    const body = { state: 'dismissed', dismissReason: code };
+    expect(fits(body, 'StateIn')).toEqual([]);
+    expect((await call('PUT', '/api/opportunities/abh-summit/state', body)).status).toBe(200);
+  }
+  expect(fits({ state: 'dismissed', dismissReason: 'Too far' }, 'StateIn')).toHaveLength(1);
+  expect((await call('PUT', '/api/opportunities/abh-summit/state', { state: 'dismissed', dismissReason: 'Too far' })).status).toBe(422);
+  expect((await call('PUT', '/api/opportunities/abh-summit/state', { state: 'unseen' })).status).toBe(200);
+});
+
 test('the old stub shapes would fail: documents as strings, a null the API omits', async () => {
   const res = (await call('GET', '/api/opportunities/wfp-logistics')).json as { detail: Record<string, unknown> };
   expect(fits({ ...res, detail: { ...res.detail, documents: ['rfp.pdf'] } }, 'OpportunityOut')).toEqual(['$.detail.documents[0]: expected object, got string']);
   expect(fits({ ...res, topFlag: null }, 'OpportunityOut')).toEqual(['$.topFlag: the API leaves this out when empty, never null']);
   const digest = (await call('GET', '/api/digest-settings')).json as object;
   expect(fits({ ...digest, address: 'x@y.rw' }, 'DigestSettingsOut')).toEqual(["$.address: not in the API's DigestSettingsOut"]);
+  const { alertMinFit: _a, ...rest } = digest as Record<string, unknown>;
+  expect(fits({ ...rest, alertThreshold: 70 }, 'DigestSettingsOut')).toEqual([
+    '$.alertMinFit: missing (always sent by the API)',
+    "$.alertThreshold: not in the API's DigestSettingsOut",
+  ]);
 });
 
 test('GET /api/profiles: each profile, and its data against its type\'s model', async () => {
@@ -116,16 +151,31 @@ test('POST and PATCH /api/profiles answer a ProfileOut; the stub refuses what th
   expect((await call('POST', '/api/profiles', { ...body, data: { streams: [] } })).status).toBe(422);
 });
 
-test('GET and PUT /api/digest-settings; PUT refuses an address', async () => {
+test('GET and PUT /api/digest-settings; PUT refuses an address and a numeric threshold', async () => {
   const got = await call('GET', '/api/digest-settings');
   expect(fits(got.json, 'DigestSettingsOut')).toEqual([]);
-  const body = { channel: 'email', frequency: 'off', day: 'mon', alertThreshold: 60, streams: ['investment'] };
+  const body = { channel: 'email', frequency: 'off', day: 'mon', alertMinFit: 'good', streams: ['investment'] };
   expect(fits(body, 'DigestSettingsIn')).toEqual([]);
   const put = await call('PUT', '/api/digest-settings', body);
   expect(fits(put.json, 'DigestSettingsOut')).toEqual([]);
   expect((await call('PUT', '/api/digest-settings', { ...body, address: 'x@y.rw' })).status).toBe(422);
+  expect((await call('PUT', '/api/digest-settings', { ...body, alertMinFit: 60 })).status).toBe(422);
+  expect(fits({ ...body, alertMinFit: 'possible' }, 'DigestSettingsIn')).toHaveLength(1);
+  expect((await call('PUT', '/api/digest-settings', { ...body, alertMinFit: null })).status).toBe(200);
 });
 
 test('GET /me', async () => {
   expect(fits((await call('GET', '/me')).json, 'UserOut')).toEqual([]);
+});
+
+test('no name: the feed sends "" and GET /me sends null', async () => {
+  const res = await fetch(`${base}/__stub/sessions/noname`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userName: '' }) });
+  expect(res.status).toBe(204);
+  const get = async (path: string) => (await fetch(base + path, { headers: { Cookie: `${STUB_COOKIE}=noname` } })).json();
+  const feed = (await get('/api/feed')) as { user: { name: string } };
+  expect(feed.user.name).toBe('');
+  expect(fits(feed, 'FeedContent')).toEqual([]);
+  const me = (await get('/me')) as { name: unknown };
+  expect(me.name).toBeNull();
+  expect(fits(me, 'UserOut')).toEqual([]);
 });

@@ -108,7 +108,7 @@ test('digest settings round trip', async ({ page }, testInfo) => {
   await page.getByRole('button', { name: 'Save digest settings' }).click();
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible();
   const put = (await api.seen()).find((r) => r.method === 'PUT' && r.url === '/api/digest-settings');
-  expect(JSON.parse(put!.body)).toEqual({ channel: 'email', frequency: 'off', day: 'mon', alertThreshold: 60, streams: ['investment'] });
+  expect(JSON.parse(put!.body)).toEqual({ channel: 'email', frequency: 'off', day: 'mon', alertMinFit: 'good', streams: ['investment'] });
 
   await page.reload();
   await expect(page.getByRole('switch', { name: 'Weekly digest' })).toHaveAttribute('aria-checked', 'false');

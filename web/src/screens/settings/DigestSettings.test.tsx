@@ -5,13 +5,13 @@ import { mockApi, status } from '../../test/mockApi';
 import { COPY } from '../common/copy';
 import { renderAt, setViewport } from '../feed/testUtils';
 import { SIGN_IN } from '../SignIn';
-import { ALERT_THRESHOLDS, choiceFor, DIGEST_COPY } from './DigestSettings';
+import { DIGEST_COPY } from './DigestSettings';
 
 beforeEach(() => setViewport('desktop'));
 afterEach(() => vi.unstubAllGlobals());
 
 const ME = { id: 'u', email: 'c@x.rw', name: 'Clet', role: 'admin' };
-const SETTINGS: DigestSettings = { channel: 'email', frequency: 'weekly', day: 'mon', alertThreshold: 75, streams: null };
+const SETTINGS: DigestSettings = { channel: 'email', frequency: 'weekly', day: 'mon', alertMinFit: 'strong', streams: null };
 
 const sw = (name: string) => screen.getByRole('switch', { name });
 const chip = (name: string) => screen.getByRole('button', { name });
@@ -28,7 +28,7 @@ test('shows the settings: weekly on Monday, the board\'s Urgent alerts switch, t
   expect(screen.getByRole('group', { name: DIGEST_COPY.threshold })).toBeInTheDocument();
   expect(chip(DIGEST_COPY.strongOnly)).toHaveAttribute('aria-pressed', 'true');
   expect(chip(DIGEST_COPY.strongAndGood)).toHaveAttribute('aria-pressed', 'false');
-  expect(screen.queryByText(/75/)).toBeNull();
+  expect(screen.queryByText(/\d{2}/)).toBeNull();
   expect(screen.queryByRole('textbox')).toBeNull();
   expect(chip(DIGEST_COPY.profileStreams)).toHaveAttribute('aria-pressed', 'true');
   expect(chip('Tenders')).toHaveAttribute('aria-pressed', 'false');
@@ -46,11 +46,11 @@ test('round trip: off, strong and good fits, two streams; PUT sends the whole se
   expect(chip(DIGEST_COPY.profileStreams)).toHaveAttribute('aria-pressed', 'false');
   fireEvent.click(chip(DIGEST_COPY.save));
   expect(await screen.findByText(DIGEST_COPY.saved)).toBeInTheDocument();
-  expect(put(api)).toEqual({ channel: 'email', frequency: 'off', day: 'mon', alertThreshold: ALERT_THRESHOLDS.good, streams: ['tender', 'event'] });
+  expect(put(api)).toEqual({ channel: 'email', frequency: 'off', day: 'mon', alertMinFit: 'good', streams: ['tender', 'event'] });
 });
 
-test('alerts off sends a null threshold and hides the choice; back on starts at strong fits only', async () => {
-  const api = mockApi({ 'GET /api/digest-settings': { ...SETTINGS, alertThreshold: null, streams: ['tender'] }, 'GET /me': ME, 'PUT /api/digest-settings': (b: unknown) => b });
+test('alerts off sends a null alertMinFit and hides the choice; back on starts at strong fits only', async () => {
+  const api = mockApi({ 'GET /api/digest-settings': { ...SETTINGS, alertMinFit: null, streams: ['tender'] }, 'GET /me': ME, 'PUT /api/digest-settings': (b: unknown) => b });
   renderAt('/settings/digest');
   await screen.findByText(/Every Monday/);
   expect(sw('Urgent alerts')).toHaveAttribute('aria-checked', 'false');
@@ -62,28 +62,28 @@ test('alerts off sends a null threshold and hides the choice; back on starts at 
   fireEvent.click(chip('Tenders'));
   expect(chip(DIGEST_COPY.profileStreams)).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(chip(DIGEST_COPY.save));
-  await waitFor(() => expect(put(api)).toMatchObject({ alertThreshold: null, streams: null, frequency: 'weekly' }));
+  await waitFor(() => expect(put(api)).toMatchObject({ alertMinFit: null, streams: null, frequency: 'weekly' }));
 });
 
-test('switching alerts on sends the strong value', async () => {
-  const api = mockApi({ 'GET /api/digest-settings': { ...SETTINGS, alertThreshold: null }, 'GET /me': ME, 'PUT /api/digest-settings': (b: unknown) => b });
+test('switching alerts on sends "strong"', async () => {
+  const api = mockApi({ 'GET /api/digest-settings': { ...SETTINGS, alertMinFit: null }, 'GET /me': ME, 'PUT /api/digest-settings': (b: unknown) => b });
   renderAt('/settings/digest');
   await screen.findByText(/Every Monday/);
   fireEvent.click(sw('Urgent alerts'));
   fireEvent.click(chip(DIGEST_COPY.save));
-  await waitFor(() => expect(put(api)).toMatchObject({ alertThreshold: ALERT_THRESHOLDS.strong }));
+  await waitFor(() => expect(put(api)).toMatchObject({ alertMinFit: 'strong' }));
 });
 
-test('a stored value set some other way is kept until the choice changes', async () => {
-  const api = mockApi({ 'GET /api/digest-settings': { ...SETTINGS, alertThreshold: 70 }, 'GET /me': ME, 'PUT /api/digest-settings': (b: unknown) => b });
+test('a stored "good" reads as strong and good fits, and is sent back as stored', async () => {
+  const api = mockApi({ 'GET /api/digest-settings': { ...SETTINGS, alertMinFit: 'good' }, 'GET /me': ME, 'PUT /api/digest-settings': (b: unknown) => b });
   renderAt('/settings/digest');
   await screen.findByText(/Every Monday/);
   expect(chip(DIGEST_COPY.strongAndGood)).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(chip(DIGEST_COPY.save));
-  await waitFor(() => expect(put(api)).toMatchObject({ alertThreshold: 70 }));
+  await waitFor(() => expect(put(api)).toMatchObject({ alertMinFit: 'good' }));
   fireEvent.click(chip(DIGEST_COPY.strongOnly));
   fireEvent.click(chip(DIGEST_COPY.save));
-  await waitFor(() => expect(put(api)).toMatchObject({ alertThreshold: ALERT_THRESHOLDS.strong }));
+  await waitFor(() => expect(put(api)).toMatchObject({ alertMinFit: 'strong' }));
 });
 
 test.each([
@@ -114,15 +114,6 @@ test('unreachable on load offers Try again', async () => {
   expect(await screen.findByText(/Every Monday/)).toBeInTheDocument();
 });
 
-test('choiceFor: at or above the strong value is strong only; null starts at strong', () => {
-  expect(choiceFor(ALERT_THRESHOLDS.strong)).toBe('strong');
-  expect(choiceFor(100)).toBe('strong');
-  expect(choiceFor(ALERT_THRESHOLDS.strong - 1)).toBe('good');
-  expect(choiceFor(ALERT_THRESHOLDS.good)).toBe('good');
-  expect(choiceFor(0)).toBe('good');
-  expect(choiceFor(null)).toBe('strong');
-});
-
 test('the address shown is the account email from GET /me; PUT sends only the keys the API takes', async () => {
   const api = mockApi({
     'GET /api/digest-settings': { ...SETTINGS, address: 'old@x.rw' },
@@ -133,5 +124,5 @@ test('the address shown is the account email from GET /me; PUT sends only the ke
   expect(await screen.findByText('Every Monday, by email to clet@ironji.rw.')).toBeInTheDocument();
   fireEvent.click(chip(DIGEST_COPY.save));
   expect(await screen.findByText(DIGEST_COPY.saved)).toBeInTheDocument();
-  expect(Object.keys(put(api) as object).sort()).toEqual(['alertThreshold', 'channel', 'day', 'frequency', 'streams']);
+  expect(Object.keys(put(api) as object).sort()).toEqual(['alertMinFit', 'channel', 'day', 'frequency', 'streams']);
 });
