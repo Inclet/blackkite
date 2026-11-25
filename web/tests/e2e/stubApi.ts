@@ -158,6 +158,8 @@ export function defaultSeed(): Seed {
         type: 'business',
         version: 1,
         active: true,
+        createdAt: '2026-11-01T08:00:00Z',
+        updatedAt: '2026-11-01T08:00:00Z',
         data: {
           streams: ['tender', 'funding', 'event'],
           location: 'Kigali, Rwanda',
@@ -174,6 +176,8 @@ export function defaultSeed(): Seed {
         type: 'personal',
         version: 1,
         active: true,
+        createdAt: '2026-11-01T08:00:00Z',
+        updatedAt: '2026-11-01T08:00:00Z',
         data: { streams: ['investment', 'event'], instruments: ['treasury bonds and bills', 'RSE shares'], eventTopics: ['AI and tech'], ticketRangeRwf: null },
       },
     ],
@@ -203,6 +207,31 @@ function send(res: http.ServerResponse, status: number, body?: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+/** Like the API (member/profiles.py): data keys outside the type's model, or no streams, are refused. */
+const COMMON_KEYS = ['streams', 'location', 'locations', 'exclusions', 'provisional'];
+const PROFILE_KEYS: Record<string, Set<string>> = {
+  business: new Set([...COMMON_KEYS, 'services', 'sectors', 'capacity', 'registrationsHeld', 'registrationsNotHeld', 'minContractRwf']),
+  personal: new Set([...COMMON_KEYS, 'instruments', 'ticketRangeRwf', 'horizon', 'eventTopics', 'availability', 'budgetRwf']),
+};
+const PROFILE_BODY_KEYS = new Set(['name', 'type', 'data', 'active']);
+
+function profileRefusal(body: unknown, currentType: string | undefined): string | null {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const extra = Object.keys(b).filter((k) => !PROFILE_BODY_KEYS.has(k));
+  if (extra.length) return `extra keys: ${extra.join(', ')}`;
+  const type = (b.type as string | undefined) ?? currentType;
+  if (!type || !PROFILE_KEYS[type]) return 'type';
+  if (b.data === undefined) return currentType && b.type && b.type !== currentType ? 'changing the type needs new data for that type' : null;
+  const data = b.data as Record<string, unknown>;
+  const bad = Object.keys(data).filter((k) => !PROFILE_KEYS[type]!.has(k));
+  if (bad.length) return `data: extra keys for ${type}: ${bad.join(', ')}`;
+  if (!Array.isArray(data.streams) || data.streams.length === 0) return 'data.streams: at least one';
+  return null;
+}
+
+/** The time the stub stamps on profiles (the run's frozen now). */
+const STAMP = '2026-11-24T08:00:00Z';
+
 const DIGEST_KEYS = new Set(['channel', 'frequency', 'day', 'alertThreshold', 'streams']);
 
 const STATES = new Set(['saved', 'dismissed', 'acting', 'done', 'unseen']);
@@ -215,7 +244,9 @@ function sortSoonest(items: Item[]): Item[] {
 /** Handle one member-API request for a session. */
 function member(s: Session, method: string, fullPath: string, body: unknown, res: http.ServerResponse): void {
   // Earlier routes keep their paths; every other member route is under /api (contract section 2).
-  if (method === 'GET' && fullPath === '/me') return send(res, 200, { id: 'u1', email: 'clet@example.rw', name: 'Clet', role: 'admin', status: 'active' });
+  if (method === 'GET' && fullPath === '/me') {
+    return send(res, 200, { id: 'u1', email: 'clet@example.rw', name: 'Clet', role: 'admin', status: 'active', created_at: '2026-11-01T08:00:00Z' });
+  }
   if (method === 'POST' && fullPath === '/auth/logout') return send(res, 204);
   if (!fullPath.startsWith('/api/')) return send(res, 404, { detail: 'Not found' });
   const path = fullPath.slice('/api'.length);
@@ -253,7 +284,9 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
   }
   if (method === 'GET' && path === '/profiles') return send(res, 200, s.profiles);
   if (method === 'POST' && path === '/profiles') {
-    const p = { id: `p${s.profiles.length + 10}`, version: 1, active: true, ...(body as object) };
+    const refused = profileRefusal(body, undefined);
+    if (refused) return send(res, 422, { detail: refused });
+    const p = { id: `p${s.profiles.length + 10}`, version: 1, active: true, ...(body as object), createdAt: STAMP, updatedAt: STAMP };
     s.profiles.push(p);
     return send(res, 201, p);
   }
@@ -262,7 +295,9 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
     if (i < 0) return send(res, 404, { detail: 'Not found' });
     if (method === 'PATCH') {
       const before = s.profiles[i]!;
-      s.profiles[i] = { ...before, ...(body as object), version: Number(before.version) + 1 };
+      const refused = profileRefusal(body, before.type as string);
+      if (refused) return send(res, 422, { detail: refused });
+      s.profiles[i] = { ...before, ...(body as object), version: Number(before.version) + 1, updatedAt: STAMP };
       return send(res, 200, s.profiles[i]);
     }
     if (method === 'DELETE') {
@@ -285,7 +320,7 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
   return send(res, 404, { detail: 'Not found' });
 }
 
-export function startStubApi(port: number): Promise<{ close: () => Promise<void> }> {
+export function startStubApi(port: number): Promise<{ port: number; close: () => Promise<void> }> {
   const sessions = new Map<string, Session>();
   const anonymous: Seen[] = [];
   const session = (id: string) => {
@@ -336,6 +371,8 @@ export function startStubApi(port: number): Promise<{ close: () => Promise<void>
   });
   return new Promise((resolve, reject) => {
     server.on('error', reject);
-    server.listen(port, '127.0.0.1', () => resolve({ close: () => new Promise((r) => server.close(() => r())) }));
+    server.listen(port, '127.0.0.1', () =>
+      resolve({ port: (server.address() as { port: number }).port, close: () => new Promise((r) => server.close(() => r())) }),
+    );
   });
 }
