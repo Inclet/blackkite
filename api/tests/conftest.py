@@ -119,6 +119,18 @@ def _no_real_model_clients(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr(ingest, "default_deps", keyless)
 
+    # Scoring: no model and no embedder unless a test passes fakes (``deps=``).
+    from blackkite.scoring import service as scoring
+    from blackkite.scoring.match import clear_profile_embedding_cache
+    from blackkite.scoring.settings import ScoringSettings
+
+    monkeypatch.setattr(
+        scoring,
+        "default_deps",
+        lambda: scoring.ScoringDeps(settings=ScoringSettings(_env_file=None)),
+    )
+    clear_profile_embedding_cache()
+
 
 @pytest.fixture
 def Sessions(engine) -> sessionmaker[Session]:
