@@ -61,6 +61,10 @@ export interface Seed {
   catalogue: Record<string, unknown>[];
   users: Record<string, unknown>[];
   invites: Record<string, unknown>[];
+  /** POST /api/source-suggestions answers 429 once this many were sent "today" (createdAt = the frozen stamp); default 10. */
+  suggestionsPerDay?: number;
+  /** Both test-run routes answer 429, as when BK_TEST_RUNS_MAX_CONCURRENT runs are already going. */
+  testRunBusy?: boolean;
 }
 
 export interface Seen {
@@ -360,29 +364,100 @@ const STATUS_MOVES: Record<string, string[]> = {
   retired: ['testing'],
 };
 
-/** Like SourceIn / SourcePatch: unknown keys, missing required ones, an original search_query and bad URLs are refused. */
-function sourceRefusal(b: Record<string, unknown>, create: boolean): string | null {
-  const extra = Object.keys(b).filter((k) => !SOURCE_KEYS.has(k) && !(create && k === 'suggestionId'));
-  if (extra.length) return `extra keys: ${extra.join(', ')}`;
-  if (create) {
-    for (const k of ['name', 'homeUrl', 'streams', 'kind', 'collectorType']) if (b[k] === undefined || b[k] === null || b[k] === '') return `${k}: required`;
-  }
-  if (b.homeUrl !== undefined && !/^https?:\/\/[^/]+\.[^/]+/.test(String(b.homeUrl))) return 'homeUrl: not a public web address';
-  if (Array.isArray(b.streams) && b.streams.length === 0) return 'streams: at least one';
-  if (b.kind === 'original' && b.collectorType === 'search_query') return "a search_query source cannot be kind 'original'";
-  if (b.config !== undefined && (b.config === null || typeof b.config !== 'object' || Array.isArray(b.config))) return 'config must be a JSON object';
-  return null;
+/** One refused field (api FieldErrorOut): a dotted path (camelCase top level, config keys as the collector names them), or null. */
+interface StubProblem {
+  field: string | null;
+  message: string;
 }
+
+const STUB_LABELS: Record<string, string> = {
+  name: 'Name',
+  homeUrl: 'Home page',
+  publisher: 'Publisher',
+  streams: 'Streams',
+  kind: 'Kind',
+  collectorType: 'Collector type',
+  config: 'Config',
+  schedule: 'Schedule',
+  rateLimit: 'Rate limit',
+  accessNote: 'Access note',
+  suggestionId: 'Suggestion',
+};
+
+/** A field path in the admin's words, like api collectors/problems.py label(): "config.feed_url" -> "Feed URL". */
+function stubLabel(field: string | null): string {
+  if (!field) return 'Request';
+  if (!field.startsWith('config.')) return STUB_LABELS[field] ?? field;
+  const text = field
+    .slice('config.'.length)
+    .split('.')
+    .filter((p) => !/^\d+$/.test(p))
+    .map((p) => p.replace(/_/g, ' ').replace(/\burl\b/g, 'URL'))
+    .join(', ');
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** RefusalOut {detail, errors} (contract 4.1), plus any extra keys (the promotion refusal's numbers). */
+function refusal(problems: StubProblem[], extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return { detail: problems.map((p) => `${stubLabel(p.field)}: ${p.message}.`).join(' '), errors: problems, ...extra };
+}
+
+/** The host of a URL the API's guard refuses (loopback, private, link-local), else null. */
+function privateHost(url: string): string | null {
+  let host: string;
+  try {
+    host = new URL(url).hostname.replace(/^\[|\]$/g, '');
+  } catch {
+    return null;
+  }
+  return /^(localhost$|127\.|10\.|0\.|169\.254\.|192\.168\.|::1$)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host) ? host : null;
+}
+
+/** Config problems the API finds without fetching: a URL setting (…_url, endpoint) whose address is not public. */
+function configProblems(config: Record<string, unknown>): StubProblem[] {
+  const out: StubProblem[] = [];
+  for (const [k, v] of Object.entries(config)) {
+    if (typeof v !== 'string' || !(/url$/.test(k) || k === 'endpoint')) continue;
+    const host = privateHost(v);
+    if (host) out.push({ field: `config.${k}`, message: `address ${host} is not public` });
+  }
+  return out;
+}
+
+/** Like SourceIn / SourcePatch: unknown keys, missing required ones, an original search_query, bad or private URLs are refused, all at once. */
+function sourceRefusal(b: Record<string, unknown>, create: boolean): StubProblem[] {
+  const out: StubProblem[] = [];
+  for (const k of Object.keys(b)) if (!SOURCE_KEYS.has(k) && !(create && k === 'suggestionId')) out.push({ field: k, message: 'is not a field this accepts' });
+  if (create) {
+    for (const k of ['name', 'homeUrl', 'streams', 'kind', 'collectorType']) if (b[k] === undefined || b[k] === null || b[k] === '') out.push({ field: k, message: 'is required' });
+  }
+  if (b.homeUrl !== undefined && b.homeUrl !== null && b.homeUrl !== '') {
+    const host = privateHost(String(b.homeUrl));
+    if (host) out.push({ field: 'homeUrl', message: `address ${host} is not public` });
+    else if (!/^https?:\/\/[^/]+\.[^/]+/.test(String(b.homeUrl))) out.push({ field: 'homeUrl', message: 'must be a full web address' });
+  }
+  if (Array.isArray(b.streams) && b.streams.length === 0) out.push({ field: 'streams', message: 'must not be empty' });
+  if (b.kind === 'original' && b.collectorType === 'search_query') out.push({ field: 'kind', message: 'search results are never the issuer itself' });
+  if (b.config !== undefined && (b.config === null || typeof b.config !== 'object' || Array.isArray(b.config))) out.push({ field: 'config', message: 'must be a JSON object' });
+  else if (b.config) out.push(...configProblems(b.config as Record<string, unknown>));
+  return out;
+}
+
+const NAME_TAKEN = refusal([{ field: 'name', message: 'a source with that name already exists' }]);
+const TEST_RUN_BUSY = 'Another test run is in progress; try again in a minute.';
+/** BK_SUGGESTIONS_PER_USER_PER_DAY's default. */
+const SUGGESTIONS_PER_DAY = 10;
 
 /** POST …/test-run: a config whose first URL contains "fail" fails; anything else parses two items. */
 function preview(config: Record<string, unknown>): Record<string, unknown> {
   const url = String(config.list_url ?? config.feed_url ?? config.endpoint ?? '');
   if (url.includes('fail')) {
-    return { ok: false, error: `HTTP 403 from ${url.replace(/^https?:\/\//, '').split('/')[0]}`, items: [], totalParsed: 0, requestsMade: 1, elapsedSeconds: 0.4 };
+    return { ok: false, error: `HTTP 403 from ${url.replace(/^https?:\/\//, '').split('/')[0]}`, errors: [], items: [], totalParsed: 0, requestsMade: 1, elapsedSeconds: 0.4 };
   }
   return {
     ok: true,
     error: null,
+    errors: [],
     items: [
       {
         url: 'https://www.ncst.gov.rw/calls/1',
@@ -532,6 +607,9 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
       if (extra.length) return send(res, 422, { detail: `extra keys: ${extra.join(', ')}` });
       if (typeof b.url !== 'string' || !/^https?:\/\/[^/]+\.[^/]+/.test(b.url)) return send(res, 422, { detail: 'url: not a public web address' });
       if (b.note !== undefined && b.note !== null && (typeof b.note !== 'string' || b.note.length > 2000)) return send(res, 422, { detail: 'note' });
+      if (s.suggestions.filter((x) => x.userId === 'u1' && x.createdAt === STAMP).length >= (s.suggestionsPerDay ?? SUGGESTIONS_PER_DAY)) {
+        return send(res, 429, { detail: `You can suggest up to ${s.suggestionsPerDay ?? SUGGESTIONS_PER_DAY} sources a day. Please try again tomorrow.` });
+      }
       const row = { id: `sg-${s.suggestions.length + 10}`, userId: 'u1', url: b.url, note: b.note ?? null, status: 'suggested', createdAt: STAMP, reviewedAt: null, reviewedBy: null, sourceId: null };
       s.suggestions.push(row);
       const { userId: _u, reviewedBy: _r, ...out } = row;
@@ -648,8 +726,8 @@ function admin(s: Session, method: string, path: string, fullPath: string, body:
   }
   if (method === 'POST' && p === '/sources') {
     const refused = sourceRefusal(b, true);
-    if (refused) return send(res, 422, { detail: refused });
-    if (s.sources.some((x) => x.name === b.name)) return send(res, 409, { detail: 'A source with that name already exists' });
+    if (refused.length) return send(res, 422, refusal(refused));
+    if (s.sources.some((x) => x.name === b.name)) return send(res, 409, NAME_TAKEN);
     const suggestionId = b.suggestionId as string | undefined;
     if (suggestionId !== undefined) {
       const sg = s.suggestions.find((x) => x.id === suggestionId);
@@ -664,7 +742,13 @@ function admin(s: Session, method: string, path: string, fullPath: string, body:
     return send(res, 201, detail(s, row));
   }
   if (method === 'POST' && p === '/sources/test-run') {
-    if (typeof b.collectorType !== 'string' || !b.config || typeof b.config !== 'object') return send(res, 422, { detail: 'collectorType and config are required' });
+    if (s.testRunBusy) return send(res, 429, { detail: TEST_RUN_BUSY });
+    const missing: StubProblem[] = [];
+    if (typeof b.collectorType !== 'string') missing.push({ field: 'collectorType', message: 'is required' });
+    if (!b.config || typeof b.config !== 'object' || Array.isArray(b.config)) missing.push({ field: 'config', message: 'must be a JSON object' });
+    if (missing.length) return send(res, 422, refusal(missing));
+    const bad = configProblems(b.config as Record<string, unknown>);
+    if (bad.length) return send(res, 422, refusal(bad));
     return send(res, 200, preview(b.config as Record<string, unknown>));
   }
   if (src) {
@@ -680,11 +764,17 @@ function admin(s: Session, method: string, path: string, fullPath: string, body:
       const limit = Number(query.get('limit') ?? 50);
       return send(res, 200, { total: all.length, items: all.slice(offset, offset + limit) });
     }
-    if (method === 'POST' && src[2] === '/test-run') return send(res, 200, preview(row.config as Record<string, unknown>));
+    if (method === 'POST' && src[2] === '/test-run') {
+      if (s.testRunBusy) return send(res, 429, { detail: TEST_RUN_BUSY });
+      // A stored config the API now refuses: PreviewOut with the sentences in error and the fields in errors.
+      const bad = configProblems((row.config ?? {}) as Record<string, unknown>);
+      if (bad.length) return send(res, 200, { ok: false, error: refusal(bad).detail, errors: bad, items: [], totalParsed: 0, requestsMade: 0, elapsedSeconds: 0 });
+      return send(res, 200, preview(row.config as Record<string, unknown>));
+    }
     if (method === 'PATCH' && !src[2]) {
       const refused = sourceRefusal({ kind: row.kind, collectorType: row.collectorType, ...b }, false);
-      if (refused) return send(res, 422, { detail: refused });
-      if (b.name !== undefined && s.sources.some((x) => x.name === b.name && x.id !== id)) return send(res, 409, { detail: 'A source with that name already exists' });
+      if (refused.length) return send(res, 422, refusal(refused));
+      if (b.name !== undefined && s.sources.some((x) => x.name === b.name && x.id !== id)) return send(res, 409, NAME_TAKEN);
       const configChanged =
         (b.collectorType !== undefined && b.collectorType !== row.collectorType) || (b.config !== undefined && JSON.stringify(b.config) !== JSON.stringify(row.config));
       const next: Record<string, unknown> = { ...row, ...b, updatedAt: STAMP };
@@ -698,7 +788,13 @@ function admin(s: Session, method: string, path: string, fullPath: string, body:
       if (to === row.status) return send(res, 200, detail(s, row));
       if (!(STATUS_MOVES[String(row.status)] ?? []).includes(to)) return send(res, 409, { detail: `cannot move a source from ${row.status} to ${to}` });
       if (to === 'active' && Number(row.promotionRuns) < 2) {
-        return send(res, 409, { detail: `needs 2 successful runs that found items since its config last changed; has ${row.promotionRuns}` });
+        const has = Number(row.promotionRuns);
+        return send(res, 409, {
+          detail: `This source needs 2 successful runs that found items since its config last changed before it can be made active; it has ${has}.`,
+          errors: [],
+          goodRuns: has,
+          needed: 2,
+        });
       }
       s.sources[i] = { ...row, status: to, updatedAt: STAMP };
       logStatus(s, id, row.status, to, null);
