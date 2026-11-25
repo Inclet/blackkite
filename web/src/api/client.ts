@@ -1,6 +1,7 @@
 /**
  * Typed client for the member API (docs/api-contract.md section 2).
- * Same origin (the dev and preview servers proxy these paths), cookies sent,
+ * Member routes live under /api (contract section 2); /me (GET) and /auth/* keep
+ * their paths. Same origin (the dev and preview servers proxy these paths), cookies sent,
  * JSON in and out. Every failure is an ApiError with a kind the screens can word.
  */
 import type {
@@ -108,25 +109,25 @@ function query(params: Record<string, string | undefined>): string {
 
 export const api = {
   feed: (q: FeedQuery = {}, signal?: AbortSignal) =>
-    request<FeedContent & { items: LiveFeedItem[] }>(`/feed${query({ ...q })}`, { signal }),
-  opportunity: (id: string, signal?: AbortSignal) => request<OpportunityDetail>(`/opportunities/${enc(id)}`, { signal }),
+    request<FeedContent & { items: LiveFeedItem[] }>(`/api/feed${query({ ...q })}`, { signal }),
+  opportunity: (id: string, signal?: AbortSignal) => request<OpportunityDetail>(`/api/opportunities/${enc(id)}`, { signal }),
   setState: (id: string, state: ItemState, dismissReason?: string) =>
-    request<unknown>(`/opportunities/${enc(id)}/state`, {
+    request<unknown>(`/api/opportunities/${enc(id)}/state`, {
       method: 'PUT',
       body: (dismissReason ? { state, dismissReason } : { state }) satisfies StateUpdate,
     }),
-  setNote: (id: string, note: string) => request<unknown>(`/opportunities/${enc(id)}/note`, { method: 'PUT', body: { note } }),
-  shortlist: (signal?: AbortSignal) => request<LiveFeedItem[]>('/shortlist', { signal }),
-  profiles: (signal?: AbortSignal) => request<Profile[]>('/profiles', { signal }),
-  createProfile: (profile: ProfileInput) => request<Profile>('/profiles', { method: 'POST', body: profile }),
-  updateProfile: (id: string, patch: Partial<ProfileInput>) => request<Profile>(`/profiles/${enc(id)}`, { method: 'PATCH', body: patch }),
-  deleteProfile: (id: string) => request<void>(`/profiles/${enc(id)}`, { method: 'DELETE' }),
-  digestSettings: (signal?: AbortSignal) => request<DigestSettings>('/digest-settings', { signal }),
-  saveDigestSettings: (settings: DigestSettings) => request<DigestSettings>('/digest-settings', { method: 'PUT', body: settings }),
+  setNote: (id: string, note: string) => request<unknown>(`/api/opportunities/${enc(id)}/note`, { method: 'PUT', body: { note } }),
+  shortlist: (signal?: AbortSignal) => request<LiveFeedItem[]>('/api/shortlist', { signal }),
+  profiles: (signal?: AbortSignal) => request<Profile[]>('/api/profiles', { signal }),
+  createProfile: (profile: ProfileInput) => request<Profile>('/api/profiles', { method: 'POST', body: profile }),
+  updateProfile: (id: string, patch: Partial<ProfileInput>) => request<Profile>(`/api/profiles/${enc(id)}`, { method: 'PATCH', body: patch }),
+  deleteProfile: (id: string) => request<void>(`/api/profiles/${enc(id)}`, { method: 'DELETE' }),
+  digestSettings: (signal?: AbortSignal) => request<DigestSettings>('/api/digest-settings', { signal }),
+  saveDigestSettings: (settings: DigestSettings) => request<DigestSettings>('/api/digest-settings', { method: 'PUT', body: settings }),
   me: (signal?: AbortSignal) => request<Me>('/me', { signal }),
   /** The account export, as JSON (spec 10: allow account export). */
-  exportMe: () => request<unknown>('/me/export'),
-  deleteMe: () => request<void>('/me', { method: 'DELETE' }),
+  exportMe: () => request<unknown>('/api/me/export'),
+  deleteMe: () => request<void>('/api/me', { method: 'DELETE' }),
   requestLink: (email: string) => request<unknown>('/auth/request-link', { method: 'POST', body: { email } }),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
 };

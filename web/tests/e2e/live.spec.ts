@@ -18,7 +18,7 @@ test('feed: loads from the API and ranks closing soonest first', async ({ page }
   await expect(page.locator(rows).nth(2)).toContainText('Transition to Scale');
   await expect(page.locator(rows).nth(3)).toContainText('Five-year treasury bond');
   const urls = (await api.seen()).map((r) => `${r.method} ${r.url}`);
-  expect(urls).toEqual(expect.arrayContaining(['GET /feed', 'GET /shortlist', 'GET /profiles']));
+  expect(urls).toEqual(expect.arrayContaining(['GET /api/feed', 'GET /api/shortlist', 'GET /api/profiles']));
 });
 
 test('save persists across a reload, and shows on the shortlist', async ({ page }, testInfo) => {
@@ -30,13 +30,13 @@ test('save persists across a reload, and shows on the shortlist', async ({ page 
   await page.keyboard.press('s');
   await expect(save).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(async () => (await api.seen()).filter((r) => r.method === 'PUT').map((r) => [r.url, JSON.parse(r.body)])).toEqual([
-    ['/opportunities/wfp-logistics/state', { state: 'saved' }],
+    ['/api/opportunities/wfp-logistics/state', { state: 'saved' }],
   ]);
 
   await page.reload();
   await expect(page.getByRole('article').getByRole('button', { name: 'Save to shortlist' })).toHaveAttribute('aria-pressed', 'true');
 
-  // A page load of /shortlist gets the app (not the API's JSON), which then fetches /shortlist.
+  // A page load of /shortlist gets the app (not the API's JSON), which then fetches /api/shortlist.
   await open(page, '/shortlist');
   await expect(page.getByRole('heading', { level: 1, name: 'Shortlist' })).toBeVisible();
   await expect(page.locator('[aria-label="Shortlist"] a')).toHaveCount(1);
@@ -81,7 +81,7 @@ test('profile edit round trip', async ({ page }, testInfo) => {
   await page.getByRole('button', { name: 'Save profile' }).click();
   await expect(page.getByText('Saved. Open items are being ranked against it again.')).toBeVisible();
   const patch = (await api.seen()).find((r) => r.method === 'PATCH');
-  expect(patch?.url).toBe('/profiles/p1');
+  expect(patch?.url).toBe('/api/profiles/p1');
 
   // A page load of /profiles/p1 is the app; the values come back from the API.
   await open(page, '/profiles/p1');
@@ -98,16 +98,17 @@ test('digest settings round trip', async ({ page }, testInfo) => {
   const weekly = page.getByRole('switch', { name: 'Weekly digest' });
   await expect(weekly).toHaveAttribute('aria-checked', 'true');
   await weekly.click();
-  await page.getByLabel('Alert threshold, from 0 to 100').fill('55');
+  await page.getByRole('button', { name: 'Strong and good fits' }).click();
   await page.getByRole('button', { name: 'Investments' }).click();
   await page.getByRole('button', { name: 'Save digest settings' }).click();
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible();
-  const put = (await api.seen()).find((r) => r.method === 'PUT' && r.url === '/digest-settings');
-  expect(JSON.parse(put!.body)).toMatchObject({ frequency: 'off', day: 'mon', alertThreshold: 55, streams: ['investment'] });
+  const put = (await api.seen()).find((r) => r.method === 'PUT' && r.url === '/api/digest-settings');
+  expect(JSON.parse(put!.body)).toMatchObject({ frequency: 'off', day: 'mon', alertThreshold: 60, streams: ['investment'] });
 
   await page.reload();
   await expect(page.getByRole('switch', { name: 'Weekly digest' })).toHaveAttribute('aria-checked', 'false');
-  await expect(page.getByLabel('Alert threshold, from 0 to 100')).toHaveValue('55');
+  await expect(page.getByRole('button', { name: 'Strong and good fits' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Strong fits only' })).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByRole('button', { name: 'Investments' })).toHaveAttribute('aria-pressed', 'true');
 });
 

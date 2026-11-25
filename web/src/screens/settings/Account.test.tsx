@@ -23,36 +23,36 @@ test('shows who is signed in', async () => {
   expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Account' })).toHaveAttribute('aria-current', 'page');
 });
 
-test('export: GET /me/export becomes a download', async () => {
-  const api = mockApi({ 'GET /me': ME, 'GET /me/export': { profiles: [] } });
+test('export: GET /api/me/export becomes a download', async () => {
+  const api = mockApi({ 'GET /me': ME, 'GET /api/me/export': { profiles: [] } });
   const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
   renderAt('/account');
   await screen.findByText('clet@example.rw');
   fireEvent.click(button(ACCOUNT_COPY.export));
   expect(await screen.findByText(ACCOUNT_COPY.exported)).toBeInTheDocument();
-  expect(api.calls.some((c) => c.key === 'GET /me/export')).toBe(true);
+  expect(api.calls.some((c) => c.key === 'GET /api/me/export')).toBe(true);
   expect(click).toHaveBeenCalledOnce();
   expect(URL.createObjectURL).toHaveBeenCalledOnce();
   click.mockRestore();
 });
 
 test('export that fails says so', async () => {
-  mockApi({ 'GET /me': ME, 'GET /me/export': status(500) });
+  mockApi({ 'GET /me': ME, 'GET /api/me/export': status(500) });
   renderAt('/account');
   await screen.findByText('clet@example.rw');
   fireEvent.click(button(ACCOUNT_COPY.export));
   expect(await screen.findByText(ACCOUNT_COPY.unreachable)).toBeInTheDocument();
 });
 
-test('delete: a confirm step that needs the email address, then DELETE /me and the sign-in screen', async () => {
-  const api = mockApi({ 'GET /me': ME, 'DELETE /me': undefined });
+test('delete: a confirm step that needs the email address, then DELETE /api/me and the sign-in screen', async () => {
+  const api = mockApi({ 'GET /me': ME, 'DELETE /api/me': undefined });
   const router = renderAt('/account');
   await screen.findByText('clet@example.rw');
   fireEvent.click(button(ACCOUNT_COPY.delete));
   const confirmField = screen.getByLabelText(ACCOUNT_COPY.confirmField);
   fireEvent.click(button(ACCOUNT_COPY.confirm));
   expect(confirmField).toHaveAccessibleDescription(ACCOUNT_COPY.confirmError);
-  expect(api.calls.some((c) => c.key === 'DELETE /me')).toBe(false);
+  expect(api.calls.some((c) => c.key === 'DELETE /api/me')).toBe(false);
 
   fireEvent.click(button(ACCOUNT_COPY.keep));
   expect(screen.queryByLabelText(ACCOUNT_COPY.confirmField)).toBeNull();
@@ -60,14 +60,14 @@ test('delete: a confirm step that needs the email address, then DELETE /me and t
   fireEvent.change(screen.getByLabelText(ACCOUNT_COPY.confirmField), { target: { value: ' Clet@Example.rw ' } });
   fireEvent.click(button(ACCOUNT_COPY.confirm));
   await waitFor(() => expect(router.state.location.pathname).toBe('/sign-in'));
-  expect(api.calls.some((c) => c.key === 'DELETE /me')).toBe(true);
+  expect(api.calls.some((c) => c.key === 'DELETE /api/me')).toBe(true);
   // The URL changes before the sign-in screen has rendered (navigation commits in a transition).
   expect(await screen.findByText(ACCOUNT_COPY.deleted)).toBeInTheDocument();
   expect(button(SIGN_IN.button)).toBeInTheDocument();
 });
 
 test('a delete that fails keeps the account and says so', async () => {
-  mockApi({ 'GET /me': ME, 'DELETE /me': status(503) });
+  mockApi({ 'GET /me': ME, 'DELETE /api/me': status(503) });
   const router = renderAt('/account');
   await screen.findByText('clet@example.rw');
   fireEvent.click(button(ACCOUNT_COPY.delete));

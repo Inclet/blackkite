@@ -40,7 +40,7 @@ const field = (label: string) => screen.getByLabelText(label);
 const type = (label: string, value: string) => fireEvent.change(field(label), { target: { value } });
 
 test('the list: each profile with its kind, streams and an edit link', async () => {
-  mockApi({ 'GET /profiles': [IRONJI, AI, PERSONAL], 'GET /me': ME });
+  mockApi({ 'GET /api/profiles': [IRONJI, AI, PERSONAL], 'GET /me': ME });
   renderAt('/profiles');
   const card = within(await screen.findByRole('region', { name: 'Your profiles' }));
   expect(card.getByText('Ironji-Trade')).toBeInTheDocument();
@@ -53,7 +53,7 @@ test('the list: each profile with its kind, streams and an edit link', async () 
 });
 
 test('no profiles: the first-visit wording and the two ways to add one', async () => {
-  mockApi({ 'GET /profiles': [], 'GET /me': ME });
+  mockApi({ 'GET /api/profiles': [], 'GET /me': ME });
   const router = renderAt('/profiles');
   expect(await screen.findByText(PROFILES_COPY.emptyTitle)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: PROFILES_COPY.addPersonal }));
@@ -62,13 +62,13 @@ test('no profiles: the first-visit wording and the two ways to add one', async (
 });
 
 test('401 signs in', async () => {
-  mockApi({ 'GET /profiles': status(401) });
+  mockApi({ 'GET /api/profiles': status(401) });
   renderAt('/profiles');
   expect(await screen.findByRole('button', { name: SIGN_IN.button })).toBeInTheDocument();
 });
 
 test('edit: the form shows the profile, PATCH sends every field, and it says it re-ranks', async () => {
-  const api = mockApi({ 'GET /profiles': [IRONJI], 'GET /me': ME, 'PATCH /profiles/p1': (body: unknown) => ({ ...IRONJI, ...(body as object), version: 2 }) });
+  const api = mockApi({ 'GET /api/profiles': [IRONJI], 'GET /me': ME, 'PATCH /api/profiles/p1': (body: unknown) => ({ ...IRONJI, ...(body as object), version: 2 }) });
   renderAt('/profiles/p1');
   expect(await screen.findByRole('heading', { level: 1, name: 'Ironji-Trade' })).toBeInTheDocument();
   expect(field(EDITOR_COPY.services)).toHaveValue('dry freight, cold chain');
@@ -85,7 +85,7 @@ test('edit: the form shows the profile, PATCH sends every field, and it says it 
   fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.save }));
 
   expect(await screen.findByText(EDITOR_COPY.saved)).toBeInTheDocument();
-  const patch = api.calls.find((c) => c.key === 'PATCH /profiles/p1')!.body as Profile;
+  const patch = api.calls.find((c) => c.key === 'PATCH /api/profiles/p1')!.body as Profile;
   expect(patch).toMatchObject({
     name: 'Ironji-Trade',
     type: 'business',
@@ -102,7 +102,7 @@ test('edit: the form shows the profile, PATCH sends every field, and it says it 
 });
 
 test('validation in the field-error style; nothing is sent until it is fixed', async () => {
-  const api = mockApi({ 'GET /profiles': [IRONJI], 'GET /me': ME });
+  const api = mockApi({ 'GET /api/profiles': [IRONJI], 'GET /me': ME });
   renderAt('/profiles/p1');
   await screen.findByRole('heading', { level: 1, name: 'Ironji-Trade' });
   type(EDITOR_COPY.name, '');
@@ -118,7 +118,7 @@ test('validation in the field-error style; nothing is sent until it is fixed', a
 });
 
 test('a save that does not reach the server keeps the answers and says so', async () => {
-  mockApi({ 'GET /profiles': [IRONJI], 'GET /me': ME, 'PATCH /profiles/p1': status(503) });
+  mockApi({ 'GET /api/profiles': [IRONJI], 'GET /me': ME, 'PATCH /api/profiles/p1': status(503) });
   renderAt('/profiles/p1');
   await screen.findByRole('heading', { level: 1, name: 'Ironji-Trade' });
   type(EDITOR_COPY.tonnage, '12');
@@ -128,7 +128,7 @@ test('a save that does not reach the server keeps the answers and says so', asyn
 });
 
 test('the server refusing it (a name already used) gets its own plain message', async () => {
-  mockApi({ 'GET /profiles': [IRONJI], 'GET /me': ME, 'PATCH /profiles/p1': status(422, { detail: 'name taken' }) });
+  mockApi({ 'GET /api/profiles': [IRONJI], 'GET /me': ME, 'PATCH /api/profiles/p1': status(422, { detail: 'name taken' }) });
   renderAt('/profiles/p1');
   await screen.findByRole('heading', { level: 1, name: 'Ironji-Trade' });
   fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.save }));
@@ -136,7 +136,7 @@ test('the server refusing it (a name already used) gets its own plain message', 
 });
 
 test('new personal profile: chips for instruments and topics, POST, back to the list', async () => {
-  const api = mockApi({ 'GET /profiles': [], 'GET /me': ME, 'POST /profiles': (b: unknown) => ({ id: 'p9', version: 1, ...(b as object) }) });
+  const api = mockApi({ 'GET /api/profiles': [], 'GET /me': ME, 'POST /api/profiles': (b: unknown) => ({ id: 'p9', version: 1, ...(b as object) }) });
   const router = renderAt('/profiles/new/personal');
   await screen.findByRole('heading', { level: 1, name: EDITOR_COPY.newPersonal });
   expect(screen.queryByLabelText(EDITOR_COPY.services)).toBeNull();
@@ -146,7 +146,7 @@ test('new personal profile: chips for instruments and topics, POST, back to the 
   type(EDITOR_COPY.ticketMin, '100,000');
   fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.create }));
   await waitFor(() => expect(router.state.location.pathname).toBe('/profiles'));
-  expect(api.calls.find((c) => c.key === 'POST /profiles')!.body).toMatchObject({
+  expect(api.calls.find((c) => c.key === 'POST /api/profiles')!.body).toMatchObject({
     name: 'Personal',
     type: 'personal',
     data: { streams: ['investment', 'event'], instruments: ['treasury bonds and bills'], eventTopics: ['AI and tech'], ticketRangeRwf: { min: 100000, max: null } },
@@ -155,7 +155,7 @@ test('new personal profile: chips for instruments and topics, POST, back to the 
 });
 
 test('switches: provisional and active', async () => {
-  const api = mockApi({ 'GET /profiles': [AI], 'GET /me': ME, 'PATCH /profiles/p2': AI });
+  const api = mockApi({ 'GET /api/profiles': [AI], 'GET /me': ME, 'PATCH /api/profiles/p2': AI });
   renderAt('/profiles/p2');
   await screen.findByRole('heading', { level: 1, name: 'AI lab' });
   const provisional = screen.getByRole('switch', { name: EDITOR_COPY.provisional });
@@ -163,12 +163,12 @@ test('switches: provisional and active', async () => {
   fireEvent.click(provisional);
   fireEvent.click(screen.getByRole('switch', { name: EDITOR_COPY.active }));
   fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.save }));
-  await waitFor(() => expect(api.calls.some((c) => c.key === 'PATCH /profiles/p2')).toBe(true));
-  expect(api.calls.find((c) => c.key === 'PATCH /profiles/p2')!.body).toMatchObject({ active: false, data: { provisional: false } });
+  await waitFor(() => expect(api.calls.some((c) => c.key === 'PATCH /api/profiles/p2')).toBe(true));
+  expect(api.calls.find((c) => c.key === 'PATCH /api/profiles/p2')!.body).toMatchObject({ active: false, data: { provisional: false } });
 });
 
 test('delete asks first, then DELETE and back to the list', async () => {
-  const api = mockApi({ 'GET /profiles': [IRONJI], 'GET /me': ME, 'DELETE /profiles/p1': undefined });
+  const api = mockApi({ 'GET /api/profiles': [IRONJI], 'GET /me': ME, 'DELETE /api/profiles/p1': undefined });
   const router = renderAt('/profiles/p1');
   await screen.findByRole('heading', { level: 1, name: 'Ironji-Trade' });
   fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.delete }));
@@ -176,22 +176,22 @@ test('delete asks first, then DELETE and back to the list', async () => {
   fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.keep }));
   expect(api.calls.some((c) => c.key.startsWith('DELETE'))).toBe(false);
   fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.delete }));
-  api.on('GET /profiles', []);
+  api.on('GET /api/profiles', []);
   fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.confirm }));
   await waitFor(() => expect(router.state.location.pathname).toBe('/profiles'));
-  expect(api.calls.some((c) => c.key === 'DELETE /profiles/p1')).toBe(true);
+  expect(api.calls.some((c) => c.key === 'DELETE /api/profiles/p1')).toBe(true);
   expect(await screen.findByText(EDITOR_COPY.deleted)).toBeInTheDocument();
 });
 
 test('an unknown profile id says so', async () => {
-  mockApi({ 'GET /profiles': [IRONJI], 'GET /me': ME });
+  mockApi({ 'GET /api/profiles': [IRONJI], 'GET /me': ME });
   renderAt('/profiles/nope');
   expect(await screen.findByText(EDITOR_COPY.notFound)).toBeInTheDocument();
 });
 
 test('phone: the editor sits in the phone frame, under More', async () => {
   setViewport('phone');
-  mockApi({ 'GET /profiles': [IRONJI], 'GET /me': ME });
+  mockApi({ 'GET /api/profiles': [IRONJI], 'GET /me': ME });
   renderAt('/profiles/p1');
   await screen.findByRole('heading', { level: 1, name: 'Ironji-Trade' });
   expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'More' })).toHaveAttribute('aria-current', 'page');
