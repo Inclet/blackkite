@@ -34,7 +34,7 @@ from typing import Annotated, Any, ClassVar
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from selectolax.lexbor import LexborHTMLParser
 
-from blackkite.collectors.base import CollectorError, RawItem
+from blackkite.collectors.base import RawItem
 from blackkite.collectors.common import (
     MAX_SNIPPET,
     clean,
@@ -45,6 +45,7 @@ from blackkite.collectors.common import (
     utc_now,
 )
 from blackkite.collectors.http import FetchClient
+from blackkite.collectors.problems import ConfigInvalid, from_validation
 
 # --- JSON-LD events ---------------------------------------------------------------------
 
@@ -370,7 +371,7 @@ def parse_config(config: dict[str, Any]) -> CustomConfig:
     try:
         options = options_model.model_validate(cfg.options)
     except ValidationError as e:
-        raise CollectorError(f"invalid options for {cfg.collector}: {e}") from None
+        raise ConfigInvalid("custom", from_validation(e, ("options",))) from None
     return CustomConfig(
         collector=cfg.collector,
         options=options.model_dump(mode="json", exclude_none=True),

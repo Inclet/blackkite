@@ -40,6 +40,7 @@ from pydantic import (
 
 from blackkite.collectors.base import CollectorError, RawItem
 from blackkite.collectors.http import FetchClient
+from blackkite.collectors.problems import ConfigInvalid, from_validation
 from blackkite.sources.urlsafety import UnsafeURL, check_url
 
 BRAVE_URL = "https://api.search.brave.com/res/v1/web/search"
@@ -109,7 +110,7 @@ def parse_config(config: dict[str, Any]) -> SearchQueryConfig:
     try:
         return SearchQueryConfig.model_validate(config)
     except ValidationError as e:
-        raise CollectorError(f"invalid search_query config: {e}") from None
+        raise ConfigInvalid("search_query", from_validation(e)) from None
 
 
 def _text(v: Any, limit: int = 2000) -> str | None:

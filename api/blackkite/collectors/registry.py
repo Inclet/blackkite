@@ -30,6 +30,7 @@ from blackkite.collectors import (
 )
 from blackkite.collectors.base import Collector, CollectorError
 from blackkite.collectors.http import FetchClient
+from blackkite.collectors.problems import ConfigInvalid, FieldValueError
 from blackkite.db.models import COLLECTOR_TYPES
 
 MAX_CONFIG_BYTES = 20_000
@@ -109,14 +110,20 @@ def validate_config(collector_type: str, config: Any) -> dict[str, Any]:
     if not isinstance(config, dict):
         raise TypeError("config must be a JSON object")
     if len(json.dumps(config)) > MAX_CONFIG_BYTES:
-        raise ValueError(f"config larger than {MAX_CONFIG_BYTES} bytes")
+        raise FieldValueError.at(
+            ("config",), f"is larger than {MAX_CONFIG_BYTES} bytes"
+        )
     parser = _PARSERS.get(collector_type)
     if parser is None:
-        raise ValueError(f"unknown collector type {collector_type!r}")
+        raise FieldValueError.at(
+            ("collector_type",), f"{collector_type!r} is not a collector type"
+        )
     try:
         return parser(config).model_dump(mode="json", exclude_none=True)
+    except ConfigInvalid as e:
+        raise FieldValueError(e.problems) from None
     except CollectorError as e:
-        raise ValueError(str(e)) from None
+        raise FieldValueError.at(("config",), str(e)) from None
 
 
 def config_form(collector_type: str) -> dict[str, Any]:

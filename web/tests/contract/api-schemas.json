@@ -2677,6 +2677,32 @@
     },
     "PreviewOut": {
       "$defs": {
+        "FieldErrorOut": {
+          "description": "One refused field, for the web to show next to it. ``field`` is a dotted\npath: top-level keys camelCase (``homeUrl``), keys inside ``config`` as the\ncollector names them (``config.feed_url``, ``config.selectors.item``,\n``config.queries.0``); null when the problem is not about one field.",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field"
+            },
+            "message": {
+              "title": "Message",
+              "type": "string"
+            }
+          },
+          "required": [
+            "field",
+            "message"
+          ],
+          "title": "FieldErrorOut",
+          "type": "object"
+        },
         "PreviewItemOut": {
           "properties": {
             "detailUrl": {
@@ -2780,6 +2806,13 @@
           ],
           "title": "Error"
         },
+        "errors": {
+          "items": {
+            "$ref": "#/$defs/FieldErrorOut"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
         "items": {
           "items": {
             "$ref": "#/$defs/PreviewItemOut"
@@ -2803,6 +2836,7 @@
       "required": [
         "ok",
         "error",
+        "errors",
         "items",
         "totalParsed",
         "requestsMade",

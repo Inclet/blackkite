@@ -194,7 +194,10 @@ def test_html_list_uses_source_rate_limit():
             {"list_url": f"https://{H}/", "selectors": {"item": "div[", "title": "a"}},
             "invalid CSS",
         ),
-        ({"list_url": f"https://{H}/", "selectors": {"item": "a"}}, "title"),
+        (
+            {"list_url": f"https://{H}/", "selectors": {"item": "a"}},
+            "Title selector: is required",
+        ),
         (
             {
                 "list_url": f"https://{H}/",
@@ -217,7 +220,7 @@ def test_html_list_uses_source_rate_limit():
                 "selectors": {"item": "a", "title": "a"},
                 "eval": "x",
             },
-            "Extra inputs",
+            "Eval: is not a setting this accepts",
         ),
     ],
 )
@@ -409,5 +412,5 @@ def test_validate_config_limits():
         validate_config("html_list", {"x": "y" * 30_000})
     with pytest.raises(CollectorError, match="unknown"):
         build_collector("ftp", make_client(FakeWeb()))
-    with pytest.raises(ValueError, match="unknown"):
+    with pytest.raises(ValueError, match="'ftp' is not a collector type"):
         validate_config("ftp", {})

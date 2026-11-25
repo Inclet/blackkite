@@ -11,8 +11,15 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
+from blackkite.collectors.problems import FieldValueError
 from blackkite.collectors.registry import validate_config
 from blackkite.member.schemas import CamelIn, CamelModel
 from blackkite.sources.service import parse_schedule
@@ -65,7 +72,7 @@ def _config(ctype: str, config: dict[str, Any]) -> dict[str, Any]:
     try:
         return validate_config(ctype, config)
     except TypeError as e:
-        raise ValueError(str(e)) from None
+        raise FieldValueError.at(("config",), str(e)) from None
 
 
 class _SourceFields(CamelIn):
@@ -103,11 +110,18 @@ class SourceIn(_SourceFields):
     # Accepted suggestion this source was created from (links the two).
     suggestion_id: uuid.UUID | None = None
 
+    # A field validator (not an after-model one), so config problems are
+    # reported alongside problems in the other fields.
+    @field_validator("config")
+    @classmethod
+    def _check_config(cls, v, info: ValidationInfo):
+        ctype = info.data.get("collector_type")
+        return v if ctype is None else _config(ctype, v)
+
     @model_validator(mode="after")
-    def _check_config(self):
+    def _check_kind(self):
         if self.kind == "original" and self.collector_type == "search_query":
-            raise ValueError(ORIGINAL_SEARCH_QUERY)
-        self.config = _config(self.collector_type, self.config)
+            raise FieldValueError.at(("kind",), ORIGINAL_SEARCH_QUERY)
         return self
 
 
@@ -140,10 +154,11 @@ class PreviewIn(CamelIn):
     def _home_url(cls, v):
         return _url(v)
 
-    @model_validator(mode="after")
-    def _check_config(self):
-        self.config = _config(self.collector_type, self.config)
-        return self
+    @field_validator("config")
+    @classmethod
+    def _check_config(cls, v, info: ValidationInfo):
+        ctype = info.data.get("collector_type")
+        return v if ctype is None else _config(ctype, v)
 
 
 class StatusIn(CamelIn):
@@ -247,9 +262,30 @@ class PreviewItemOut(CamelModel):
     extra: dict[str, str]
 
 
+class FieldErrorOut(CamelModel):
+    """One refused field, for the web to show next to it. ``field`` is a dotted
+    path: top-level keys camelCase (``homeUrl``), keys inside ``config`` as the
+    collector names them (``config.feed_url``, ``config.selectors.item``,
+    ``config.queries.0``); null when the problem is not about one field."""
+
+    field: str | None
+    message: str
+
+
+class RefusalOut(CamelModel):
+    """Body of a 409/422 refusal on the admin source routes: ``detail`` is the
+    plain sentence(s) to show; ``errors`` the same per field."""
+
+    detail: str
+    errors: list[FieldErrorOut]
+
+
 class PreviewOut(CamelModel):
     ok: bool
+    # Plain sentence(s); for a config the saved source no longer passes, one per
+    # field, as in ``errors``.
     error: str | None
+    errors: list[FieldErrorOut]  # always sent; empty unless the config was refused
     items: list[PreviewItemOut]
     total_parsed: int
     requests_made: int

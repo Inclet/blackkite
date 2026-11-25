@@ -23,13 +23,16 @@ from blackkite.auth.deps import (
     require_admin,
 )
 from blackkite.collectors.http import FetchClient, make_fetch_client
+from blackkite.collectors.problems import Problem
 from blackkite.collectors.registry import validate_config
 from blackkite.db.models import Source, SourceRun, SourceSuggestion, User
 from blackkite.pipeline.visibility import refresh_verification_for_source
+from blackkite.routes.refusals import Refusal, RefusalRoute
 from blackkite.routes.source_schemas import (
     ORIGINAL_SEARCH_QUERY,
     AdminSuggestionOut,
     CollectorTypeOut,
+    FieldErrorOut,
     MemberSourceOut,
     PreviewIn,
     PreviewItemOut,
@@ -60,7 +63,10 @@ from blackkite.sources.testrun import (
 log = logging.getLogger("blackkite.sources")
 
 member_router = APIRouter()
-admin_router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
+# Refusals (422, and 409s about a field) answer {detail, errors}: routes/refusals.py.
+admin_router = APIRouter(
+    prefix="/admin", dependencies=[Depends(require_admin)], route_class=RefusalRoute
+)
 
 
 def get_preview_client_factory(settings: SettingsDep) -> Callable[[], FetchClient]:
@@ -204,6 +210,17 @@ def _source_out(db, settings, sources: list[Source]) -> list[SourceOut]:
     ]
 
 
+NAME_TAKEN = "A source with that name already exists."
+
+
+def _name_taken() -> Refusal:
+    return Refusal(
+        409,
+        [Problem(("name",), "a source with that name already exists")],
+        detail=NAME_TAKEN,
+    )
+
+
 def _get_source(db, source_id: uuid.UUID) -> Source:
     source = db.get(Source, source_id)
     if source is None:
@@ -247,7 +264,7 @@ def create_source(
         db.flush()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(409, "A source with that name already exists") from None
+        raise _name_taken() from None
     service.record_status(db, source, None, admin, "created")
     if suggestion is not None:
         suggestion.source_id = source.id
@@ -304,14 +321,14 @@ def edit_source(
     config_changed = False
     required = {"name", "home_url", "streams", "kind", "collector_type", "config"}
     if nulls := sorted(k for k in required if k in changes and changes[k] is None):
-        raise HTTPException(422, f"cannot clear {', '.join(nulls)}")
+        raise Refusal(422, [Problem((k,), "cannot be cleared") for k in nulls])
     if "collector_type" in changes or "config" in changes:
         ctype = changes.get("collector_type", source.collector_type)
         config = changes.get("config", source.config)
         try:
             validated = validate_config(ctype, config)
         except (ValueError, TypeError) as e:
-            raise HTTPException(422, f"config: {e}") from None
+            raise Refusal.from_error(422, e) from None
         if ctype != source.collector_type or validated != _normalised_config(source):
             source.config_changed_at = service.now_utc()
             config_changed = True
@@ -319,7 +336,7 @@ def edit_source(
     kind = changes.get("kind", source.kind)
     ctype = changes.get("collector_type", source.collector_type)
     if kind == "original" and ctype == "search_query":
-        raise HTTPException(422, ORIGINAL_SEARCH_QUERY)
+        raise Refusal(422, [Problem(("kind",), ORIGINAL_SEARCH_QUERY)])
     kind_changed = "kind" in changes and changes["kind"] != source.kind
     for k, v in changes.items():
         setattr(source, k, v)
@@ -327,7 +344,7 @@ def edit_source(
         db.flush()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(409, "A source with that name already exists") from None
+        raise _name_taken() from None
     if config_changed and source.status == "active":
         # Also recomputes verification for the source's items.
         service.change_status(db, source, "testing", admin, "config changed")
@@ -397,6 +414,7 @@ def _preview_out(r: PreviewResult) -> PreviewOut:
     return PreviewOut(
         ok=r.ok,
         error=r.error,
+        errors=[FieldErrorOut(field=p.field, message=p.message) for p in r.problems],
         items=[
             PreviewItemOut(
                 **{

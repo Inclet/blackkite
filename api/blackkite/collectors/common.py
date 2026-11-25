@@ -12,6 +12,7 @@ from pydantic import BaseModel, ValidationError
 from selectolax.lexbor import LexborHTMLParser
 
 from blackkite.collectors.base import CollectorError
+from blackkite.collectors.problems import ConfigInvalid, from_validation
 from blackkite.sources.urlsafety import UnsafeURL, check_url
 
 MAX_FIELD = 500
@@ -31,7 +32,7 @@ def parse_model[M: BaseModel](
     try:
         return model.model_validate(config)
     except ValidationError as e:
-        raise CollectorError(f"invalid {collector_type} config: {e}") from None
+        raise ConfigInvalid(collector_type, from_validation(e)) from None
 
 
 def safe_url(v: str) -> str:

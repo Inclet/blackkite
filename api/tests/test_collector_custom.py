@@ -94,8 +94,11 @@ def test_max_items_and_pagination():
     [
         ({"collector": "os.system", "options": {}}, "unknown custom collector"),
         ({"collector": "blackkite.collectors.rss.RssCollector"}, "unknown custom"),
-        ({"collector": "jsonld_events", "module": "os"}, "Extra inputs"),
-        ({"collector": "jsonld_events", "options": {}}, "invalid options"),
+        ({"collector": "jsonld_events", "module": "os"}, "Module: is not a setting"),
+        (
+            {"collector": "jsonld_events", "options": {}},
+            "Options, list URL: is required",
+        ),
         (
             {"collector": "jsonld_events", "options": {"list_url": "http://[::1]/"}},
             "not public",
@@ -105,9 +108,9 @@ def test_max_items_and_pagination():
                 "collector": "jsonld_events",
                 "options": {"list_url": f"https://{H}/", "class_path": "x.Y"},
             },
-            "Extra inputs",
+            "Options, class path: is not a setting",
         ),
-        ({}, "collector"),
+        ({}, "Collector: is required"),
     ],
 )
 def test_only_allowlisted_classes_and_valid_options(config, match):
@@ -154,7 +157,7 @@ def test_hostile_jsonld_is_bounded():
 def test_demo_fictional_is_a_no_op_with_no_options():
     cfg = {"collector": "demo_fictional", "options": {}}
     assert validate_config("custom", cfg) == cfg
-    with pytest.raises(ValueError, match="invalid options for demo_fictional"):
+    with pytest.raises(ValueError, match="Options, x: is not a setting this accepts"):
         validate_config("custom", {"collector": "demo_fictional", "options": {"x": 1}})
     assert (
         registry.config_form("custom")["collectors"]["demo_fictional"]["fields"] == []

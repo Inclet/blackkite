@@ -43,6 +43,7 @@ from selectolax.lexbor import LexborHTMLParser, LexborNode, SelectolaxError
 
 from blackkite.collectors.base import CollectorError, RawItem
 from blackkite.collectors.http import FetchClient
+from blackkite.collectors.problems import ConfigInvalid, from_validation
 from blackkite.sources.urlsafety import UnsafeURL, check_url
 
 PREVIEW_DETAIL_ITEMS = 3
@@ -213,7 +214,7 @@ def parse_config(config: dict[str, Any]) -> HtmlListConfig:
     try:
         return HtmlListConfig.model_validate(config)
     except ValidationError as e:
-        raise CollectorError(f"invalid html_list config: {e}") from None
+        raise ConfigInvalid("html_list", from_validation(e)) from None
 
 
 def _clean(text: str | None, limit: int = MAX_FIELD) -> str | None:

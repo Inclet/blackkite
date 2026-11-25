@@ -21,6 +21,7 @@ from pydantic import SecretStr
 
 from blackkite.collectors.base import CollectorError, RawItem
 from blackkite.collectors.http import FetchClient
+from blackkite.collectors.problems import ConfigInvalid, Problem
 from blackkite.collectors.registry import build_collector
 from blackkite.db.models import Source
 
@@ -67,6 +68,8 @@ class PreviewResult:
     error: str | None = None
     requests_made: int = 0
     elapsed_seconds: float = 0.0
+    # Field problems when the config itself was refused (nothing was fetched).
+    problems: list[Problem] = field(default_factory=list)
 
 
 def transient_source(**fields: Any) -> Source:
@@ -90,6 +93,8 @@ def preview_source(
         )
         items = collector.fetch(source)
         result = PreviewResult(ok=True, items=items[:limit], total_parsed=len(items))
+    except ConfigInvalid as e:
+        result = PreviewResult(ok=False, error=e.text[:2000], problems=e.problems)
     except CollectorError as e:
         result = PreviewResult(ok=False, error=str(e)[:2000])
     except Exception:  # a broken config must never 500 the admin screen

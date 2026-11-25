@@ -41,6 +41,7 @@ from blackkite.config import Settings, user_agent
 from blackkite.sources.urlsafety import (
     GuardedTransport,
     Resolver,
+    UnsafeURL,
     check_url,
     system_resolver,
 )
@@ -425,6 +426,16 @@ class FetchClient:
         self, url: str, headers: dict[str, str], max_bytes: int
     ) -> tuple[int, dict[str, str], bytes]:
         self.requests_made += 1
+        try:
+            return self._stream_once(url, headers, max_bytes)
+        except UnsafeURL:
+            # Refused by the URL guard before anything was sent: not a request.
+            self.requests_made -= 1
+            raise
+
+    def _stream_once(
+        self, url: str, headers: dict[str, str], max_bytes: int
+    ) -> tuple[int, dict[str, str], bytes]:
         deadline = self.clock() + self.timeout * 3
         headers = {"Accept-Encoding": ACCEPT_ENCODING, **headers}
         with self._client.stream("GET", url, headers=headers) as r:

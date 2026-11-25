@@ -546,7 +546,12 @@ def test_test_run_failure_is_reported_not_raised(admin, db, web):
     assert r["ok"] is False and "placeholder" in r["error"]
     rss = add_source(db, "Feed", collector_type="rss", config={"feed_url": "x"})
     r = admin.post(f"/api/admin/sources/{rss.id}/test-run").json()
-    assert r["ok"] is False and "invalid rss config" in r["error"]
+    assert r["ok"] is False
+    assert r["error"] == "Feed URL: only http and https URLs are allowed."
+    assert r["errors"] == [
+        {"field": "config.feed_url", "message": "only http and https URLs are allowed"}
+    ]
+    assert r["requestsMade"] == 0
     r = admin.post(
         "/api/admin/sources/test-run",
         json={"collector_type": "search_query", "config": {"queries": ["x"]}},
