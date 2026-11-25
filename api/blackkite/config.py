@@ -1,7 +1,7 @@
 """Settings, read from environment variables (prefix BK_) or a .env file.
 
 Third-party API keys keep their conventional names without the prefix
-(ANTHROPIC_API_KEY, VOYAGE_API_KEY, BRAVE_API_KEY).
+(ANTHROPIC_API_KEY, VOYAGE_API_KEY, BRAVE_API_KEY, RESEND_API_KEY).
 """
 
 import logging
@@ -53,8 +53,13 @@ class Settings(BaseSettings):
     link_rate_per_ip_per_hour: int = 20
 
     # Mail
-    mail_transport: Literal["console", "smtp"] = "console"
+    mail_transport: Literal["console", "smtp", "resend"] = "console"
+    # Sender. The resend transport requires it to be set explicitly.
     mail_from: str = "Blackkite <no-reply@example.com>"
+    # Safety switch for providers that deliver real email (resend, decision 45).
+    # While false the resend transport refuses to send and logs what it would
+    # have sent. Set true only with the owner's go-ahead.
+    mail_allow_real_send: bool = False
     smtp_host: str = "localhost"
     smtp_port: int = 1025
     smtp_username: str | None = None
@@ -111,9 +116,16 @@ class Settings(BaseSettings):
     brave_api_key: SecretStr | None = Field(
         default=None, validation_alias=AliasChoices("BRAVE_API_KEY")
     )
+    resend_api_key: SecretStr | None = Field(
+        default=None, validation_alias=AliasChoices("RESEND_API_KEY")
+    )
 
     @field_validator(
-        "unsubscribe_secret", "api_public_url", "unsubscribe_mailto", mode="before"
+        "unsubscribe_secret",
+        "api_public_url",
+        "unsubscribe_mailto",
+        "resend_api_key",
+        mode="before",
     )
     @classmethod
     def _empty_is_unset(cls, v: object) -> object:

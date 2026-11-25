@@ -1,8 +1,10 @@
 """Pluggable mail transport.
 
 `console` prints messages to stdout (dev); `smtp` sends through an SMTP server
-(dev target: Mailpit on port 1025). The production provider is chosen later
-(decision 13); it only has to implement `MailTransport.send`.
+(dev target: Mailpit on port 1025); `resend` posts to Resend's HTTP API, the
+production provider (decision 45, delivery/resend.py), and refuses to send
+while BK_MAIL_ALLOW_REAL_SEND is false. A transport only has to implement
+`MailTransport.send`.
 
 A `Mail` is plain text, optionally with an HTML alternative and inline images
 the HTML refers to as ``cid:<content id>`` (the digest's kite logo is
@@ -149,6 +151,10 @@ class MemoryTransport:
 def make_transport(settings: Settings) -> MailTransport:
     if settings.mail_transport == "smtp":
         return SmtpTransport(settings)
+    if settings.mail_transport == "resend":
+        from blackkite.delivery.resend import ResendTransport
+
+        return ResendTransport(settings)
     return ConsoleTransport(settings.mail_from)
 
 
