@@ -15,14 +15,16 @@ A second job runs once a day (and once at start-up) to move catalogue statuses o
 as deadlines pass (open -> closing_soon -> expired), under its own advisory lock.
 
 Pending profile backfills (worker/backfills.py: new or edited profiles, mute
-changes) run on every tick after the sources, debounced and under a lock per
-profile; they are never run in an HTTP request (spec 5 cost guard).
+changes) run on every tick after the sources and their alerts, at most
+``BK_BACKFILL_PER_TICK`` profiles a tick, debounced, backed off on failure and under
+a lock per profile, so a backlog never delays collection. They are never run in an
+HTTP request (spec 5 cost guard).
 
 Delivery (delivery/jobs.py): the weekly digest runs on Mondays at
 ``BK_DIGEST_HOUR`` Africa/Kigali (and at start-up, where it does nothing unless it
 is Monday after that hour and a user's digest has not gone yet); urgent alerts run
-at the end of every tick in which a source run succeeded or a backfill ran,
-after ingest (and scoring). Both take their own advisory lock and are idempotent per user per day.
+after the sources when a source run succeeded (after ingest and scoring), and
+again after the backfills when one ran (a new profile can find older items). Both take their own advisory lock and are idempotent per user per day.
 """
 
 from __future__ import annotations
@@ -87,15 +89,22 @@ def tick(
             o.items_failed,
             f" error: {o.error}" if o.error else "",
         )
-    backfilled = backfills(sessions)
-    if backfilled or any(o.status == "succeeded" for o in outcomes):
-        alerts(sessions, settings, transport or make_transport(settings))
+    transport = transport or make_transport(settings)
+    if any(o.status == "succeeded" for o in outcomes):
+        alerts(sessions, settings, transport)
+    # Last, so a backlog of profile backfills never delays collection or alerts.
+    if backfills(sessions, settings):
+        alerts(sessions, settings, transport)
 
 
-def backfills(sessions: sessionmaker[Session]) -> int:
+def backfills(sessions: sessionmaker[Session], settings: Settings) -> int:
     """Pending profile backfills. Never lets a failure stop the tick."""
     try:
-        done = run_pending_backfills(sessions)
+        done = run_pending_backfills(
+            sessions,
+            per_tick=settings.backfill_per_tick,
+            max_attempts=settings.backfill_max_attempts,
+        )
     except Exception:
         log.exception("profile backfills failed")
         return 0

@@ -196,7 +196,7 @@ def test_inactive_profile_request_is_cleared_without_scoring(
     assert _scores(db, ironji) == 0 and _pending(db) == {}
 
 
-def test_a_failure_is_pushed_back_and_others_still_run(
+def test_a_failure_is_backed_off_and_others_still_run(
     db, Sessions, profiles, make_opp, monkeypatch, caplog
 ):
     from blackkite.scoring import service
@@ -223,11 +223,109 @@ def test_a_failure_is_pushed_back_and_others_still_run(
     with caplog.at_level("ERROR", logger="blackkite.worker"):
         assert W.run_pending_backfills(Sessions, lambda: at) == [lab.id]
     assert "backfill failed for profile" in caplog.text
-    assert _pending(db) == {"Ironji-Trade": at}  # retried after another debounce
+    db.expire_all()
+    assert db.get(Profile, ironji.id).backfill_attempts == 1
+    assert db.get(Profile, lab.id).backfill_attempts == 0
+    # Not due again before the first backoff (1 minute).
+    assert W.run_pending_backfills(Sessions, lambda: at + timedelta(seconds=59)) == []
     monkeypatch.setattr(service, "backfill_profile", real)
-    assert W.run_pending_backfills(Sessions, lambda: at + BACKFILL_DEBOUNCE) == [
+    assert W.run_pending_backfills(Sessions, lambda: at + timedelta(minutes=1)) == [
         ironji.id
     ]
+    db.expire_all()
+    p = db.get(Profile, ironji.id)
+    assert p.backfill_requested_at is None and p.backfill_attempts == 0
+
+
+def test_backoff_grows_then_gives_up_with_an_error(
+    db, Sessions, profiles, make_opp, monkeypatch, caplog
+):
+    from blackkite.scoring import service
+
+    _cold(make_opp)
+    ironji = profiles["Ironji-Trade"]
+    _only(db, profiles, "Ironji-Trade", now() - timedelta(minutes=5))
+    calls = []
+
+    def broken(session, pid, **kw):
+        calls.append(pid)
+        raise RuntimeError("scoring down")
+
+    monkeypatch.setattr(service, "backfill_profile", broken)
+    at = now()
+    expected = [1, 5, 15, 60, 60]  # minutes before attempts 2..6
+    for n, wait in enumerate(expected, start=1):
+        assert W.run_pending_backfills(Sessions, lambda t=at: t, max_attempts=6) == []
+        assert len(calls) == n
+        db.expire_all()
+        p = db.get(Profile, ironji.id)
+        assert p.backfill_attempts == n
+        assert p.backfill_requested_at + BACKFILL_DEBOUNCE == at + timedelta(
+            minutes=wait
+        )
+        # Too early: nothing runs.
+        early = at + timedelta(minutes=wait) - timedelta(seconds=1)
+        assert W.run_pending_backfills(Sessions, lambda t=early: t) == []
+        assert len(calls) == n
+        at = at + timedelta(minutes=wait)
+    with caplog.at_level("ERROR", logger="blackkite.worker"):
+        W.run_pending_backfills(Sessions, lambda: at, max_attempts=6)
+    assert len(calls) == 6
+    assert "failed 6 times; given up" in caplog.text
+    db.expire_all()
+    p = db.get(Profile, ironji.id)
+    assert p.backfill_requested_at is None and p.backfill_attempts == 6
+    assert W.run_pending_backfills(Sessions, lambda: at + timedelta(days=1)) == []
+    assert len(calls) == 6
+
+
+def test_a_new_edit_resets_the_attempts(db, Sessions, owner, profiles, make_opp):
+    _cold(make_opp)
+    ironji = profiles["Ironji-Trade"]
+    db.execute(sa.update(Profile).values(backfill_requested_at=None))
+    db.execute(
+        sa.update(Profile).where(Profile.id == ironji.id).values(backfill_attempts=6)
+    )
+    db.commit()
+    p = db.get(Profile, ironji.id)
+    data = {**p.data, "services": [*p.data["services"], "warehousing"]}
+    edited = now() - timedelta(minutes=5)
+    P.update_profile(db, owner, p, P.ProfilePatch(data=data), now=edited)
+    db.expire_all()
+    p = db.get(Profile, ironji.id)
+    assert p.backfill_attempts == 0 and p.backfill_requested_at == edited
+    assert W.run_pending_backfills(Sessions) == [ironji.id]
+
+
+def test_mute_change_resets_the_attempts(db, owner, profiles):
+    from blackkite.scoring.backfill import request_user_rescore
+
+    db.execute(sa.update(Profile).values(backfill_attempts=3))
+    db.commit()
+    request_user_rescore(db, owner.id, now())
+    db.commit()
+    db.expire_all()
+    active = db.scalars(sa.select(Profile).where(Profile.active.is_(True))).all()
+    assert active and all(p.backfill_attempts == 0 for p in active)
+
+
+def test_at_most_per_tick_profiles_each_call(db, Sessions, profiles, make_opp):
+    _cold(make_opp)
+    t0 = now() - timedelta(minutes=10)
+    db.execute(sa.update(Profile).values(backfill_requested_at=None))
+    names = ["Ironji-Trade", "AI lab", "Personal"]
+    for i, name in enumerate(names):
+        db.execute(
+            sa.update(Profile)
+            .where(Profile.id == profiles[name].id)
+            .values(backfill_requested_at=t0 + timedelta(seconds=i))
+        )
+    db.commit()
+    first = W.run_pending_backfills(Sessions, per_tick=2)
+    assert first == [profiles["Ironji-Trade"].id, profiles["AI lab"].id]
+    assert set(_pending(db)) == {"Personal"}
+    assert W.run_pending_backfills(Sessions, per_tick=2) == [profiles["Personal"].id]
+    assert _pending(db) == {}
 
 
 def test_profile_api_scores_only_through_the_worker(
@@ -264,18 +362,40 @@ def test_profile_api_scores_only_through_the_worker(
     assert calls == [p.id] and _scores(db, p) == 1
 
 
-def test_tick_runs_backfills_then_alerts(Sessions, settings, monkeypatch):
+def test_tick_runs_sources_then_alerts_then_backfills(Sessions, settings, monkeypatch):
     from blackkite.delivery.mail import MemoryTransport
     from blackkite.worker import main as worker_main
+    from blackkite.worker.runner import RunOutcome
 
-    alerts = []
+    order: list[str] = []
+    seen_kw: dict = {}
     monkeypatch.setattr(worker_main, "close_stale_runs", lambda *a: 0)
-    monkeypatch.setattr(worker_main, "run_due_sources", lambda *a, **k: [])
-    monkeypatch.setattr(worker_main, "alerts_job", lambda *a: alerts.append(a) or 0)
-    ran = [[], ["pid"]]
-    monkeypatch.setattr(worker_main, "run_pending_backfills", lambda s: ran.pop(0))
+    outcomes = [[], [RunOutcome(None, "S", "succeeded")], []]
+
+    def sources(*a, **k):
+        order.append("sources")
+        return outcomes.pop(0)
+
+    def backfills(sessions, **kw):
+        seen_kw.update(kw)
+        order.append("backfills")
+        return ran.pop(0)
+
+    monkeypatch.setattr(worker_main, "run_due_sources", sources)
+    monkeypatch.setattr(worker_main, "alerts_job", lambda *a: order.append("alerts"))
+    ran = [[], [], ["pid"]]
+    monkeypatch.setattr(worker_main, "run_pending_backfills", backfills)
     out = MemoryTransport()
     worker_main.tick(Sessions, None, settings, out)
-    assert alerts == []
+    assert order == ["sources", "backfills"]  # nothing new: no alerts
+    order.clear()
     worker_main.tick(Sessions, None, settings, out)
-    assert len(alerts) == 1
+    assert order == ["sources", "alerts", "backfills"]
+    order.clear()
+    worker_main.tick(Sessions, None, settings, out)
+    assert order == ["sources", "backfills", "alerts"]
+    assert seen_kw == {
+        "per_tick": settings.backfill_per_tick,
+        "max_attempts": settings.backfill_max_attempts,
+    }
+    assert (settings.backfill_per_tick, settings.backfill_max_attempts) == (5, 6)

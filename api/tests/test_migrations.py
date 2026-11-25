@@ -325,3 +325,22 @@ def test_0009_existing_profiles_start_up_to_date(make_database):
     command.downgrade(cfg, "0008")
     assert _exec(url, "SELECT count(*) FROM profile") == [(1,)]
     command.upgrade(cfg, "head")
+
+
+def test_0010_backfill_attempts_start_at_zero(make_database):
+    url = make_database("bk_migr")
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0009")
+    _exec(url, "INSERT INTO \"user\" (email) VALUES ('a@example.com')")
+    _exec(
+        url,
+        """INSERT INTO profile (user_id, name, type, updated_at)
+           SELECT id, 'P', 'business', '2026-11-01 00:00:00+00' FROM "user" """,
+    )
+    command.upgrade(cfg, "0010")
+    assert _exec(url, "SELECT backfill_attempts, updated_at::text FROM profile") == [
+        (0, "2026-11-01 00:00:00+00")
+    ]
+    command.downgrade(cfg, "0009")
+    assert _exec(url, "SELECT count(*) FROM profile") == [(1,)]
+    command.upgrade(cfg, "head")

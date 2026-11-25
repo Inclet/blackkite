@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     stale_run_minutes: int = Field(default=120, ge=1)
     # Cron (UTC) for sources whose schedule is NULL: 04:00 UTC = 06:00 Africa/Kigali.
     default_source_schedule: str = "0 4 * * *"
+    # Profile backfills (worker/backfills.py): at most this many profiles scored per
+    # worker tick, and a failing one is given up (logged) after this many attempts.
+    backfill_per_tick: int = Field(default=5, ge=1)
+    backfill_max_attempts: int = Field(default=6, ge=1)
 
     # Models (decision 14)
     model_extract: str = "claude-haiku-5-5"

@@ -181,6 +181,10 @@ class Profile(Base):
     # Pending backfill of match and score (spec 5), run by the worker off the
     # request path (scoring/backfill.py). NULL = nothing pending.
     backfill_requested_at: Mapped[datetime | None] = _ts()
+    # Failed runs of the pending backfill; a new request resets it to 0.
+    backfill_attempts: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, server_default="0"
+    )
     # The version whose scoring-relevant content was last fully scored. NULL =
     # never scored.
     scored_version: Mapped[int | None] = mapped_column(sa.Integer)

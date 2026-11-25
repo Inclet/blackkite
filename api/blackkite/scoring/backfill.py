@@ -32,6 +32,7 @@ BACKFILL_DEBOUNCE = timedelta(seconds=60)
 def request_backfill(profile: Profile, now: datetime) -> None:
     """Mark one profile (ORM object, saved by the caller's commit)."""
     profile.backfill_requested_at = now
+    profile.backfill_attempts = 0
 
 
 def request_user_rescore(db: Session, user_id: uuid.UUID, now: datetime) -> int:
@@ -40,7 +41,11 @@ def request_user_rescore(db: Session, user_id: uuid.UUID, now: datetime) -> int:
     return db.execute(
         sa.update(Profile)
         .where(Profile.user_id == user_id, Profile.active.is_(True))
-        .values(backfill_requested_at=now, updated_at=Profile.updated_at)
+        .values(
+            backfill_requested_at=now,
+            backfill_attempts=0,
+            updated_at=Profile.updated_at,
+        )
         .execution_options(synchronize_session=False)
     ).rowcount
 
