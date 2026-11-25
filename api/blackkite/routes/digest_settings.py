@@ -19,14 +19,16 @@ from blackkite.routes.schemas import UserOut
 router = APIRouter(dependencies=[Depends(require_user)])
 
 Stream = Literal["tender", "investment", "funding", "event"]
+AlertMinFit = Literal["strong", "good"]
 
 
 class DigestSettingsIn(CamelIn):
     channel: Literal["email"] = "email"
     frequency: Literal["weekly", "off"]
     day: Literal["mon"] = "mon"
-    # Urgent alerts for items scoring above this (0-100); null turns alerts off.
-    alert_threshold: Annotated[int, Field(ge=0, le=100)] | None = None
+    # Urgent alerts for items whose best active profile's fit word is at least
+    # this ("strong" > "good"); null turns alerts off. Never the numeric score.
+    alert_min_fit: AlertMinFit | None = None
     # null: the streams of the user's profiles.
     streams: Annotated[list[Stream], Field(min_length=1)] | None = None
 
@@ -42,7 +44,7 @@ class DigestSettingsOut(CamelModel):
     channel: str
     frequency: str
     day: str
-    alert_threshold: int | None
+    alert_min_fit: AlertMinFit | None
     streams: list[str] | None
 
 
@@ -64,14 +66,14 @@ def _out(s: DigestSetting | None) -> DigestSettingsOut:
             channel="email",
             frequency="weekly",
             day="mon",
-            alert_threshold=None,
+            alert_min_fit=None,
             streams=None,
         )
     return DigestSettingsOut(
         channel=s.channel,
         frequency=s.frequency,
         day=s.day,
-        alert_threshold=s.alert_threshold,
+        alert_min_fit=s.alert_min_fit,  # type: ignore[arg-type]
         streams=s.streams,
     )
 
@@ -92,7 +94,7 @@ def put_digest_settings(
         db.add(s)
     s.frequency = body.frequency
     s.day = body.day
-    s.alert_threshold = body.alert_threshold
+    s.alert_min_fit = body.alert_min_fit
     s.streams = body.streams
     db.commit()
     return _out(s)

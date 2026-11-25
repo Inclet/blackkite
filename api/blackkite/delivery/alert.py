@@ -17,8 +17,8 @@ from blackkite.delivery.digest import (
 )
 
 FOOTER_LINE = (
-    "You get these alerts when an item scores above your alert level and closes "
-    "within 5 days."
+    "You get these alerts when an item fits one of your profiles at your alert "
+    "level and closes within 5 days."
 )
 
 

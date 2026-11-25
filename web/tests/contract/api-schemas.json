@@ -399,19 +399,21 @@
     "DigestSettingsIn": {
       "additionalProperties": false,
       "properties": {
-        "alertThreshold": {
+        "alertMinFit": {
           "anyOf": [
             {
-              "maximum": 100,
-              "minimum": 0,
-              "type": "integer"
+              "enum": [
+                "strong",
+                "good"
+              ],
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "title": "Alertthreshold"
+          "title": "Alertminfit"
         },
         "channel": {
           "const": "email",
@@ -464,16 +466,20 @@
     },
     "DigestSettingsOut": {
       "properties": {
-        "alertThreshold": {
+        "alertMinFit": {
           "anyOf": [
             {
-              "type": "integer"
+              "enum": [
+                "strong",
+                "good"
+              ],
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
-          "title": "Alertthreshold"
+          "title": "Alertminfit"
         },
         "channel": {
           "title": "Channel",
@@ -506,7 +512,7 @@
         "channel",
         "frequency",
         "day",
-        "alertThreshold",
+        "alertMinFit",
         "streams"
       ],
       "title": "DigestSettingsOut",
@@ -668,6 +674,10 @@
               "default": null,
               "title": "Organisationshort"
             },
+            "provisional": {
+              "title": "Provisional",
+              "type": "boolean"
+            },
             "state": {
               "enum": [
                 "unseen",
@@ -737,6 +747,7 @@
             "title",
             "organisation",
             "fit",
+            "provisional",
             "deadline",
             "detail"
           ],
@@ -1123,6 +1134,10 @@
           "default": null,
           "title": "Organisationshort"
         },
+        "provisional": {
+          "title": "Provisional",
+          "type": "boolean"
+        },
         "state": {
           "enum": [
             "unseen",
@@ -1192,6 +1207,7 @@
         "title",
         "organisation",
         "fit",
+        "provisional",
         "deadline",
         "detail"
       ],
@@ -1322,6 +1338,13 @@
             "dismissReason": {
               "anyOf": [
                 {
+                  "enum": [
+                    "not_my_sector",
+                    "too_small",
+                    "cant_meet_requirements",
+                    "already_knew",
+                    "other"
+                  ],
                   "type": "string"
                 },
                 {
@@ -1618,6 +1641,10 @@
           "default": null,
           "title": "Organisationshort"
         },
+        "provisional": {
+          "title": "Provisional",
+          "type": "boolean"
+        },
         "state": {
           "enum": [
             "unseen",
@@ -1687,6 +1714,7 @@
         "title",
         "organisation",
         "fit",
+        "provisional",
         "deadline",
         "detail"
       ],

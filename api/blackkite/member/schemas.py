@@ -9,7 +9,7 @@ sent as ``null``; fields typed ``| null`` (``fit``, ``deadline``) are always sen
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer
 from pydantic.alias_generators import to_camel
@@ -19,6 +19,20 @@ Fit = Literal["strong", "good", "possible", "not-scored"]
 TrustState = Literal["confirmed", "unconfirmed", "conflict"]
 State = Literal["unseen", "saved", "dismissed", "acting", "done"]
 NoDeadlineText = Literal["No deadline", "No deadline stated"]
+# Why an item was dismissed: a fixed list, logged as labelled data for tuning
+# later (spec 7). Codes only, no free text.
+DismissReason = Literal[
+    "not_my_sector", "too_small", "cant_meet_requirements", "already_knew", "other"
+]
+DISMISS_REASONS: tuple[str, ...] = get_args(DismissReason)
+
+
+def dismiss_reason_out(value: str | None) -> str | None:
+    """A stored reason as the API shows it; a value from before the fixed list
+    (free text) reads as "other". Exports keep the stored value."""
+    if value is None:
+        return None
+    return value if value in DISMISS_REASONS else "other"
 
 
 class CamelModel(BaseModel):
@@ -100,6 +114,8 @@ class FeedItem(CamelModel):
     organisation: str
     organisation_short: str | None = None
     fit: Fit | None
+    # The matched (best) profile is provisional (spec 7.1); the web labels it.
+    provisional: bool
     top_flag: str | None = None
     topic: str | None = None
     venue: str | None = None
@@ -113,6 +129,8 @@ class FeedItem(CamelModel):
 
 
 class FeedUser(CamelModel):
+    # First name for the greeting; "" when the user has not set one (the web
+    # then greets without a name).
     name: str
 
 
@@ -175,7 +193,7 @@ class OpportunityDetail(FeedItemDetail):
     note: str | None
     # The caller's state for this item (decision 19); same as FeedItem.state.
     state: State
-    dismiss_reason: str | None = None
+    dismiss_reason: DismissReason | None = None
 
 
 class OpportunityOut(FeedItem):
@@ -187,7 +205,8 @@ class OpportunityOut(FeedItem):
 
 class StateIn(CamelIn):
     state: State
-    dismiss_reason: str | None = Field(default=None, max_length=500)
+    # Only with state "dismissed"; ignored (and cleared) for other states.
+    dismiss_reason: DismissReason | None = None
 
 
 class NoteIn(CamelIn):
@@ -197,6 +216,6 @@ class NoteIn(CamelIn):
 class UserStateOut(CamelModel):
     opportunity_id: str
     state: State
-    dismiss_reason: str | None
+    dismiss_reason: DismissReason | None
     note: str | None
     updated_at: datetime | None

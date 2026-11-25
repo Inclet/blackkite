@@ -26,11 +26,11 @@ from tests.factories import KIGALI, kigali
 MONDAY_7 = datetime(2026, 11, 30, 7, 0, tzinfo=KIGALI)
 
 
-def _seed(db, email="ana@example.com", threshold=None):
+def _seed(db, email="ana@example.com", min_fit=None):
     u = make_user(db, email)
     db.add(
         DigestSetting(
-            user_id=u.id, channel="email", address=email, alert_threshold=threshold
+            user_id=u.id, channel="email", address=email, alert_min_fit=min_fit
         )
     )
     src = f.source(db, f"Src {email}")
@@ -94,7 +94,7 @@ def test_weekly_job_sends_each_user_once(Sessions, db, settings):
 
 
 def test_jobs_skip_while_another_worker_holds_the_lock(Sessions, db, engine, settings):
-    _seed(db, threshold=50)
+    _seed(db, min_fit="good")
     out = MemoryTransport()
     with advisory_lock(engine, JOB_LOCK_NAMESPACE, DIGEST_LOCK_KEY) as got:
         assert got
@@ -105,8 +105,8 @@ def test_jobs_skip_while_another_worker_holds_the_lock(Sessions, db, engine, set
 
 
 def test_alerts_job_sends_then_nothing(Sessions, db, settings):
-    _seed(db, "ana@example.com", threshold=50)
-    _seed(db, "ben@example.com", threshold=None)
+    _seed(db, "ana@example.com", min_fit="good")
+    _seed(db, "ben@example.com", min_fit=None)
     out = MemoryTransport()
     assert alerts_job(Sessions, settings, out, lambda: MONDAY_7) == 1
     assert [m.to for m in out.outbox] == ["ana@example.com"]

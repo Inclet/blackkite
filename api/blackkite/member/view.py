@@ -54,16 +54,23 @@ from blackkite.pipeline.visibility import (
     visible_source_link,
     visible_to,
 )
+from blackkite.scoring.service import NO_MODEL_REASON
 
 CLOSED_STATUSES = ("expired", "awarded", "cancelled")
 # Streams that show a fit word; events and investments never do (decision 24).
 SCORED_STREAMS = ("tender", "funding")
 FIT_WORDS = ("strong", "good", "possible")
+# Order of fit words for comparisons (alerts: "at least good"); no word ranks 0.
+FIT_RANK = {"possible": 1, "good": 2, "strong": 3}
 SHORTLIST_STATES = ("saved", "acting")
 TO_CHECK_PREFIX = "To check: "
 
 
 # --- scores -------------------------------------------------------------------------
+
+
+def _is_no_model(reason: str) -> bool:
+    return reason.strip().rstrip(".") == NO_MODEL_REASON.rstrip(".")
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,8 +102,18 @@ class ScoreView:
         return [f for f in self.breakdown.get("flags") or [] if isinstance(f, dict)]
 
     @property
+    def provisional(self) -> bool:
+        """The profile was scored as provisional (spec 7.1: AI lab's default set)."""
+        return self.breakdown.get("provisional") is True
+
+    @property
     def one_line_reason(self) -> str | None:
-        return self.reason or (self.reasons[0] if self.reasons else None)
+        """The reason for digests and alerts. A rules-only score's reason ("Scored
+        without the model") says nothing about the item, so the first rules
+        reason that names the match is used instead."""
+        if self.reason and not _is_no_model(self.reason):
+            return self.reason
+        return next((r for r in self.reasons if not _is_no_model(r)), None)
 
     @property
     def rank(self) -> int:
@@ -401,6 +418,7 @@ def _item_fields(row: Row, now: datetime) -> dict[str, Any]:
         "organisation": o.organisation or "",
         "organisation_short": o.organisation_short,
         "fit": fit,
+        "provisional": bool(best and best.provisional),
         "top_flag": _top_flag(best, fit),
         "topic": _topic(o) if o.stream == "event" else None,
         "venue": o.location if o.stream == "event" else None,
@@ -549,7 +567,7 @@ def opportunity_out(db: Session, row: Row, now: datetime) -> S.OpportunityOut:
         changes=_changes(db, o.id),
         note=row.uo.note if row.uo else None,
         state=row.state,
-        dismiss_reason=row.uo.dismiss_reason if row.uo else None,
+        dismiss_reason=S.dismiss_reason_out(row.uo.dismiss_reason if row.uo else None),
     )
     return S.OpportunityOut(**_item_fields(row, now), detail=detail)
 
@@ -558,9 +576,10 @@ def opportunity_out(db: Session, row: Row, now: datetime) -> S.OpportunityOut:
 
 
 def first_name(user: User) -> str:
-    """For the greeting. "there" ("Good morning, there") when no name is set."""
+    """For the greeting. Empty when no name is set: the greeting then has no
+    name ("Good morning"), never a stand-in."""
     name = (user.name or "").strip()
-    return name.split()[0] if name else "there"
+    return name.split()[0] if name else ""
 
 
 def _when(at: datetime, now: datetime) -> str:

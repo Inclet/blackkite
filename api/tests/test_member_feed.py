@@ -156,6 +156,7 @@ def test_wfp_item_matches_the_reference_fixture(db, ana, login):
         "organisation": "World Food Programme",
         "organisationShort": "WFP",
         "fit": "strong",
+        "provisional": False,
         "deadline": "2026-11-30",
         "detail": {
             "profile": "Ironji-Trade",
@@ -230,6 +231,7 @@ def test_developpp_item_matches_the_reference_fixture(db, ana, login):
         "title": "develoPPP Ventures, cohort 6",
         "organisation": "develoPPP",
         "fit": "good",
+        "provisional": False,
         "topFlag": "Needs matching funds",
         "deadline": "2026-12-31",
         "detail": {
@@ -305,6 +307,7 @@ def test_event_item_matches_the_reference_fixture(db, ana, login):
         "title": "ABH Summit and Grand Finale",
         "organisation": "Africa's Business Heroes",
         "fit": None,
+        "provisional": False,
         "topic": "Startups and investors",
         "venue": "Kigali Convention Centre",
         "deadline": None,
@@ -436,6 +439,46 @@ def test_best_profile_and_hard_filtered_rows(db, ana, login):
     assert r.status_code == 200 and r.json()["fit"] is None
 
 
+def test_feed_user_name_is_empty_without_a_name(db, ana, login):
+    ana.name = None
+    db.commit()
+    c = login(ana.email)
+    assert c.get("/api/feed").json()["user"] == {"name": ""}
+    ana.name = "  "
+    db.commit()
+    assert c.get("/api/feed").json()["user"] == {"name": ""}
+
+
+def test_provisional_follows_the_matched_profile(db, ana, login):
+    """Spec 7.1: AI lab matches are labelled provisional; the flag comes from the
+    best profile's score row, on the feed and on the opportunity page."""
+    src = f.source(db, "Src")
+    ironji = f.profile(db, ana, "Ironji-Trade")
+    lab = f.profile(db, ana, "AI lab", provisional=True)
+    ai = f.opportunity(db, "Data platform", deadline_at=kigali(2026, 12, 10))
+    f.link(db, ai, src)
+    f.score(db, ana, ai, lab, 80, fit_word="good", provisional=True)
+    f.score(db, ana, ai, ironji, 30, fit_word="possible")
+    trucks = f.opportunity(db, "Trucks", deadline_at=kigali(2026, 12, 11))
+    f.link(db, trucks, src)
+    f.score(db, ana, trucks, ironji, 90, fit_word="strong")
+    f.score(db, ana, trucks, lab, 20, fit_word="possible", provisional=True)
+    db.commit()
+    c = login(ana.email)
+    items = {i["title"]: i for i in _items(c)}
+    assert items["Data platform"]["provisional"] is True
+    assert items["Data platform"]["detail"]["profile"] == "AI lab"
+    assert items["Trucks"]["provisional"] is False
+    detail = c.get(f"/api/opportunities/{ai.id}").json()
+    assert detail["provisional"] is True
+    assert c.get(f"/api/opportunities/{trucks.id}").json()["provisional"] is False
+    # Not scored: never provisional.
+    bare = f.opportunity(db, "Bare", deadline_at=kigali(2026, 12, 12))
+    f.link(db, bare, src)
+    db.commit()
+    assert {i["title"]: i for i in _items(c)}["Bare"]["provisional"] is False
+
+
 def test_inactive_profile_scores_are_ignored(db, ana, login):
     src = f.source(db, "Src")
     p = f.profile(db, ana, "Old")
@@ -545,10 +588,10 @@ def test_states_and_notes_are_per_user(db, ana, login):
     a, b = login(ana.email), login(ben.email)
     r = a.put(
         f"/api/opportunities/{opp.id}/state",
-        json={"state": "dismissed", "dismissReason": "too far"},
+        json={"state": "dismissed", "dismissReason": "too_small"},
     )
     assert r.status_code == 200
-    assert r.json()["state"] == "dismissed" and r.json()["dismissReason"] == "too far"
+    assert r.json()["state"] == "dismissed" and r.json()["dismissReason"] == "too_small"
     a.put(f"/api/opportunities/{opp.id}/note", json={"note": "  call Monday "})
     assert _items(a) == []
     assert [i["id"] for i in _items(a, state="dismissed")] == [str(opp.id)]
@@ -558,7 +601,7 @@ def test_states_and_notes_are_per_user(db, ana, login):
     assert detail_b["note"] is None and detail_b["state"] == "unseen"
     detail_a = a.get(f"/api/opportunities/{opp.id}").json()["detail"]
     assert detail_a["note"] == "call Monday"
-    assert detail_a["state"] == "dismissed" and detail_a["dismissReason"] == "too far"
+    assert detail_a["state"] == "dismissed" and detail_a["dismissReason"] == "too_small"
     # Moving off dismissed drops the reason; the note stays.
     r = a.put(f"/api/opportunities/{opp.id}/state", json={"state": "saved"})
     assert r.json() == {
@@ -592,6 +635,62 @@ def test_state_body_is_validated(db, ana, login):
         ).status_code
         == 422
     )
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ["not_my_sector", "too_small", "cant_meet_requirements", "already_knew", "other"],
+)
+def test_dismiss_reasons_from_the_fixed_list(db, ana, login, reason):
+    src = f.source(db, "Src")
+    opp = f.opportunity(db, "X")
+    f.link(db, opp, src)
+    db.commit()
+    c = login(ana.email)
+    url = f"/api/opportunities/{opp.id}/state"
+    r = c.put(url, json={"state": "dismissed", "dismissReason": reason})
+    assert r.status_code == 200 and r.json()["dismissReason"] == reason
+    assert c.get(f"/api/opportunities/{opp.id}").json()["detail"]["dismissReason"] == (
+        reason
+    )
+    [state] = c.get("/api/me/export").json()["states"]
+    assert state["state"] == "dismissed" and state["dismissReason"] == reason
+    # Another state clears it.
+    r = c.put(url, json={"state": "saved", "dismissReason": reason})
+    assert r.json()["dismissReason"] is None
+
+
+@pytest.mark.parametrize(
+    "reason", ["too far", "Too_small", "", "other: too far", 3, ["other"]]
+)
+def test_dismiss_reason_outside_the_list_is_refused(db, ana, login, reason):
+    src = f.source(db, "Src")
+    opp = f.opportunity(db, "X")
+    f.link(db, opp, src)
+    db.commit()
+    c = login(ana.email)
+    r = c.put(
+        f"/api/opportunities/{opp.id}/state",
+        json={"state": "dismissed", "dismissReason": reason},
+    )
+    assert r.status_code == 422
+    db.expire_all()
+    assert db.query(UserOpportunity).count() == 0
+
+
+def test_free_text_reason_from_before_the_list_reads_as_other(db, ana, login):
+    src = f.source(db, "Src")
+    opp = f.opportunity(db, "X")
+    f.link(db, opp, src)
+    uo = f.state(db, ana, opp, "dismissed")
+    uo.dismiss_reason = "too far away"
+    db.commit()
+    c = login(ana.email)
+    detail = c.get(f"/api/opportunities/{opp.id}").json()["detail"]
+    assert detail["dismissReason"] == "other"
+    # The export keeps what was stored (spec 10: the user's own data).
+    [state] = c.get("/api/me/export").json()["states"]
+    assert state["dismissReason"] == "too far away"
 
 
 def test_shortlist_is_saved_and_acting_soonest_first(db, ana, login):

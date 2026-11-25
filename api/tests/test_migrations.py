@@ -269,3 +269,59 @@ def test_0007_digest_date_from_sent_at_and_unique(make_database):
         )
     command.downgrade(cfg, "0006")
     assert _exec(url, "SELECT count(*) FROM digest_log") == [(1,)]
+
+
+def test_0008_maps_alert_threshold_to_fit_word_and_back(make_database):
+    url = make_database("bk_migr")
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0007")
+    for i, t in enumerate(["90", "75", "74", "60", "59", "0", "NULL"]):
+        _exec(url, f"INSERT INTO \"user\" (email) VALUES ('u{i}@example.com')")
+        _exec(
+            url,
+            f"""INSERT INTO digest_setting (user_id, channel, address, alert_threshold)
+                SELECT id, 'email', email, {t} FROM "user"
+                WHERE email = 'u{i}@example.com'""",
+        )
+    command.upgrade(cfg, "0008")
+    rows = _exec(
+        url,
+        "SELECT address, alert_min_fit FROM digest_setting ORDER BY address",
+    )
+    assert rows == [
+        ("u0@example.com", "strong"),
+        ("u1@example.com", "strong"),
+        ("u2@example.com", "good"),
+        ("u3@example.com", "good"),
+        ("u4@example.com", None),
+        ("u5@example.com", None),
+        ("u6@example.com", None),
+    ]
+    with pytest.raises(sa.exc.IntegrityError):
+        _exec(url, "UPDATE digest_setting SET alert_min_fit = 'possible'")
+    command.downgrade(cfg, "0007")
+    rows = _exec(
+        url, "SELECT address, alert_threshold FROM digest_setting ORDER BY address"
+    )
+    assert [t for _, t in rows] == [75, 75, 60, 60, None, None, None]
+    command.upgrade(cfg, "head")
+
+
+def test_0009_existing_profiles_start_up_to_date(make_database):
+    url = make_database("bk_migr")
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0008")
+    _exec(url, "INSERT INTO \"user\" (email) VALUES ('a@example.com')")
+    _exec(
+        url,
+        """INSERT INTO profile (user_id, name, type, version, updated_at)
+           SELECT id, 'P', 'business', 3, '2026-11-01 00:00:00+00' FROM "user" """,
+    )
+    command.upgrade(cfg, "0009")
+    assert _exec(
+        url,
+        "SELECT scored_version, backfill_requested_at, updated_at::text FROM profile",
+    ) == [(3, None, "2026-11-01 00:00:00+00")]
+    command.downgrade(cfg, "0008")
+    assert _exec(url, "SELECT count(*) FROM profile") == [(1,)]
+    command.upgrade(cfg, "head")

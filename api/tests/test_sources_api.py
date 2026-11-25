@@ -955,7 +955,15 @@ def _filtered(db, user, opp):
     return [r.score_breakdown["hard_filtered"] for r in rows]
 
 
-def test_mute_and_unmute_rescore_the_caller(member, db):
+def _worker(Sessions, minutes=2):
+    from blackkite.worker.backfills import run_pending_backfills
+
+    return run_pending_backfills(
+        Sessions, lambda: datetime.now(UTC) + timedelta(minutes=minutes)
+    )
+
+
+def test_mute_and_unmute_queue_a_rescore_for_the_worker(member, db, Sessions):
     from blackkite import scoring
 
     src, opp = _scored_item(db, member)
@@ -964,38 +972,46 @@ def test_mute_and_unmute_rescore_the_caller(member, db):
     assert _filtered(db, member.user, opp) == [None]
 
     assert member.post(f"/api/sources/{src.id}/mute").status_code == 204
-    assert _filtered(db, member.user, opp) == ["muted_source_only"]
+    # The feed applies the mute at once (query time); the rows wait for the worker.
     assert member.get("/api/feed").json()["items"] == []
+    assert _filtered(db, member.user, opp) == [None]
+    assert len(_worker(Sessions)) == 1
+    assert _filtered(db, member.user, opp) == ["muted_source_only"]
 
     assert member.delete(f"/api/sources/{src.id}/mute").status_code == 204
+    # Back at once, unscored until the worker runs.
+    [item] = member.get("/api/feed").json()["items"]
+    assert item["id"] == str(opp.id) and item["fit"] == "not-scored"
+    assert _filtered(db, member.user, opp) == []
+    assert len(_worker(Sessions)) == 1
     assert _filtered(db, member.user, opp) == [None]
-    assert [i["id"] for i in member.get("/api/feed").json()["items"]] == [str(opp.id)]
 
 
-def test_mute_rescores_only_the_caller(app, member, db, outbox, monkeypatch):
-    from blackkite import scoring
+def test_mute_never_scores_in_the_request_and_queues_only_the_caller(
+    app, member, db, outbox, monkeypatch
+):
+    from blackkite.db.models import Profile
+    from blackkite.scoring import service as scoring_service
+    from tests import factories as f
 
-    calls = []
-    monkeypatch.setattr(scoring, "score_user", lambda s, uid: calls.append(uid))
+    def inline(*a, **k):
+        raise AssertionError("scoring ran in the HTTP request")
+
+    monkeypatch.setattr(scoring_service, "score_user", inline)
+    monkeypatch.setattr(scoring_service, "backfill_profile", inline)
+    other = make_user(db, "other@example.com")
+    theirs = f.profile(db, other, "Theirs")
+    mine = f.profile(db, member.user, "Mine")
+    paused = f.profile(db, member.user, "Paused")
+    paused.active = False
+    db.commit()
+    before = mine.updated_at
     a = add_source(db, "Alpha", "active")
-    member.post(f"/api/sources/{a.id}/mute")
-    member.delete(f"/api/sources/{a.id}/mute")
-    assert calls == [member.user.id, member.user.id]
-
-
-def test_rescoring_failure_keeps_the_mute(member, db, monkeypatch, caplog):
-    from blackkite import scoring
-
-    def broken(session, user_id):
-        session.execute(sa.text("SELECT 1"))
-        raise RuntimeError("scoring blew up")
-
-    monkeypatch.setattr(scoring, "score_user", broken)
-    a = add_source(db, "Alpha", "active")
-    with caplog.at_level("ERROR", logger="blackkite.sources"):
-        assert member.post(f"/api/sources/{a.id}/mute").status_code == 204
-    assert count(db, UserSourceMute) == 1
-    assert "re-scoring after a mute change failed" in caplog.text
-    with caplog.at_level("ERROR", logger="blackkite.sources"):
-        assert member.delete(f"/api/sources/{a.id}/mute").status_code == 204
+    assert member.post(f"/api/sources/{a.id}/mute").status_code == 204
+    db.expire_all()
+    assert db.get(Profile, mine.id).backfill_requested_at is not None
+    assert db.get(Profile, mine.id).updated_at == before  # not an edit
+    assert db.get(Profile, paused.id).backfill_requested_at is None
+    assert db.get(Profile, theirs.id).backfill_requested_at is None
+    assert member.delete(f"/api/sources/{a.id}/mute").status_code == 204
     assert count(db, UserSourceMute) == 0

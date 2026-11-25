@@ -27,6 +27,8 @@ DIGEST_CHANNELS = ("email", "telegram")  # spec 8: email first, Telegram second
 # adding one later is a CHECK swap (see enum() in db/base.py).
 DIGEST_FREQUENCIES = ("weekly", "off")
 DIGEST_DAYS = ("mon",)
+# Urgent alerts by fit word (spec 8, spec 12: never the numeric score). NULL = off.
+ALERT_MIN_FITS = ("strong", "good")
 SOURCE_KINDS = ("original", "publisher", "aggregator", "news", "community")
 SOURCE_STATUSES = ("suggested", "testing", "active", "paused", "retired")
 COLLECTOR_TYPES = (
@@ -158,6 +160,11 @@ class Profile(Base):
         sa.UniqueConstraint("user_id", "name"),
         # Target for composite FKs that keep a profile reference inside one user's data.
         sa.UniqueConstraint("id", "user_id"),
+        sa.Index(
+            "ix_profile_backfill_requested_at",
+            "backfill_requested_at",
+            postgresql_where=sa.text("backfill_requested_at IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -171,6 +178,12 @@ class Profile(Base):
     active: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.true()
     )
+    # Pending backfill of match and score (spec 5), run by the worker off the
+    # request path (scoring/backfill.py). NULL = nothing pending.
+    backfill_requested_at: Mapped[datetime | None] = _ts()
+    # The version whose scoring-relevant content was last fully scored. NULL =
+    # never scored.
+    scored_version: Mapped[int | None] = mapped_column(sa.Integer)
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 
@@ -179,10 +192,6 @@ class DigestSetting(Base):
     __tablename__ = "digest_setting"
     __table_args__ = (
         sa.UniqueConstraint("user_id", "channel"),
-        sa.CheckConstraint(
-            "alert_threshold IS NULL OR alert_threshold BETWEEN 0 AND 100",
-            name="alert_threshold_range",
-        ),
         in_list_check("streams", STREAMS, "streams_valid"),
     )
 
@@ -200,7 +209,10 @@ class DigestSetting(Base):
     day: Mapped[str] = mapped_column(
         enum(*DIGEST_DAYS, name="day"), nullable=False, server_default="mon"
     )
-    alert_threshold: Mapped[int | None] = mapped_column(sa.SmallInteger)
+    # Lowest fit word that sends an urgent alert; NULL turns alerts off.
+    alert_min_fit: Mapped[str | None] = mapped_column(
+        enum(*ALERT_MIN_FITS, name="alert_min_fit")
+    )
     # NULL means "the streams of the user's profiles".
     streams: Mapped[list[str] | None] = mapped_column(ARRAY(sa.String(32)))
     created_at: Mapped[datetime] = created_at()
@@ -551,6 +563,10 @@ class UserOpportunityScore(Base):
     score: Mapped[int | None] = mapped_column(sa.SmallInteger)
     score_breakdown: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     score_reason: Mapped[str | None] = mapped_column(sa.Text)
+    # scoring.service.profile_hash of the profile when this row was written: the
+    # key for reusing its model judgement (a rename does not change it). NULL for
+    # rows written before it existed.
+    profile_hash: Mapped[str | None] = mapped_column(sa.String(64))
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 

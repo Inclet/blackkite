@@ -123,8 +123,91 @@ def test_items_fields_and_full_dates(db, ana, world, settings):
     assert second.date_line == "Tuesday 1 to Wednesday 2 December 2026"
     assert second.trust_note is None and second.value_line is None
     assert v.cta_url == "https://testserver/"
-    assert v.footer.change_frequency_url == "https://testserver/profiles"
+    assert v.footer.change_frequency_url == "https://testserver/settings/digest"
+    assert v.footer.unsubscribe_url == "https://testserver/settings/digest"
     assert v.more_count == 0 and v.closing_soon == []
+
+
+def test_provisional_profile_label(db, ana, world, settings):
+    """Spec 7.1: "TENDER · FOR AI LAB (PROVISIONAL)" in the digest, HTML and text."""
+    lab = f.profile(db, ana, "AI lab", provisional=True)
+    o = item(db, ana, world, "Data platform", 90, prof=lab)
+    db.execute(
+        sa.text(
+            "UPDATE user_opportunity_score SET score_breakdown = "
+            "jsonb_set(score_breakdown, '{provisional}', 'true') "
+            "WHERE opportunity_id = :o"
+        ),
+        {"o": o.id},
+    )
+    item(db, ana, world, "Trucks", 80)
+    db.commit()
+    v = build_digest(db, ana, settings, MONDAY).view
+    labels = [i.label for i in v.items]
+    assert labels == ["TENDER · FOR AI LAB (PROVISIONAL)", "TENDER · FOR IRONJI-TRADE"]
+    out = MemoryTransport()
+    assert send_digest(db, ana, settings, out, MONDAY).status == "sent"
+    [mail] = out.outbox
+    assert "TENDER · FOR AI LAB (PROVISIONAL)" in mail.text
+    assert "TENDER · FOR AI LAB (PROVISIONAL)" in mail.html
+    assert "IRONJI-TRADE (PROVISIONAL)" not in mail.text
+    assert "Change how often: https://testserver/settings/digest" in mail.text
+    assert "Stop these emails: https://testserver/settings/digest" in mail.text
+
+
+def test_rules_only_reason_is_never_printed(db, ana, world, settings):
+    """A score made without the model uses its rules reason in the digest."""
+    o = f.opportunity(
+        db, "Cold chain tender", organisation="RBC", deadline_at=kigali(2026, 12, 10)
+    )
+    f.link(db, o, world.src, "https://example.org/cold")
+    f.score(
+        db,
+        ana,
+        o,
+        world.ironji,
+        60,
+        reason="Scored without the model",
+        fit_word="possible",
+        reasons=[
+            "Scored without the model",
+            "It mentions cold chain, which this profile lists.",
+        ],
+    )
+    bare = f.opportunity(
+        db, "Bare tender", organisation="MINAGRI", deadline_at=kigali(2026, 12, 11)
+    )
+    f.link(db, bare, world.src, "https://example.org/bare")
+    f.score(
+        db,
+        ana,
+        bare,
+        world.ironji,
+        50,
+        reason="Scored without the model.",
+        fit_word="possible",
+        reasons=["Scored without the model."],
+    )
+    db.commit()
+    out = MemoryTransport()
+    assert send_digest(db, ana, settings, out, MONDAY).status == "sent"
+    [mail] = out.outbox
+    assert "RBC. It mentions cold chain, which this profile lists." in mail.text
+    assert "MINAGRI.\n" in mail.text
+    assert "without the model" not in mail.text
+    assert "without the model" not in mail.html
+
+
+def test_no_name_greets_without_one(db, ana, world, settings):
+    ana.name = None
+    item(db, ana, world, "Cold chain tender", 80)
+    db.commit()
+    out = MemoryTransport()
+    assert send_digest(db, ana, settings, out, MONDAY).status == "sent"
+    [mail] = out.outbox
+    assert mail.text.startswith("Good morning\n")
+    assert ">Good morning</td>" in mail.html
+    assert "there" not in mail.text.split("\n")[0]
 
 
 def test_wording_helpers():
@@ -335,7 +418,7 @@ def test_user_without_a_setting_gets_weekly_to_account_email(db, settings):
     out = MemoryTransport()
     assert send_digest(db, u, settings, out, MONDAY).status == "sent"
     assert out.outbox[0].to == "carol@example.com"
-    assert "Good morning, there" in out.outbox[0].text
+    assert out.outbox[0].text.startswith("Good morning\n")  # no name set
 
 
 def test_best_profile_is_chosen_among_active_profiles(db, ana, world, settings):

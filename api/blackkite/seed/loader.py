@@ -1,6 +1,7 @@
 """Idempotent loaders behind `bk bootstrap` and `bk seed-sources`. Callers commit."""
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from importlib.resources import files
 from typing import Any
 
@@ -52,8 +53,15 @@ def bootstrap(db: DB, email: str | None) -> BootstrapResult:
         if entry["name"] in existing:
             continue
         data = {k: v for k, v in entry.items() if k not in PROFILE_COLUMNS}
+        # Spec 5: a new user's profiles are backfilled, by the worker.
         db.add(
-            Profile(user_id=user.id, name=entry["name"], type=entry["type"], data=data)
+            Profile(
+                user_id=user.id,
+                name=entry["name"],
+                type=entry["type"],
+                data=data,
+                backfill_requested_at=datetime.now(UTC),
+            )
         )
         result.created_profiles.append(entry["name"])
 

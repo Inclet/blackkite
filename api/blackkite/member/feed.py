@@ -165,8 +165,7 @@ def set_state(
         return None
     uo = _user_opportunity(db, user, opp)
     uo.state = body.state
-    reason = (body.dismiss_reason or "").strip() or None
-    uo.dismiss_reason = reason if body.state == "dismissed" else None
+    uo.dismiss_reason = body.dismiss_reason if body.state == "dismissed" else None
     db.flush()
     return uo
 
@@ -187,7 +186,7 @@ def state_out(uo: UserOpportunity) -> S.UserStateOut:
     return S.UserStateOut(
         opportunity_id=str(uo.opportunity_id),
         state=uo.state,
-        dismiss_reason=uo.dismiss_reason,
+        dismiss_reason=S.dismiss_reason_out(uo.dismiss_reason),
         note=uo.note,
         updated_at=uo.updated_at,
     )

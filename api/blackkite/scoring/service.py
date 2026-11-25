@@ -18,7 +18,9 @@ is never read or written here.
 
 Cost guard: at most ``max_llm_calls_per_run`` model calls per entry-point call. A
 stored model judgement is reused, with the rule components recomputed, while the
-profile has not changed since (``profile.updated_at``), the item's text has not
+profile's scoring-relevant content is the same (``profile_hash``: its type and
+data, streams included; a rename or (de)activation does not count; rows written
+before the hash existed fall back to ``profile.updated_at``), the item's text has not
 changed since (its creation, its last extraction, its newest document; for private
 items its ``updated_at``), and the model and prompt version are the same. A row
 whose content would not change is not rewritten.
@@ -34,6 +36,8 @@ user, so another user's private items are never scored for anyone else.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import uuid
 from collections import defaultdict
@@ -282,6 +286,18 @@ def _candidates(
 # --- reuse -----------------------------------------------------------------------
 
 
+def profile_hash(profile: Profile) -> str:
+    """Hash of what scoring reads from a profile: its type and data (streams
+    included). The name, version, active flag and timestamps are left out."""
+    payload = json.dumps(
+        {"type": profile.type, "data": profile.data or {}},
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
 def _parse_ts(value: Any) -> datetime | None:
     if not isinstance(value, str):
         return None
@@ -322,7 +338,13 @@ def _reusable(
     if llm is not None and b["model"] != llm.model:
         return None
     scored = _parse_ts(b.get("scored_at"))
-    if scored is None or scored < profile.updated_at:
+    if scored is None:
+        return None
+    stored_hash = row.profile_hash
+    if stored_hash is not None:
+        if stored_hash != profile_hash(profile):
+            return None
+    elif scored < profile.updated_at:  # written before profile_hash existed
         return None
     if scored < _content_time(opp, newest_doc):
         return None
@@ -569,8 +591,10 @@ def score_pair(
     )
 
 
-def _same(row: UserOpportunityScore, scored: _Scored) -> bool:
+def _same(row: UserOpportunityScore, scored: _Scored, digest: str) -> bool:
     if row.score != scored.score or row.score_reason != scored.reason:
+        return False
+    if row.profile_hash != digest:
         return False
     old = dict(row.score_breakdown or {})
     new = dict(scored.breakdown)
@@ -580,7 +604,11 @@ def _same(row: UserOpportunityScore, scored: _Scored) -> bool:
 
 
 def _upsert(
-    session: Session, profile: Profile, opp_id: uuid.UUID, scored: _Scored
+    session: Session,
+    profile: Profile,
+    opp_id: uuid.UUID,
+    scored: _Scored,
+    digest: str,
 ) -> None:
     stmt = pg_insert(UserOpportunityScore).values(
         user_id=profile.user_id,
@@ -589,6 +617,7 @@ def _upsert(
         score=scored.score,
         score_reason=scored.reason,
         score_breakdown=scored.breakdown,
+        profile_hash=digest,
     )
     stmt = stmt.on_conflict_do_update(
         index_elements=["user_id", "opportunity_id", "profile_id"],
@@ -596,6 +625,7 @@ def _upsert(
             "score": stmt.excluded.score,
             "score_reason": stmt.excluded.score_reason,
             "score_breakdown": stmt.excluded.score_breakdown,
+            "profile_hash": stmt.excluded.profile_hash,
             "updated_at": sa.func.now(),
         },
     )
@@ -627,6 +657,7 @@ def _score_profile(
     sources = _carrying_sources(session, user, ids)
     docs, newest = _documents(session, ids)
     existing = _existing(session, profile, ids)
+    digest = profile_hash(profile)
     for opp, sim in cands:
         run.stats.pairs += 1
         row = existing.get(opp.id)
@@ -640,10 +671,10 @@ def _score_profile(
             newest_doc=newest.get(opp.id),
             run=run,
         )
-        if row is not None and not scored.called_model and _same(row, scored):
+        if row is not None and not scored.called_model and _same(row, scored, digest):
             run.stats.unchanged += 1
             continue
-        _upsert(session, profile, opp.id, scored)
+        _upsert(session, profile, opp.id, scored, digest)
         run.stats.written += 1
     session.flush()
 
@@ -655,6 +686,21 @@ def _active_profiles(session: Session, user_id: uuid.UUID) -> list[Profile]:
             .where(Profile.user_id == user_id, Profile.active.is_(True))
             .order_by(Profile.created_at, Profile.name)
         )
+    )
+
+
+def mark_scored(session: Session, profile: Profile) -> None:
+    """Record that ``profile`` is fully scored at its current version, unless it
+    was edited meanwhile. Leaves ``updated_at`` alone (not an edit)."""
+    session.execute(
+        sa.update(Profile)
+        .where(
+            Profile.id == profile.id,
+            Profile.user_id == profile.user_id,
+            Profile.version == profile.version,
+        )
+        .values(scored_version=profile.version, updated_at=Profile.updated_at)
+        .execution_options(synchronize_session=False)
     )
 
 
@@ -686,6 +732,7 @@ def score_user(
         _score_profile(
             session, user, profile, run, statuses=OPEN_STATUSES, opportunity_ids=None
         )
+        mark_scored(session, profile)
     return run.stats
 
 
@@ -708,6 +755,7 @@ def backfill_profile(
     _score_profile(
         session, user, profile, run, statuses=OPEN_STATUSES, opportunity_ids=None
     )
+    mark_scored(session, profile)
     return run.stats
 
 

@@ -105,6 +105,7 @@ def breakdown(
     hard_filtered: str | None = None,
     fit_confidence: float = 0.8,
     eligibility_confidence: float = 0.8,
+    provisional: bool = False,
 ) -> dict[str, Any]:
     return {
         "version": 1,
@@ -120,7 +121,7 @@ def breakdown(
         "fit_word": fit_word,
         "reasons": reasons or [],
         "flags": flags or [],
-        "provisional": False,
+        "provisional": provisional,
         "hard_filtered": hard_filtered,
         "model": "claude-haiku-5-5",
         "prompt_version": "score-v1",
