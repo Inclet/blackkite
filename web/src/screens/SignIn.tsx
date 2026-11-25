@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { useLocation } from 'react-router';
 import { api, ApiError } from '../api/client';
 import { Button } from '../components/Button/Button';
 import { Field } from '../components/Field/Field';
@@ -30,6 +31,8 @@ export function SignIn() {
   const [email, setEmail] = useState('');
   const [fieldError, setFieldError] = useState<string | undefined>();
   const [status, setStatus] = useState<Status>('idle');
+  // A line from the screen that sent us here (e.g. "Your account is deleted.").
+  const notice = (useLocation().state as { notice?: unknown } | null)?.notice;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -59,6 +62,7 @@ export function SignIn() {
       <div className={styles.panel}>
         <Wordmark size={22} />
         <h1 className={styles.h1}>{SIGN_IN.heading}</h1>
+        {typeof notice === 'string' && <p className={styles.body}>{notice}</p>}
         {status !== 'sent' && (
           <form className={styles.panel} onSubmit={submit} noValidate>
             <p className={styles.body}>{SIGN_IN.body}</p>

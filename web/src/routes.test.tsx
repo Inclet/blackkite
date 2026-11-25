@@ -40,7 +40,7 @@ test('?fixture=reference renders the feed', () => {
   expect(screen.getByRole('heading', { level: 1, name: 'Good afternoon, Clet' })).toBeInTheDocument();
 });
 
-test.each(['/calendar', '/sources', '/more'])('%s is a not-designed placeholder', (url) => {
+test.each(['/calendar', '/sources'])('%s is a not-designed placeholder', (url) => {
   renderAt(url);
   expect(screen.getByText(/not designed yet/)).toBeInTheDocument();
 });
