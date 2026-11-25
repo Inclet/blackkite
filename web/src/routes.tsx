@@ -5,6 +5,7 @@ import { Placeholder } from './screens/Placeholder';
 import { AppShell } from './screens/shell/AppShell';
 import { SignIn } from './screens/SignIn';
 import { Shortlist } from './screens/shortlist/Shortlist';
+import { Unsubscribe } from './screens/Unsubscribe';
 import { ProfileEditor } from './screens/profiles/ProfileEditor';
 import { Profiles } from './screens/profiles/Profiles';
 import { Account } from './screens/settings/Account';
@@ -27,6 +28,8 @@ export const routes: RouteObject[] = [
   },
   { path: '/auth/confirm', element: <AuthConfirm /> },
   { path: '/sign-in', element: <SignIn /> },
+  // No session needed (decision 43): the signed token in the fragment is the authority.
+  { path: '/unsubscribe', element: <Unsubscribe /> },
   { path: '/shortlist', element: <Shortlist /> },
   { path: '/profiles', element: <Profiles /> },
   { path: '/profiles/new/:type', element: <ProfileEditor /> },

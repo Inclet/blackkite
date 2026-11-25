@@ -4,12 +4,14 @@ import { open, stubSession } from './helpers';
 // --bk-focus-ring: 0 0 0 2px #FFFFFF, 0 0 0 4px #2B2A28, as getComputedStyle serialises it.
 const FOCUS_RING = 'rgb(255, 255, 255) 0px 0px 0px 2px, rgb(43, 42, 40) 0px 0px 0px 4px';
 
-// The last number is the fewest Tab stops the page must have (the confirm page has one button).
+// The last number is the fewest Tab stops the page must have (the confirm and unsubscribe pages have one control).
 for (const [name, size, route, minStops] of [
   ['desktop feed', { width: 1440, height: 900 }, '/?fixture=reference', 4],
   ['phone feed', { width: 390, height: 844 }, '/?fixture=reference', 4],
   ['phone opportunity', { width: 390, height: 844 }, '/o/wfp-logistics?fixture=reference', 4],
   ['sign-in confirm', { width: 390, height: 844 }, '/auth/confirm#token=abc', 1],
+  ['unsubscribe', { width: 390, height: 844 }, '/unsubscribe#token=digest-abc', 1],
+  ['unsubscribe, no token', { width: 1440, height: 900 }, '/unsubscribe', 1],
   ['live desktop feed', { width: 1440, height: 900 }, '/', 8],
   ['live phone opportunity', { width: 390, height: 844 }, '/o/wfp-logistics', 6],
   ['shortlist', { width: 1440, height: 900 }, '/shortlist', 5],
