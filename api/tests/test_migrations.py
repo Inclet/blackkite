@@ -1,5 +1,6 @@
 """Migrations: upgrade head -> downgrade base -> upgrade head on an empty DB, no drift."""
 
+import pytest
 import sqlalchemy as sa
 from alembic import command
 
@@ -215,4 +216,30 @@ def test_0003_keeps_most_progressed_state_and_orders_notes(make_database):
     ) == [(2,)]
     assert _exec(url, "SELECT count(*) FROM user_opportunity_score") == [(9,)]
     command.downgrade(cfg, "0002")
+    command.upgrade(cfg, "head")
+
+
+def test_0005_raises_sub_second_rate_limits_to_one(make_database):
+    url = make_database("bk_migr")
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0004")
+    _exec(
+        url,
+        """INSERT INTO source (name, home_url, streams, kind, collector_type, rate_limit)
+           VALUES ('fast', 'https://a.example.org', '{tender}', 'original', 'rss', 0.2),
+                  ('one', 'https://b.example.org', '{tender}', 'original', 'rss', 1),
+                  ('slow', 'https://c.example.org', '{tender}', 'original', 'rss', 7.5),
+                  ('unset', 'https://d.example.org', '{tender}', 'original', 'rss', NULL)""",
+    )
+    command.upgrade(cfg, "0005")
+    rows = _exec(url, "SELECT name, rate_limit FROM source ORDER BY name")
+    assert rows == [("fast", 1.0), ("one", 1.0), ("slow", 7.5), ("unset", None)]
+    with pytest.raises(sa.exc.IntegrityError):
+        _exec(url, "UPDATE source SET rate_limit = 0.5 WHERE name = 'slow'")
+
+    # The downgrade restores the old check only; raised values stay at 1.
+    command.downgrade(cfg, "0004")
+    rows = _exec(url, "SELECT name, rate_limit FROM source ORDER BY name")
+    assert rows == [("fast", 1.0), ("one", 1.0), ("slow", 7.5), ("unset", None)]
+    _exec(url, "UPDATE source SET rate_limit = 0.5 WHERE name = 'slow'")
     command.upgrade(cfg, "head")

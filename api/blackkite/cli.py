@@ -171,18 +171,29 @@ def list_sources() -> None:
         )
 
 
+def _refuse_retired(name: str) -> None:
+    typer.echo(f"error: {name} is retired; move it back to testing first", err=True)
+    raise typer.Exit(3)
+
+
 @app.command("run-source")
 def run_source_cmd(
     source: str = typer.Argument(..., help="Source name or id."),
 ) -> None:
-    """Run one source now (any status), recording a source_run row."""
+    """Run one source now (any status but retired), recording a source_run row.
+
+    Exit codes: 0 ok, 1 run failed or no such source, 2 another worker holds it,
+    3 the source is retired (nothing is run or recorded)."""
     from blackkite.db.session import get_sessionmaker
     from blackkite.worker.runner import run_source_locked
 
     settings = get_settings()
     sessions = get_sessionmaker()
     with sessions() as db:
-        sid = _find_source(db, source).id
+        found = _find_source(db, source)
+        sid, name, status = found.id, found.name, found.status
+    if status == "retired":
+        _refuse_retired(name)
     client = _fetch_client(settings, sessions, persistent_cache=True)
     try:
         out = run_source_locked(
@@ -190,6 +201,8 @@ def run_source_cmd(
         )
     finally:
         client.close()
+    if out.status == "refused_retired":
+        _refuse_retired(out.name)
     if out.status == "skipped_locked":
         typer.echo(
             f"{out.name}: another worker is running it; try again later", err=True

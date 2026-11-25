@@ -8,6 +8,9 @@ Status graph (spec 4.1 ``suggested -> testing -> active -> paused / retired``)::
     paused    -> active* | testing | retired
     retired   -> testing
 
+    Editing collector_type or config of an active source moves it back to
+    testing (routes/sources.py edit_source); other edits keep the status.
+
     * -> active only after at least PROMOTE_MIN_RUNS (2) runs that succeeded AND
       found at least one item, started after the last config change (spec 4.3 step 4).
 

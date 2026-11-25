@@ -872,6 +872,152 @@ def test_shortened_deadline_is_taken_and_flagged(db, make_source, deps):
     assert opp.deadline_at.date().isoformat() == "2026-12-10"
     assert "deadline_changed" in codes(opp)
     assert len(_source_deadline_events(db, opp)) == 1
+    assert "deadline_changed_suspect" not in codes(opp)
+    assert opp.status == "open"
+
+
+def _deadline_at_events(db, opp) -> list[ChangeEvent]:
+    return list(
+        db.scalars(
+            sa.select(ChangeEvent).where(
+                ChangeEvent.opportunity_id == opp.id,
+                ChangeEvent.field == "deadline_at",
+            )
+        )
+    )
+
+
+def test_listed_deadline_moved_to_the_past_is_not_believed(db, make_source, deps):
+    orig = make_source("original", name="Example e-procurement")
+    url = "https://orig.example.org/t/past"
+    ingest(db, orig, [_listed(orig, url, "14 Dec 2026")], deps())
+    [opp] = opps(db)
+    assert opp.status == "open"
+
+    later = NOW + timedelta(days=1)
+    for _ in range(2):  # seen twice: one flag, one history entry
+        ingest(db, orig, [_listed(orig, url, "20 Nov 2026")], deps(), now=later)
+    db.refresh(opp)
+    assert opp.deadline_at.date().isoformat() == "2026-12-14"
+    assert opp.status == "open"
+    assert opp.needs_review is True
+    [reason] = [
+        r for r in opp.evidence["_review"] if r["code"] == "deadline_changed_suspect"
+    ]
+    assert reason["detail"].startswith(
+        "listed deadline moved to a past date at Example e-procurement: "
+        "2026-12-14 -> 2026-11-20"
+    )
+    assert "deadline_changed" not in codes(opp)
+    entry = opp.evidence["_sources"][str(orig.id)]
+    assert entry["deadline_listed"]["value"].startswith("2026-12-14")
+    [suspect] = entry["deadline_history"]
+    assert suspect["kind"] == "listed_suspect"
+    assert suspect["value"].startswith("2026-11-20")
+    assert _deadline_at_events(db, opp) == []
+    assert _source_deadline_events(db, opp) == []
+    assert not db.scalars(
+        sa.select(ChangeEvent).where(ChangeEvent.field == "status")
+    ).all()
+
+    # A later genuine extension is still taken.
+    ingest(db, orig, [_listed(orig, url, "21 Dec 2026")], deps(), now=later)
+    db.refresh(opp)
+    assert opp.deadline_at.date().isoformat() == "2026-12-21"
+    assert "deadline_changed" in codes(opp)
+
+
+def test_listed_deadline_moved_before_publication_is_not_believed(
+    db, make_source, deps
+):
+    orig = make_source("original", name="Example e-procurement")
+    url = "https://orig.example.org/t/pub"
+    ingest(db, orig, [_listed(orig, url, "14 Dec 2026")], deps())
+    [opp] = opps(db)
+    opp.published_at = datetime(2026, 12, 1, tzinfo=UTC)
+    db.flush()
+
+    ingest(db, orig, [_listed(orig, url, "28 Nov 2026")], deps())
+    db.refresh(opp)
+    assert opp.deadline_at.date().isoformat() == "2026-12-14"
+    assert opp.status == "open"
+    [reason] = [
+        r for r in opp.evidence["_review"] if r["code"] == "deadline_changed_suspect"
+    ]
+    assert (
+        "moved to a date before publication at Example e-procurement"
+        in (reason["detail"])
+    )
+    assert "2026-12-14 -> 2026-11-28" in reason["detail"]
+    assert _deadline_at_events(db, opp) == []
+    assert _source_deadline_events(db, opp) == []
+
+
+def test_same_day_with_a_time_added_is_taken_silently(db, make_source, deps):
+    pub = make_source("publisher")
+    url = "https://p.example.org/time"
+    ingest(db, pub, [_listed(pub, url, "14 December 2026")], deps())
+    [opp] = opps(db)
+    before = set(codes(opp))
+
+    later = NOW + timedelta(days=1)
+    ingest(db, pub, [_listed(pub, url, "14 December 2026 17:00")], deps(), now=later)
+    db.refresh(opp)
+    assert opp.deadline_at == datetime(2026, 12, 14, 15, tzinfo=UTC)  # 17:00 CAT
+    assert codes(opp) == before
+    assert "deadline_changed" not in codes(opp)
+    assert _source_deadline_events(db, opp) == []
+    [ce] = _deadline_at_events(db, opp)
+    assert ce.old.startswith("2026-12-14T21:59:59") and ce.new.startswith(
+        "2026-12-14T15:00"
+    )
+
+    # The date-only listing again does not undo the more precise value.
+    ingest(db, pub, [_listed(pub, url, "14 December 2026")], deps(), now=later)
+    db.refresh(opp)
+    assert opp.deadline_at == datetime(2026, 12, 14, 15, tzinfo=UTC)
+    assert len(_deadline_at_events(db, opp)) == 1
+
+    # The time changed on the same day: newer value, still silent.
+    ingest(db, pub, [_listed(pub, url, "14 December 2026 12:00")], deps(), now=later)
+    db.refresh(opp)
+    assert opp.deadline_at == datetime(2026, 12, 14, 10, tzinfo=UTC)
+    assert "deadline_changed" not in codes(opp)
+    assert _source_deadline_events(db, opp) == []
+    assert len(_deadline_at_events(db, opp)) == 2
+
+
+def test_same_day_timed_listing_refines_a_date_only_extracted_deadline(
+    db, make_source, deps, embedder
+):
+    orig = make_source("original")
+    url = "https://o.example.org/t/time"
+    text = "Bids close on 14 December 2026."
+    fetcher = FakeFetcher({url: ("text/html", f"<p>{text}</p>".encode())})
+    ingest(
+        db,
+        orig,
+        [_listed(orig, url, "14 Dec 2026")],
+        deps(
+            llm=FakeLLM(_extract_reply("2026-12-14", text)),
+            embedder=embedder,
+            fetcher=fetcher,
+        ),
+    )
+    [opp] = opps(db)
+    assert opp.needs_review is False, opp.evidence["_review"]
+    ingest(
+        db,
+        orig,
+        [_listed(orig, url, "14 Dec 2026 10:00")],
+        deps(),
+        now=NOW + timedelta(days=1),
+    )
+    db.refresh(opp)
+    assert opp.deadline_at == datetime(2026, 12, 14, 8, tzinfo=UTC)
+    assert opp.needs_review is False, opp.evidence["_review"]
+    assert _source_deadline_events(db, opp) == []
+    assert len(_deadline_at_events(db, opp)) == 1
 
 
 def test_listed_deadline_without_a_year_does_not_override_extracted(

@@ -18,6 +18,7 @@ from blackkite.db.models import (
     Source,
     SourceRun,
     SourceSuggestion,
+    User,
     UserSourceMute,
 )
 from blackkite.pipeline.visibility import visible_source_link, visible_to
@@ -744,6 +745,79 @@ def test_kind_change_recomputes_verification(admin, db):
     assert r.status_code == 200, r.text
     db.expire_all()
     assert o.verification == "unverified"
+
+
+def test_config_edit_on_an_active_source_sends_it_back_to_testing(admin, member, db):
+    src = add_source(db, "Live", "active", kind="original")
+    o = _carried_by(db, "cold rooms live", src, original=src)
+    service.refresh_verification_for_source(db, src.id)
+    db.commit()
+    member_user = db.scalar(sa.select(User).where(User.role == "member"))
+
+    def member_sees():
+        db.expire_all()
+        q = sa.select(Opportunity.id).where(visible_to(member_user.id, is_admin=False))
+        return o.id in set(db.scalars(q))
+
+    assert member_sees()
+
+    # Other fields leave the status alone.
+    for change in (
+        {"name": "Live renamed"},
+        {"publisher": "Example Authority"},
+        {"schedule": "0 5 * * *"},
+        {"rate_limit": 9},
+        {"access_note": "rechecked from the host"},
+        {"config": HTML_CONFIG},  # same config: not a change
+    ):
+        r = admin.patch(f"/admin/sources/{src.id}", json=change)
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "active", change
+
+    r = admin.patch(
+        f"/admin/sources/{src.id}", json={"config": {**HTML_CONFIG, "max_pages": 4}}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "testing"
+    assert r.json()["promotion_runs"] == 0
+    db.expire_all()
+    assert o.verification == "unverified"  # nothing member-visible carries it
+    assert not member_sees()
+
+    # Promotion needs two good runs since the config change again.
+    assert (
+        admin.post(f"/admin/sources/{src.id}/status", json={"status": "active"})
+    ).status_code == 409
+
+
+def test_collector_type_edit_on_an_active_source_keeps_items_carried_elsewhere(
+    admin, member, db
+):
+    src = add_source(db, "Feed", "active", kind="original")
+    other = add_source(db, "Board2", "paused", kind="publisher")
+    o = _carried_by(db, "trucks", src, other, original=src)
+    service.refresh_verification_for_source(db, src.id)
+    db.commit()
+    member_user = db.scalar(sa.select(User).where(User.role == "member"))
+    r = admin.patch(
+        f"/admin/sources/{src.id}",
+        json={
+            "collector_type": "rss",
+            "config": {"feed_url": "https://feed.example.org/rss"},
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "testing"
+    db.expire_all()
+    assert o.verification == "unverified"  # only the paused publisher counts
+    q = sa.select(Opportunity.id).where(visible_to(member_user.id, is_admin=False))
+    assert o.id in set(db.scalars(q))
+
+    # A paused or testing source keeps its status on a config edit.
+    r = admin.patch(
+        f"/admin/sources/{other.id}", json={"config": {**HTML_CONFIG, "max_pages": 5}}
+    )
+    assert r.json()["status"] == "paused"
 
 
 # --- role checks on every admin source and suggestion route ---------------------------------

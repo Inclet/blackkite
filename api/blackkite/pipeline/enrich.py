@@ -9,9 +9,12 @@ Downloaded files are kept under ``<data_dir>/documents`` for extraction and the
 owner's reference. They are never served to members (spec 10).
 
 PDF text extraction runs in a separate process with a wall-clock limit
-(``BK_PDF_TEXT_TIMEOUT_SECONDS``, default 20 s): a malformed or hostile PDF that
-makes the parser spin is killed and recorded as this item's enrich error, so it
-cannot hold the run (and its open transaction) for long.
+(``BK_PDF_TEXT_TIMEOUT_SECONDS``, default 20 s) and an address-space limit
+(``BK_PDF_TEXT_MAX_MEMORY_MB``, default 512): a malformed or hostile PDF that makes
+the parser spin, crash or balloon is stopped and recorded as this item's enrich
+error, so it cannot hold the run (and its open transaction) for long or take the
+worker's memory. This is a crash/timeout/memory boundary, not a security sandbox:
+the child runs as the same user with the same file and network access.
 
 Links on a detail page are resolved against the page's final URL (after
 redirects) when the fetcher reports it: ``get`` may return ``(content_type, body)``
@@ -24,6 +27,7 @@ import hashlib
 import io
 import logging
 import multiprocessing
+import resource
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
@@ -37,6 +41,7 @@ log = logging.getLogger("blackkite.pipeline.enrich")
 MAX_PDF_PAGES = 100
 MAX_TEXT_CHARS = 500_000
 DEFAULT_PDF_TIMEOUT = 20.0
+DEFAULT_PDF_MEMORY_MB = 512
 
 
 class Fetcher(Protocol):
@@ -150,24 +155,43 @@ def pdf_to_text(content: bytes) -> str:
     return "\n".join(t.strip() for t in texts if t.strip())[:MAX_TEXT_CHARS]
 
 
-def _limited_child(conn, func, arg) -> None:  # pragma: no cover - child process
+def _limited_child(conn, func, arg, memory_mb, what) -> None:  # pragma: no cover
+    # Runs in the child process.
     try:
-        conn.send(("ok", func(arg)))
+        if memory_mb is not None:
+            limit = int(memory_mb) * 1024 * 1024
+            resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+        result = func(arg)
+    except MemoryError:
+        conn.send(("error", f"{what} hit the memory limit ({memory_mb} MB); stopped"))
     except Exception as exc:  # noqa: BLE001 - malformed files raise anything
         conn.send(("error", f"{type(exc).__name__}: {exc}"))
+    else:
+        conn.send(("ok", result))
     finally:
         conn.close()
 
 
-def run_limited(func, arg, timeout: float, what: str = "PDF text extraction"):
-    """``func(arg)`` in a child process, killed after ``timeout`` seconds.
+def run_limited(
+    func,
+    arg,
+    timeout: float,
+    what: str = "PDF text extraction",
+    memory_mb: int | None = DEFAULT_PDF_MEMORY_MB,
+):
+    """``func(arg)`` in a child process, killed after ``timeout`` seconds, with its
+    address space capped at ``memory_mb`` (RLIMIT_AS; None for no cap).
 
-    The forkserver start method is used so the child never inherits the worker's
-    threads or database connections. ``func`` must be importable (module level).
-    Raises PdfTimeout, or ValueError when ``func`` failed or the child died."""
+    A crash/timeout/memory boundary for parsers of untrusted files, not a security
+    sandbox. The forkserver start method is used so the child never inherits the
+    worker's threads or database connections. ``func`` must be importable (module
+    level). Raises PdfTimeout, or ValueError when ``func`` failed, ran out of
+    memory or the child died."""
     ctx = multiprocessing.get_context("forkserver")
     recv, send = ctx.Pipe(duplex=False)
-    proc = ctx.Process(target=_limited_child, args=(send, func, arg), daemon=True)
+    proc = ctx.Process(
+        target=_limited_child, args=(send, func, arg, memory_mb, what), daemon=True
+    )
     proc.start()
     send.close()
     try:
@@ -187,8 +211,12 @@ def run_limited(func, arg, timeout: float, what: str = "PDF text extraction"):
     return value
 
 
-def pdf_to_text_limited(content: bytes, timeout: float = DEFAULT_PDF_TIMEOUT) -> str:
-    return run_limited(pdf_to_text, content, timeout)
+def pdf_to_text_limited(
+    content: bytes,
+    timeout: float = DEFAULT_PDF_TIMEOUT,
+    memory_mb: int = DEFAULT_PDF_MEMORY_MB,
+) -> str:
+    return run_limited(pdf_to_text, content, timeout, memory_mb=memory_mb)
 
 
 def is_pdf(content_type: str, content: bytes) -> bool:
@@ -241,6 +269,7 @@ def _fetch(
     max_bytes: int,
     errors: list[str],
     pdf_timeout: float,
+    pdf_memory_mb: int,
 ) -> tuple[FetchedDocument, list[tuple[str, str | None]], str] | None:
     """(document, links on it, final URL) or None."""
     if urlsplit(url).scheme not in ("http", "https"):
@@ -260,7 +289,10 @@ def _fetch(
         return None
     try:
         if is_pdf(content_type, content):
-            text, links = pdf_to_text_limited(content, pdf_timeout), []
+            text, links = (
+                pdf_to_text_limited(content, pdf_timeout, memory_mb=pdf_memory_mb),
+                [],
+            )
             suffix = ".pdf"
         elif is_html(content_type, content):
             text, links = html_to_text(content)
@@ -283,6 +315,7 @@ def enrich(
     max_bytes: int,
     max_attachments: int,
     pdf_timeout: float = DEFAULT_PDF_TIMEOUT,
+    pdf_memory_mb: int = DEFAULT_PDF_MEMORY_MB,
 ) -> Enrichment:
     """Fetch ``url`` (the detail page) and up to ``max_attachments`` linked PDFs."""
     out = Enrichment()
@@ -294,6 +327,7 @@ def enrich(
         "max_bytes": max_bytes,
         "errors": out.errors,
         "pdf_timeout": pdf_timeout,
+        "pdf_memory_mb": pdf_memory_mb,
     }
     got = _fetch(fetcher, url, **kw)
     if got is None:

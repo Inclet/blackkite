@@ -1,6 +1,8 @@
 """source.rate_limit: at least 1 second between requests to one host.
 
-Existing values under 1 s are raised to 1 s before the check is added.
+Existing values under 1 s are raised to 1 s before the check is added. That data
+change is one way: the downgrade only restores the old check and does not put the
+old sub-second values back.
 
 Revision ID: 0005
 Revises: 0004
@@ -28,6 +30,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # One-way data change: rate_limit values raised to 1 by upgrade() stay at 1.
     op.drop_constraint(op.f("ck_source_rate_limit_min_1s"), "source", type_="check")
     op.create_check_constraint(
         op.f("ck_source_rate_limit_positive"),

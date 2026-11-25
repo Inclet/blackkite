@@ -101,7 +101,8 @@ ACCEPT_ENCODING = "gzip, deflate"
 class _BoundedBody:
     """Collects a response body, decompressing gzip/deflate in steps of at most
     ``max_bytes + 1`` output bytes, and raises ResponseTooLarge as soon as either
-    the raw or the decoded size passes ``max_bytes``."""
+    the raw or the decoded size passes ``max_bytes``. Multi-member gzip bodies are
+    decoded member by member under the same limit."""
 
     def __init__(self, url: str, max_bytes: int, encoding: str | None) -> None:
         self.url = url
@@ -128,6 +129,13 @@ class _BoundedBody:
     def _decompress(self, data: bytes, first: bool) -> None:
         assert self.decoder is not None
         while data:
+            if self.decoder.eof:
+                # A gzip body may hold several members back to back (RFC 1952
+                # 2.2); each one starts a new decompressor. Trailing zero padding
+                # is ignored. Anything after the end of a deflate stream is too.
+                if self.encoding not in ("gzip", "x-gzip") or not data.strip(b"\0"):
+                    return
+                self.decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
             try:
                 out = self.decoder.decompress(data, self.max_bytes - self.size + 1)
             except zlib.error as e:
@@ -139,6 +147,8 @@ class _BoundedBody:
                 raise FetchError(f"bad compressed body from {self.url}: {e}") from None
             self._add(out)
             data = self.decoder.unconsumed_tail
+            if not data and self.decoder.eof:
+                data = self.decoder.unused_data
 
     def feed(self, chunk: bytes) -> None:
         first = self.raw_size == 0

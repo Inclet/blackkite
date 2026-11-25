@@ -239,7 +239,9 @@ def run_source_locked(
 ) -> RunOutcome:
     """Run one source under its advisory lock. With ``default_schedule`` set, the
     source is re-checked for due-ness inside the lock (another worker may have just
-    run it); without it the run is forced (CLI ``bk run-source``)."""
+    run it); without it the run is forced (CLI ``bk run-source``), except that a
+    ``retired`` source is never run: the outcome is ``refused_retired`` and no
+    source_run row is written."""
     with sessions() as s:
         source = s.get(Source, source_id)
         if source is None:
@@ -256,6 +258,10 @@ def run_source_locked(
                     source, last_started(s, source_id), now(), default_schedule
                 ):
                     return RunOutcome(source_id, source.name, "skipped_not_due")
+            else:
+                s.refresh(source)  # its status may have changed before the lock
+                if source.status == "retired":
+                    return RunOutcome(source_id, source.name, "refused_retired")
             run = run_source(
                 s,
                 source,

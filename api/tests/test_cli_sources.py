@@ -162,6 +162,24 @@ def test_run_source_failure_exit_code(bk, db):
     assert db.scalars(sa.select(SourceRun.status)).all() == ["failed"]
 
 
+def test_run_source_refuses_a_retired_source(bk, db):
+    add(db, "Old notices", status="retired")
+    r = bk("run-source", "Old notices")
+    assert r.exit_code == 3, r.output
+    assert "Old notices is retired; move it back to testing first" in r.output
+    assert db.scalar(sa.select(sa.func.count()).select_from(SourceRun)) == 0
+    assert bk.web.paths(H) == []  # nothing fetched
+
+
+def test_forced_run_refuses_a_source_retired_before_the_lock(db, Sessions):
+    from blackkite.worker.runner import run_source_locked
+
+    s = add(db, "Gone", status="retired")
+    out = run_source_locked(Sessions, s.id, client=None)
+    assert out.status == "refused_retired"
+    assert db.scalar(sa.select(sa.func.count()).select_from(SourceRun)) == 0
+
+
 def test_unknown_source(bk):
     r = bk("run-source", "nope")
     assert r.exit_code == 1 and "no source 'nope'" in r.output
