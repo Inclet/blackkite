@@ -31,3 +31,42 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* Live data only, not on any board (design review): progress chips and the note. */
+.live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-space-3);
+  padding-top: var(--bk-space-1);
+  border-top: 1px solid var(--bk-stone-200);
+}
+
+.liveLabel {
+  padding-top: var(--bk-space-3);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.progress {
+  display: flex;
+  gap: var(--bk-space-2);
+  flex-wrap: wrap;
+}
+
+.note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-space-3);
+}
+
+.noteRow {
+  display: flex;
+  align-items: center;
+  gap: var(--bk-space-3);
+  flex-wrap: wrap;
+}
+
+.noteStatus {
+  font-size: 13px;
+  color: var(--bk-slate);
+}

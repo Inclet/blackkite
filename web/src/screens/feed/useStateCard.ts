@@ -17,7 +17,7 @@ const ACTION_TARGET: Partial<Record<StateKind, string>> = {
 export function useStateCard(model: FeedModel): StateCardProps | null {
   const navigate = useNavigate();
   const { search } = useLocation();
-  const card = model.stateCard ?? (model.items.length === 0 ? (model.fixture.styleguide.states.find((s) => s.kind === 'nothing-new') ?? null) : null);
+  const card = model.stateCard ?? (model.items.length === 0 ? (model.states.find((s) => s.kind === 'nothing-new') ?? null) : null);
   if (!card?.action) return card;
   const target = ACTION_TARGET[card.kind];
   if (!target) return card;
