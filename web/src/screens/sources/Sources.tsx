@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { ApiError } from '../../api/client';
+import { ApiError, refusalOf } from '../../api/client';
 import { sourcesApi, type MemberSource, type Suggestion } from '../../api/sources';
 import { useResource } from '../../api/useResource';
 import { Button } from '../../components/Button/Button';
@@ -39,6 +39,8 @@ export const SOURCES_COPY = {
   urlInvalid: 'Use the full address, starting with https:// or http://.',
   refused: 'Blackkite did not accept that address. Check it is a public web address.',
   sent: 'Thanks. An admin will look at it; you can follow it below.',
+  /** 429 without a detail; the API sends its own sentence ("You can suggest up to 10 sources a day. …"). */
+  tooMany: 'You have sent many suggestions today. Please try again tomorrow.',
   yours: 'Your suggestions',
   sentOn: (when: string) => `Sent ${when}`,
 } as const;
@@ -131,7 +133,7 @@ function SourceRow({ source: s, onToggle }: { source: MemberSource; onToggle: (m
   );
 }
 
-type SendStatus = 'idle' | 'sending' | 'sent' | 'refused' | 'unreachable';
+type SendStatus = 'idle' | 'sending' | 'sent' | 'refused' | 'too-many' | 'unreachable';
 
 function SuggestForm({ onSent }: { onSent: (s: Suggestion) => void }) {
   const [url, setUrl] = useState('');
@@ -139,6 +141,7 @@ function SuggestForm({ onSent }: { onSent: (s: Suggestion) => void }) {
   const [why, setWhy] = useState('');
   const [error, setError] = useState<string | undefined>();
   const [status, setStatus] = useState<SendStatus>('idle');
+  const [limitText, setLimitText] = useState('');
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -157,7 +160,11 @@ function SuggestForm({ onSent }: { onSent: (s: Suggestion) => void }) {
       setWhy('');
       setStatus('sent');
     } catch (err) {
-      setStatus(err instanceof ApiError && err.kind === 'invalid' ? 'refused' : 'unreachable');
+      if (err instanceof ApiError && err.kind === 'too-many') {
+        // Over the daily limit: the API's sentence; what was typed stays, to send tomorrow.
+        setLimitText(refusalOf(err).detail ?? SOURCES_COPY.tooMany);
+        setStatus('too-many');
+      } else setStatus(err instanceof ApiError && err.kind === 'invalid' ? 'refused' : 'unreachable');
     }
   };
 
@@ -166,7 +173,9 @@ function SuggestForm({ onSent }: { onSent: (s: Suggestion) => void }) {
       ? SOURCES_COPY.sent
       : status === 'refused'
         ? SOURCES_COPY.refused
-        : status === 'unreachable'
+        : status === 'too-many'
+          ? limitText
+          : status === 'unreachable'
           ? `${COPY.unreachableTitle}. Your suggestion was not sent; try again.`
           : '';
   return (
