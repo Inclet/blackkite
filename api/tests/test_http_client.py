@@ -417,3 +417,35 @@ def test_client_fetcher_reports_the_final_url():
     ctype, body, final = ClientFetcher(make_client(web)).get(f"https://{H}/t/1")
     assert final == f"https://{H}/notices/2026/1"
     assert body == b"<p>notice</p>" and ctype.startswith("text/html")
+
+
+def test_per_call_size_cap_lowers_but_never_raises_the_client_cap():
+    web = FakeWeb()
+    web.html(H, "/big", "x" * 5000)
+    c = make_client(web, max_bytes=10_000)
+    with pytest.raises(ResponseTooLarge):
+        c.get(f"https://{H}/big", max_bytes=1000)
+    assert len(c.get(f"https://{H}/big", max_bytes=1_000_000).content) == 5000
+    c2 = make_client(web, max_bytes=100)
+    with pytest.raises(ResponseTooLarge):
+        c2.get(f"https://{H}/big", max_bytes=1_000_000)
+
+
+def test_robots_allowed_and_pace_for_requests_made_elsewhere():
+    web = FakeWeb()
+    web.add(
+        H,
+        "/robots.txt",
+        httpx.Response(200, text="User-agent: *\nDisallow: /private\n"),
+    )
+    clock = FakeClock()
+    c = make_client(web, clock)
+    assert c.robots_allowed(f"https://{H}/list", delay=3.0)
+    assert not c.robots_allowed(f"https://{H}/private/x", delay=3.0)
+    assert web.paths() == ["/robots.txt"]  # cached
+    with pytest.raises(UnsafeURL):
+        c.robots_allowed("http://127.0.0.1/")
+    c.pace(f"https://{H}/list", delay=3.0)  # robots.txt was fetched just now
+    assert clock.sleeps == [3.0]
+    c.pace(f"https://{H}/next", delay=3.0)
+    assert clock.sleeps == [3.0, 3.0]

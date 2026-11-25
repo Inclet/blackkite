@@ -303,12 +303,15 @@ class FetchClient:
         delay: float | None = None,
         robots: bool = True,
         use_cache: bool = True,
+        max_bytes: int | None = None,
     ) -> FetchResponse:
         """GET ``url``. ``delay`` is the minimum seconds between requests to its host.
-        ``robots=False`` only for documented APIs called with a key (not crawling)."""
+        ``robots=False`` only for documented APIs called with a key (not crawling).
+        ``max_bytes`` lowers (never raises) the client's response size cap."""
         if params:
             url = str(httpx.URL(url, params=params))
-        resp = self._get(url, headers, delay, robots, use_cache)
+        limit = self.max_bytes if max_bytes is None else min(max_bytes, self.max_bytes)
+        resp = self._get(url, headers, delay, robots, use_cache, limit)
         if self.on_response is not None:
             self.on_response(url, resp)
         return resp
@@ -320,6 +323,7 @@ class FetchClient:
         delay: float | None,
         robots: bool,
         use_cache: bool,
+        max_bytes: int,
     ) -> FetchResponse:
         for _ in range(self.max_redirects + 1):
             check_url(url)
@@ -332,7 +336,7 @@ class FetchClient:
                     h["If-None-Match"] = cached.etag
                 if cached.last_modified:
                     h["If-Modified-Since"] = cached.last_modified
-            status, resp_headers, content = self._send(url, h, delay)
+            status, resp_headers, content = self._send(url, h, delay, max_bytes)
             if status in REDIRECT_CODES and "location" in resp_headers:
                 url = urljoin(url, resp_headers["location"])
                 continue
@@ -356,6 +360,19 @@ class FetchClient:
             return FetchResponse(url, status, resp_headers, content)
         raise FetchError(f"too many redirects from {url}")
 
+    def robots_allowed(self, url: str, delay: float | None = None) -> bool:
+        """robots.txt verdict for ``url`` (fetched and cached as for ``get``). For
+        collectors that fetch the page some other way (browser_list)."""
+        check_url(url)
+        return self._robots_allow(url, delay)
+
+    def pace(self, url: str, delay: float | None = None) -> None:
+        """Wait for this host's turn and count a request to it now, for requests
+        made outside this client (a headless browser's top-level navigation)."""
+        host = self._host(url)
+        self._wait_turn(host, delay)
+        self._last_request[host] = self.clock()
+
     def close(self) -> None:
         self._client.close()
 
@@ -378,13 +395,17 @@ class FetchClient:
                 self.sleep(remaining)
 
     def _send(
-        self, url: str, headers: dict[str, str], delay: float | None
+        self,
+        url: str,
+        headers: dict[str, str],
+        delay: float | None,
+        max_bytes: int | None = None,
     ) -> tuple[int, dict[str, str], bytes]:
         host = self._host(url)
         for attempt in (0, 1):
             self._wait_turn(host, delay)
             try:
-                result = self._once(url, headers)
+                result = self._once(url, headers, max_bytes or self.max_bytes)
             except (httpx.ConnectError, httpx.ConnectTimeout) as e:
                 if attempt == 0:
                     self.sleep(self.retry_backoff)
@@ -401,29 +422,25 @@ class FetchClient:
         raise AssertionError("unreachable")  # pragma: no cover
 
     def _once(
-        self, url: str, headers: dict[str, str]
+        self, url: str, headers: dict[str, str], max_bytes: int
     ) -> tuple[int, dict[str, str], bytes]:
         self.requests_made += 1
         deadline = self.clock() + self.timeout * 3
         headers = {"Accept-Encoding": ACCEPT_ENCODING, **headers}
         with self._client.stream("GET", url, headers=headers) as r:
             declared = r.headers.get("content-length")
-            if declared and declared.isdigit() and int(declared) > self.max_bytes:
-                raise ResponseTooLarge(
-                    f"{url} is {declared} bytes; limit {self.max_bytes}"
-                )
+            if declared and declared.isdigit() and int(declared) > max_bytes:
+                raise ResponseTooLarge(f"{url} is {declared} bytes; limit {max_bytes}")
             if r.is_stream_consumed:
                 # Body already loaded and decoded by httpx (in-memory test
                 # transports only; real responses always stream).
-                out = _BoundedBody(url, self.max_bytes, None)
+                out = _BoundedBody(url, max_bytes, None)
                 out.feed(r.content)
             else:
                 # Raw bytes, decompressed here in bounded steps: the size limit
                 # holds for the decoded body, so a small compressed bomb cannot
                 # blow memory.
-                out = _BoundedBody(
-                    url, self.max_bytes, r.headers.get("content-encoding")
-                )
+                out = _BoundedBody(url, max_bytes, r.headers.get("content-encoding"))
                 for chunk in r.iter_raw():
                     out.feed(chunk)
                     if self.clock() > deadline:
