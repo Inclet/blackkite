@@ -20,7 +20,8 @@ for the first item an ``original`` source contributes to a record (its dates and
 fields take precedence, spec 2.3), and for records never extracted (for example
 while ANTHROPIC_API_KEY was unset). A re-seen URL only refreshes ``last_seen`` and
 the deadline that source lists (a changed deadline is not re-extracted; the newer
-listed value is used).
+listed value is used, unless it moved into the past or to before publication, which
+is flagged and not believed).
 
 Evidence layout (``opportunity.evidence``):
 
@@ -64,7 +65,11 @@ from blackkite.db.models import (
 )
 from blackkite.llm.client import LLMClient, LLMError
 from blackkite.llm.embeddings import Embedder, EmbeddingError
-from blackkite.pipeline.dates import kigali_date, parse_date, parse_extracted_date
+from blackkite.pipeline.dates import (
+    kigali_date,
+    parse_date,
+    parse_extracted_date,
+)
 from blackkite.pipeline.dedupe import find_by_url, find_similar
 from blackkite.pipeline.enrich import Enrichment, Fetcher, enrich
 from blackkite.pipeline.extract import (
@@ -446,6 +451,21 @@ def _source_current_deadline(entry: dict[str, Any]) -> datetime | None:
     return None
 
 
+def _suspect_reason(opp: Opportunity, listed: DateCheck, now: datetime) -> str | None:
+    """Why a changed listed deadline is not believed, or None.
+
+    A deadline that moves into the past, or to before the item was published, is
+    far more often a mis-mapped selector or a portal reset than a real change; a
+    real cancellation is a status. Such a value must not expire a live item.
+    """
+    assert listed.value is not None
+    if listed.value < now:
+        return "a past date"
+    if opp.published_at is not None and listed.value < opp.published_at:
+        return "a date before publication"
+    return None
+
+
 def _record_listed_deadline(
     session: Session,
     opp: Opportunity,
@@ -459,41 +479,68 @@ def _record_listed_deadline(
 
     * A sighting whose listed deadline has no usable value (no year, unparsed, out
       of window, absent) never replaces a dated value seen earlier.
-    * When the dated value differs from what the source listed last time, the newer
-      listed value becomes that source's deadline: an older extracted value is
-      superseded (moved to ``deadline_history``), a ``change_event`` with field
-      ``source_deadline`` is written and the item is flagged ``deadline_changed``.
-      ``_finalise`` then resolves the deadline across sources again.
+    * A changed value that is before ``now`` or before the item's ``published_at``
+      is suspect: the source keeps its current deadline, the suspicious value goes
+      to ``deadline_history`` (kind ``listed_suspect``) and the item is flagged
+      ``deadline_changed_suspect``. Nothing about the deadline changes.
+    * Any other changed value becomes that source's deadline: an older extracted
+      value is superseded (moved to ``deadline_history``), a ``change_event`` with
+      field ``source_deadline`` is written and the item is flagged
+      ``deadline_changed``. ``_finalise`` then resolves the deadline across sources
+      again.
     """
     previous = _date_value(entry.get("deadline_listed"))
     if listed.value is None and previous is not None:
         return  # keep the last dated listing
-    if previous is not None and listed.value is not None and previous != listed.value:
-        old_current = _source_current_deadline(entry)
-        history = entry.setdefault("deadline_history", [])
-        history.append(
-            {**entry["deadline_listed"], "kind": "listed", "until": now.isoformat()}
-        )
-        extracted = entry.pop("deadline_extracted", None)
-        if extracted is not None:
-            history.append({**extracted, "kind": "extracted", "until": now.isoformat()})
-        del history[:-20]
-        old_day = kigali_date(old_current).isoformat() if old_current else "none"
-        new_day = kigali_date(listed.value).isoformat()
-        review(
-            "deadline_changed",
-            f"deadline changed at {source.name}: {old_day} -> {new_day}"
-            + (f" (listed {listed.raw!r})" if listed.raw else ""),
-        )
-        session.add(
-            ChangeEvent(
-                opportunity_id=opp.id,
-                field="source_deadline",
-                old={"source_id": str(source.id), "value": _iso(old_current)},
-                new={"source_id": str(source.id), "value": _iso(listed.value)},
-                at=now,
+    if previous is None or listed.value is None or previous == listed.value:
+        entry["deadline_listed"] = _date_entry(listed)
+        return
+    history = entry.setdefault("deadline_history", [])
+    old_current = _source_current_deadline(entry)
+    old_day = kigali_date(old_current).isoformat() if old_current else "none"
+    new_day = kigali_date(listed.value).isoformat()
+    shown = f" (listed {listed.raw!r})" if listed.raw else ""
+
+    suspect = _suspect_reason(opp, listed, now)
+    if suspect is not None:
+        last = history[-1] if history else {}
+        if not (
+            last.get("kind") == "listed_suspect"
+            and last.get("value") == _iso(listed.value)
+        ):
+            history.append(
+                {**_date_entry(listed), "kind": "listed_suspect", "at": now.isoformat()}
             )
+            del history[:-20]
+        review(
+            "deadline_changed_suspect",
+            f"listed deadline moved to {suspect} at {source.name}: "
+            f"{old_day} -> {new_day}{shown}; kept {old_day}",
         )
+        return
+
+    history.append(
+        {**entry["deadline_listed"], "kind": "listed", "until": now.isoformat()}
+    )
+    extracted_entry = entry.pop("deadline_extracted", None)
+    if extracted_entry is not None:
+        history.append(
+            {**extracted_entry, "kind": "extracted", "until": now.isoformat()}
+        )
+    del history[:-20]
+    review(
+        "deadline_changed",
+        f"deadline changed at {source.name}: {old_day} -> {new_day}{shown}",
+    )
+    session.add(
+        ChangeEvent(
+            opportunity_id=opp.id,
+            field="source_deadline",
+            old={"source_id": str(source.id), "value": _iso(old_current)},
+            new={"source_id": str(source.id), "value": _iso(listed.value)},
+            at=now,
+        )
+    )
     entry["deadline_listed"] = _date_entry(listed)
 
 
