@@ -65,7 +65,8 @@ class Settings(BaseSettings):
     fetch_timeout_seconds: float = 20.0
     fetch_max_bytes: int = 5_000_000
     # Seconds between two requests to one host when the source sets no rate_limit.
-    default_rate_limit: float = 5.0
+    # At least 1 s (collectors.http.MIN_DELAY_SECONDS).
+    default_rate_limit: float = Field(default=5.0, ge=1.0)
     # Cron (UTC) for sources whose schedule is NULL: 04:00 UTC = 06:00 Africa/Kigali.
     default_source_schedule: str = "0 4 * * *"
 

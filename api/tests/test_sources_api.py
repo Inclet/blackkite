@@ -160,6 +160,7 @@ def test_admin_creates_source_as_testing(admin, db):
         {"kind": "blog"},
         {"collector_type": "selenium"},
         {"rate_limit": 0},
+        {"rate_limit": 0.5},
         {"collector_type": "search_query", "config": {"queries": []}},
         # Search results are never the issuer itself.
         {"collector_type": "search_query", "config": {"queries": ["tender"]}},

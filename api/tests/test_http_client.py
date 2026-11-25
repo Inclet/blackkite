@@ -71,6 +71,36 @@ def test_robots_unreachable_means_disallow_all():
         make_client(web).get(f"https://{H}/list")
 
 
+def test_robots_429_means_disallow_all_until_the_cache_expires():
+    from blackkite.collectors.http import ROBOTS_TTL_SECONDS
+
+    web = FakeWeb()
+    answers = [httpx.Response(429), httpx.Response(200, text="User-agent: *\n")]
+    web.add(H, "/robots.txt", lambda req: answers.pop(0))
+    web.html(H, "/list", "x")
+    clock = FakeClock()
+    c = make_client(web, clock)
+    with pytest.raises(RobotsDisallowed):
+        c.get(f"https://{H}/list")
+    with pytest.raises(RobotsDisallowed):  # cached: robots.txt not asked again
+        c.get(f"https://{H}/list")
+    assert web.paths(H) == ["/robots.txt"]
+    clock.now += ROBOTS_TTL_SECONDS + 1
+    assert c.get(f"https://{H}/list").content == b"x"
+    assert web.paths(H) == ["/robots.txt", "/robots.txt", "/list"]
+
+
+def test_per_host_delay_is_never_under_one_second():
+    web = FakeWeb()
+    web.html(H, "/a", "a")
+    web.html(H, "/b", "b")
+    clock = FakeClock()
+    c = make_client(web, clock, default_delay=0.0)
+    c.get(f"https://{H}/a", delay=0.1)
+    c.get(f"https://{H}/b", delay=0)
+    assert clock.sleeps == [1.0, 1.0]
+
+
 def test_robots_crawl_delay_raises_host_delay():
     web = FakeWeb()
     web.add(
@@ -239,3 +269,13 @@ def test_hostname_resolving_private_never_requested():
     with pytest.raises(UnsafeURL):
         c.get("https://intranet.example/")
     assert web.requests == []
+
+
+def test_default_rate_limit_setting_is_at_least_one_second():
+    from pydantic import ValidationError
+
+    from blackkite.config import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, default_rate_limit=0.5)
+    assert Settings(_env_file=None, default_rate_limit=1).default_rate_limit == 1.0

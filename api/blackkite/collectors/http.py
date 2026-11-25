@@ -4,10 +4,12 @@
 - Every request goes through ``GuardedTransport`` (sources/urlsafety.py): public
   addresses only, checked at connect time. Redirects are followed here, hop by hop,
   so each hop is re-validated and checked against robots.txt.
-- robots.txt fetched once per origin and cached (24 h). 200: obeyed. 4xx: no
-  rules (RFC 9309, "unavailable"). 5xx or unreachable: everything disallowed
-  (RFC 9309, "unreachable"). Crawl-delay raises the per-host delay.
-- Per-host minimum delay between requests: the source's rate_limit, else the default.
+- robots.txt fetched once per origin and cached (24 h). 200: obeyed. 4xx other
+  than 429: no rules (RFC 9309, "unavailable"). 429, 5xx or unreachable:
+  everything disallowed (RFC 9309, "unreachable"; a 429 is the site asking us to
+  back off), retried after the cache period. Crawl-delay raises the per-host delay.
+- Per-host minimum delay between requests: the source's rate_limit, else the
+  default; never under MIN_DELAY_SECONDS (1 s), whatever the caller passes.
 - Conditional GET: ETag / Last-Modified stored in an ``HttpCache``; 304 returns the
   cached body.
 - At most one retry, only on a connect error or a 5xx, after a backoff. Never on 4xx.
@@ -43,6 +45,8 @@ ROBOTS_TOKEN = "BlackkiteBot"
 ROBOTS_TTL_SECONDS = 24 * 3600
 ROBOTS_MAX_BYTES = 500_000
 REDIRECT_CODES = (301, 302, 303, 307, 308)
+# Floor for the per-host delay (also the lowest rate_limit a source may set).
+MIN_DELAY_SECONDS = 1.0
 
 
 class FetchError(CollectorError):
@@ -270,6 +274,7 @@ class FetchClient:
         d = max(
             delay if delay is not None else self.default_delay,
             self._host_delay.get(host, 0.0),
+            MIN_DELAY_SECONDS,
         )
         last = self._last_request.get(host)
         if last is not None:
@@ -359,8 +364,10 @@ class FetchClient:
         if status == 200:
             text = content[:ROBOTS_MAX_BYTES].decode("utf-8", errors="replace")
             return _Robots(Protego.parse(text), True, now)
-        if 400 <= status < 500:
+        if 400 <= status < 500 and status != 429:
             return _Robots(None, True, now)  # unavailable: no restrictions
+        # 429 (too many requests), 5xx: unreachable, disallow all until the entry
+        # expires.
         return _Robots(None, False, now)
 
 

@@ -29,7 +29,8 @@ Health = Literal["ok", "degraded", "failing", "unknown"]
 Name = Annotated[str, Field(min_length=1, max_length=200)]
 Publisher = Annotated[str, Field(max_length=200)]
 Note = Annotated[str, Field(max_length=5000)]
-RateLimit = Annotated[float, Field(gt=0, le=3600)]
+# Seconds between two requests to one host; at least 1 s (spec 10, politeness).
+RateLimit = Annotated[float, Field(ge=1.0, le=3600)]
 Streams = Annotated[list[Stream], Field(min_length=1, max_length=4)]
 ORIGINAL_SEARCH_QUERY = (
     "a search_query source cannot be kind 'original': search results are never "

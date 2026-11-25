@@ -128,6 +128,8 @@ def _source(**kw):
         "UPDATE source SET collector_type = 'ftp'",
         "UPDATE source SET streams = ARRAY['jobs']::varchar[]",
         "UPDATE source SET streams = ARRAY[]::varchar[]",
+        "UPDATE source SET rate_limit = 0.5",
+        "UPDATE source SET rate_limit = 0",
     ],
 )
 def test_source_enumerations_are_enforced(db, sql):
@@ -222,3 +224,8 @@ def test_digest_schedule_limited_to_v1(db, sql):
         db.execute(sa.text(sql))
         db.flush()
     db.rollback()
+
+
+def test_rate_limit_of_one_second_is_allowed(db):
+    db.add(_source(rate_limit=1.0))
+    db.flush()

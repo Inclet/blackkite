@@ -216,7 +216,7 @@ class Source(Base):
         in_list_check("streams", STREAMS, "streams_valid"),
         sa.CheckConstraint("cardinality(streams) >= 1", name="streams_not_empty"),
         sa.CheckConstraint(
-            "rate_limit IS NULL OR rate_limit > 0", name="rate_limit_positive"
+            "rate_limit IS NULL OR rate_limit >= 1", name="rate_limit_min_1s"
         ),
         sa.Index("ix_source_status", "status"),
     )
