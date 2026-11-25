@@ -61,7 +61,8 @@ test('delete: a confirm step that needs the email address, then DELETE /me and t
   fireEvent.click(button(ACCOUNT_COPY.confirm));
   await waitFor(() => expect(router.state.location.pathname).toBe('/sign-in'));
   expect(api.calls.some((c) => c.key === 'DELETE /me')).toBe(true);
-  expect(screen.getByText(ACCOUNT_COPY.deleted)).toBeInTheDocument();
+  // The URL changes before the sign-in screen has rendered (navigation commits in a transition).
+  expect(await screen.findByText(ACCOUNT_COPY.deleted)).toBeInTheDocument();
   expect(button(SIGN_IN.button)).toBeInTheDocument();
 });
 
