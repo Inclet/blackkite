@@ -134,9 +134,9 @@ def test_admin_creates_source_as_testing(admin, db):
     assert r.status_code == 201, r.text
     out = r.json()
     assert out["status"] == "testing"
-    assert out["added_by"] == str(admin.user.id)
-    assert out["health"] == "unknown" and out["promotion_runs"] == 0
-    assert out["effective_schedule"] == "0 4 * * *"
+    assert out["addedBy"] == str(admin.user.id)
+    assert out["health"] == "unknown" and out["promotionRuns"] == 0
+    assert out["effectiveSchedule"] == "0 4 * * *"
     assert out["config"]["selectors"]["title"] == {"css": "a"}
     assert admin.post("/api/admin/sources", json=body()).status_code == 409
 
@@ -185,12 +185,12 @@ def test_unimplemented_type_config_stored_as_given(admin):
 def test_edit_tracks_config_changes(admin, db):
     sid = admin.post("/api/admin/sources", json=body()).json()["id"]
     r = admin.patch(f"/api/admin/sources/{sid}", json={"access_note": "rechecked"})
-    assert r.status_code == 200 and r.json()["config_changed_at"] is None
+    assert r.status_code == 200 and r.json()["configChangedAt"] is None
     r = admin.patch(f"/api/admin/sources/{sid}", json={"config": HTML_CONFIG})
-    assert r.json()["config_changed_at"] is None  # same config: not a change
+    assert r.json()["configChangedAt"] is None  # same config: not a change
     new_cfg = {**HTML_CONFIG, "max_pages": 2}
     r = admin.patch(f"/api/admin/sources/{sid}", json={"config": new_cfg})
-    assert r.status_code == 200 and r.json()["config_changed_at"] is not None
+    assert r.status_code == 200 and r.json()["configChangedAt"] is not None
     assert (
         admin.patch(f"/api/admin/sources/{sid}", json={"status": "active"}).status_code
         == 422
@@ -382,9 +382,9 @@ def test_members_see_only_active_sources_with_stats(member, db):
     (row,) = r.json()
     assert row["name"] == "Alpha" and row["publisher"] == "Alpha Org"
     assert row["kind"] == "original" and row["streams"] == ["tender", "event"]
-    assert row["items_30d"] == 3
+    assert row["items30d"] == 3
     assert row["health"] == "degraded"
-    assert row["last_success_at"] is not None and row["muted"] is False
+    assert row["lastSuccessAt"] is not None and row["muted"] is False
     assert "config" not in row and "access_note" not in row
 
 
@@ -442,7 +442,7 @@ def test_suggestion_flow(app, admin, member, db, outbox):
     assert member.get("/api/admin/source-suggestions").status_code == 403
 
     queue = admin.get("/api/admin/source-suggestions").json()
-    assert [q["id"] for q in queue] == [sid] and queue[0]["user_id"] == str(
+    assert [q["id"] for q in queue] == [sid] and queue[0]["userId"] == str(
         member.user.id
     )
 
@@ -454,8 +454,8 @@ def test_suggestion_flow(app, admin, member, db, outbox):
     r = admin.post(f"/api/admin/source-suggestions/{sid}/accept")
     assert r.status_code == 200
     out = r.json()
-    assert out["status"] == "accepted" and out["reviewed_by"] == str(admin.user.id)
-    assert out["reviewed_at"] is not None
+    assert out["status"] == "accepted" and out["reviewedBy"] == str(admin.user.id)
+    assert out["reviewedAt"] is not None
     assert admin.post(f"/api/admin/source-suggestions/{sid}/reject").status_code == 409
     assert admin.get("/api/admin/source-suggestions").json() == []
 
@@ -496,11 +496,11 @@ def test_saved_test_run_previews_and_writes_nothing(admin, db, web, monkeypatch)
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["ok"] is True and out["error"] is None
-    assert [(i["title"], i["url"], i["listed_deadline"]) for i in out["items"]] == [
+    assert [(i["title"], i["url"], i["listedDeadline"]) for i in out["items"]] == [
         ("Invitation for Bids: cold rooms", f"https://{H}/n/1", "30 Nov 2026"),
         ("EOI: freight forwarding", f"https://{H}/n/2", None),
     ]
-    assert out["requests_made"] == 2  # robots.txt + list page
+    assert out["requestsMade"] == 2  # robots.txt + list page
     assert count(db, SourceRun) == 0
     assert count(db, Opportunity) == 0 and count(db, OpportunitySource) == 0
     assert count(db, HttpCache) == 0
@@ -561,18 +561,18 @@ def test_run_history(admin, db):
     add_run(db, s, "failed", ago_hours=2)
     add_run(db, s, "succeeded", ago_hours=1, found=7, new=2)
     runs = admin.get(f"/api/admin/sources/{s.id}/runs").json()
-    assert [(r["status"], r["items_found"], r["items_new"]) for r in runs] == [
+    assert [(r["status"], r["itemsFound"], r["itemsNew"]) for r in runs] == [
         ("succeeded", 7, 2),
         ("failed", 3, 0),
     ]
     assert runs[1]["error"] == "boom"
-    assert [r["items_failed"] for r in runs] == [0, 0]
+    assert [r["itemsFailed"] for r in runs] == [0, 0]
     assert admin.get(f"/api/admin/sources/{s.id}").json()["health"] == "degraded"
     partly = add_run(db, s, "succeeded", ago_hours=0.5, found=4, new=1)
     partly.items_failed = 2
     db.commit()
     latest = admin.get(f"/api/admin/sources/{s.id}/runs").json()[0]
-    assert (latest["items_found"], latest["items_failed"]) == (4, 2)
+    assert (latest["itemsFound"], latest["itemsFailed"]) == (4, 2)
 
 
 # --- member visibility of catalogue items -----------------------------------------------------------
@@ -793,7 +793,7 @@ def test_config_edit_on_an_active_source_sends_it_back_to_testing(admin, member,
     )
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "testing"
-    assert r.json()["promotion_runs"] == 0
+    assert r.json()["promotionRuns"] == 0
     db.expire_all()
     assert o.verification == "unverified"  # nothing member-visible carries it
     assert not member_sees()
@@ -1144,3 +1144,30 @@ def test_mute_never_scores_in_the_request_and_queues_only_the_caller(
     assert db.get(Profile, theirs.id).backfill_requested_at is None
     assert member.delete(f"/api/sources/{a.id}/mute").status_code == 204
     assert count(db, UserSourceMute) == 0
+
+
+def test_source_json_is_camel_case_and_accepts_camel_case_bodies(admin, member):
+    """docs/api-contract.md section 2: all JSON in camelCase. The config object is
+    the collector's own data and keeps its keys."""
+    b = body()
+    camel = {
+        "name": b["name"],
+        "homeUrl": b["home_url"],
+        "streams": b["streams"],
+        "kind": b["kind"],
+        "collectorType": b["collector_type"],
+        "config": b["config"],
+        "rateLimit": 5,
+        "accessNote": "camel",
+    }
+    r = admin.post("/api/admin/sources", json=camel)
+    assert r.status_code == 201, r.text
+    out = r.json()
+    assert {"homeUrl", "collectorType", "promotionRuns", "items30d"} <= out.keys()
+    assert not {k for k in out if "_" in k}
+    assert out["config"]["list_url"] == HTML_CONFIG["list_url"]
+    assert out["accessNote"] == "camel"
+    row = member.get("/api/sources").json()
+    assert row == []  # testing sources are not shown to members
+    r = admin.post("/api/admin/sources", json={**camel, "name": "X", "bogus": 1})
+    assert r.status_code == 422

@@ -10,7 +10,7 @@ from blackkite.auth import service
 from blackkite.auth.deps import AdminUser, DbDep, SettingsDep, require_admin
 from blackkite.db.models import Invite, User
 from blackkite.delivery.mail import MailTransport, get_mail_transport
-from blackkite.routes.schemas import EmailIn, InviteOut, UserOut
+from blackkite.routes.schemas import AdminUserOut, EmailIn, InviteOut
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
 
@@ -64,14 +64,14 @@ def delete_invite(invite_id: uuid.UUID, db: DbDep) -> Response:
     return Response(status_code=204)
 
 
-@router.get("/users", response_model=list[UserOut])
-def list_users(db: DbDep) -> list[UserOut]:
+@router.get("/users", response_model=list[AdminUserOut])
+def list_users(db: DbDep) -> list[AdminUserOut]:
     rows = db.scalars(sa.select(User).order_by(User.created_at)).all()
-    return [UserOut.model_validate(u) for u in rows]
+    return [AdminUserOut.model_validate(u) for u in rows]
 
 
-@router.post("/users/{user_id}/deactivate", response_model=UserOut)
-def deactivate(user_id: uuid.UUID, admin: AdminUser, db: DbDep) -> UserOut:
+@router.post("/users/{user_id}/deactivate", response_model=AdminUserOut)
+def deactivate(user_id: uuid.UUID, admin: AdminUser, db: DbDep) -> AdminUserOut:
     if user_id == admin.id:
         raise HTTPException(400, "You cannot deactivate yourself")
     user = db.get(User, user_id)
@@ -80,4 +80,4 @@ def deactivate(user_id: uuid.UUID, admin: AdminUser, db: DbDep) -> UserOut:
     service.deactivate_user(db, user)
     db.commit()
     db.refresh(user)
-    return UserOut.model_validate(user)
+    return AdminUserOut.model_validate(user)
