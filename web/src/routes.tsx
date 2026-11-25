@@ -2,6 +2,7 @@ import type { RouteObject } from 'react-router';
 import { AuthConfirm } from './screens/AuthConfirm';
 import { FeedRoute } from './screens/feed/FeedRoute';
 import { Placeholder } from './screens/Placeholder';
+import { SignIn } from './screens/SignIn';
 import { StyleguideComponents } from './screens/StyleguideComponents';
 import { StyleguideFoundations } from './screens/StyleguideFoundations';
 
@@ -15,6 +16,7 @@ export const routes: RouteObject[] = [
     ],
   },
   { path: '/auth/confirm', element: <AuthConfirm /> },
+  { path: '/sign-in', element: <SignIn /> },
   { path: '/digest/preview', element: <Placeholder name="Digest preview" /> },
   { path: '/styleguide/foundations', element: <StyleguideFoundations /> },
   { path: '/styleguide/components', element: <StyleguideComponents /> },
