@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router';
+import { api } from '../../api/client';
+import { useResource } from '../../api/useResource';
 import { AccountButton } from '../../components/AccountButton/AccountButton';
 import { Card } from '../../components/Card/Card';
 import { FeedRow } from '../../components/FeedRow/FeedRow';
@@ -10,8 +12,8 @@ import { Wordmark } from '../../components/Wordmark/Wordmark';
 import { feedSummary, greeting, isClosed, pillFor } from '../../lib/feed';
 import { rowSubtitle } from '../../lib/subtitle';
 import { useAppLink } from '../../lib/useAppLink';
-import type { FeedModel } from './model';
-import { FilterChips, LiveRegion, LiveStatus } from './parts';
+import { DISMISS_NAV, isDismissNav, type FeedModel } from './model';
+import { DismissReasonPrompt, FilterChips, LiveRegion, LiveStatus } from './parts';
 import { HEADING, rowId } from './focus';
 import { useLiveList } from './liveList';
 import { useFeedKeys } from './useFeedKeys';
@@ -36,6 +38,8 @@ export function FeedPhone({ model }: { model: FeedModel }) {
   const location = useLocation();
   const navigate = useNavigate();
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // No name on the feed: the account button shows the email's first letter (GET /me). Fixtures carry a name, so never fetch.
+  const me = useResource(feed.user.name.trim() ? null : 'me', (s) => api.me(s));
   // "Not for me" on the opportunity page passes the row to focus (or HEADING) in the navigation state.
   const focusTarget = (location.state as { focusRow?: string } | null)?.focusRow;
 
@@ -44,8 +48,9 @@ export function FeedPhone({ model }: { model: FeedModel }) {
     const row = focusTarget === HEADING ? null : document.getElementById(rowId(focusTarget));
     (row ?? headingRef.current)?.focus();
     // Used once: clear it so back/forward or a remount do not refocus that row.
-    navigate(location.pathname + location.search, { replace: true, state: null });
-  }, [focusTarget, location.pathname, location.search, navigate]);
+    // A dismissal's own return keeps its "Why not?" prompt.
+    navigate(location.pathname + location.search, { replace: true, state: isDismissNav(location.state) ? DISMISS_NAV : null });
+  }, [focusTarget, location.pathname, location.search, location.state, navigate]);
 
   // Keys read the rows from here: X then another key in the same tick must not see the removed row.
   const liveRows = useLiveList(rows);
@@ -86,7 +91,7 @@ export function FeedPhone({ model }: { model: FeedModel }) {
       if (next) focusRow(next);
       else headingRef.current?.focus();
       liveRows.markDismissed(item.id);
-      model.dismiss(item.id);
+      model.dismiss(item.id, true);
     },
   });
   return (
@@ -96,7 +101,7 @@ export function FeedPhone({ model }: { model: FeedModel }) {
           <Kite label="Blackkite" width={39} height={26} rotate={-16} />
           <Wordmark size={20} />
         </div>
-        <AccountButton name={feed.user.name} onClick={() => navigate(`/account${location.search}`)} />
+        <AccountButton name={feed.user.name} email={me.data?.email} onClick={() => navigate(`/account${location.search}`)} />
       </header>
 
       <main className={styles.main}>
@@ -110,6 +115,14 @@ export function FeedPhone({ model }: { model: FeedModel }) {
         <FilterChips model={model} className={styles.chips} chipClassName={styles.chip} />
 
         <LiveStatus model={model} className={styles.statusCard} padding="22px 24px" />
+        <DismissReasonPrompt
+          model={model}
+          className={styles.statusCard}
+          focusAfter={() => {
+            const first = liveRows.current()[0];
+            (first ? document.getElementById(rowId(first.id)) : headingRef.current)?.focus();
+          }}
+        />
         {stateCard && (
           <Card className={styles.card} padding="22px 24px" gap={12} aria-label="Feed status">
             <StateCard {...stateCard} />

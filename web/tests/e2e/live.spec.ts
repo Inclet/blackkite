@@ -27,8 +27,12 @@ test('save persists across a reload, and shows on the shortlist', async ({ page 
   await open(page, '/');
   const save = page.getByRole('article').getByRole('button', { name: 'Save to shortlist' });
   await expect(save).toHaveAttribute('aria-pressed', 'false');
+  await expect(save.locator('svg')).toHaveCount(0);
   await page.keyboard.press('s');
   await expect(save).toHaveAttribute('aria-pressed', 'true');
+  // Saved: the secondary look with the check icon before the same label.
+  await expect(save.locator('svg[data-icon="check"]')).toHaveCount(1);
+  await expect(save).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect.poll(async () => (await api.seen()).filter((r) => r.method === 'PUT').map((r) => [r.url, JSON.parse(r.body)])).toEqual([
     ['/api/opportunities/wfp-logistics/state', { state: 'saved' }],
   ]);
@@ -108,7 +112,7 @@ test('digest settings round trip', async ({ page }, testInfo) => {
   await page.getByRole('button', { name: 'Save digest settings' }).click();
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible();
   const put = (await api.seen()).find((r) => r.method === 'PUT' && r.url === '/api/digest-settings');
-  expect(JSON.parse(put!.body)).toEqual({ channel: 'email', frequency: 'off', day: 'mon', alertThreshold: 60, streams: ['investment'] });
+  expect(JSON.parse(put!.body)).toEqual({ channel: 'email', frequency: 'off', day: 'mon', alertMinFit: 'good', streams: ['investment'] });
 
   await page.reload();
   await expect(page.getByRole('switch', { name: 'Weekly digest' })).toHaveAttribute('aria-checked', 'false');
@@ -133,4 +137,44 @@ test('nothing new: an empty feed', async ({ page }, testInfo) => {
   await open(page, '/');
   await expect(page.getByText('Nothing new since yesterday')).toBeVisible();
   await expect(page.getByText('All 3 sources were checked this morning. Your shortlist has nothing closing this month.')).toBeVisible();
+});
+
+test('no name: "Good afternoon" alone, and the phone account button shows the email\'s letter', async ({ page }, testInfo) => {
+  await stubSession(page, testInfo.testId, { userName: '' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, '/');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Good afternoon');
+  await expect(page.getByRole('button', { name: 'Your account' })).toHaveText('C');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Good afternoon');
+});
+
+test('dismiss reason: X dismisses at once, "Why not? (optional)" sends the chosen code', async ({ page }, testInfo) => {
+  const api = await stubSession(page, testInfo.testId);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, '/');
+  await expect(page.locator(rows)).toHaveCount(4);
+  await page.locator('h1').click();
+  await page.keyboard.press('x');
+  await expect(page.locator(rows)).toHaveCount(3);
+  const why = page.getByRole('group', { name: 'Why not? (optional)' });
+  await expect(why.getByRole('button')).toHaveText(['Not my sector', 'Too small', "Can't meet the requirements", 'Already knew about it', 'Other']);
+  // Reachable by keyboard: Tab from the last stream filter goes into the reasons.
+  await page.getByRole('group', { name: 'Filter by stream' }).getByRole('button', { name: 'Events' }).focus();
+  await page.keyboard.press('Tab');
+  await expect(why.getByRole('button', { name: 'Not my sector' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await expect(why.getByRole('button', { name: "Can't meet the requirements" })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(why).toHaveCount(0);
+  await expect.poll(async () => (await api.seen()).filter((r) => r.method === 'PUT').map((r) => [r.url, JSON.parse(r.body)])).toEqual([
+    ['/api/opportunities/wfp-logistics/state', { state: 'dismissed' }],
+    ['/api/opportunities/wfp-logistics/state', { state: 'dismissed', dismissReason: 'cant_meet_requirements' }],
+  ]);
+  // J/K still move afterwards; the next dismissal asks again, and J closes it.
+  await page.keyboard.press('x');
+  await expect(why).toBeVisible();
+  await page.keyboard.press('j');
+  await expect(why).toHaveCount(0);
 });

@@ -45,7 +45,7 @@ test('feed filters become the query string; empty ones are left out', async () =
 test.each([
   ['opportunity', () => api.opportunity('wfp/1'), '/api/opportunities/wfp%2F1', 'GET', undefined],
   ['state', () => api.setState('wfp', 'saved'), '/api/opportunities/wfp/state', 'PUT', { state: 'saved' }],
-  ['dismiss with reason', () => api.setState('wfp', 'dismissed', 'Too far'), '/api/opportunities/wfp/state', 'PUT', { state: 'dismissed', dismissReason: 'Too far' }],
+  ['dismiss with reason', () => api.setState('wfp', 'dismissed', 'too_small'), '/api/opportunities/wfp/state', 'PUT', { state: 'dismissed', dismissReason: 'too_small' }],
   ['note', () => api.setNote('wfp', 'Call Tuesday'), '/api/opportunities/wfp/note', 'PUT', { note: 'Call Tuesday' }],
   ['shortlist', () => api.shortlist(), '/api/shortlist', 'GET', undefined],
   ['profiles', () => api.profiles(), '/api/profiles', 'GET', undefined],
@@ -55,10 +55,10 @@ test.each([
   ['digest settings', () => api.digestSettings(), '/api/digest-settings', 'GET', undefined],
   [
     'save digest settings',
-    () => api.saveDigestSettings({ channel: 'email', frequency: 'off', day: 'mon', alertThreshold: null, streams: null }),
+    () => api.saveDigestSettings({ channel: 'email', frequency: 'off', day: 'mon', alertMinFit: null, streams: null }),
     '/api/digest-settings',
     'PUT',
-    { channel: 'email', frequency: 'off', day: 'mon', alertThreshold: null, streams: null },
+    { channel: 'email', frequency: 'off', day: 'mon', alertMinFit: null, streams: null },
   ],
   ['me', () => api.me(), '/me', 'GET', undefined],
   ['export', () => api.exportMe(), '/api/me/export', 'GET', undefined],

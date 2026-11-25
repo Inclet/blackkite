@@ -7,9 +7,9 @@ import { TrustPanel } from '../../components/TrustNote/TrustNote';
 import { detailMeta } from '../../lib/feed';
 import { httpUrl } from '../../lib/externalUrl';
 import { useAppLink } from '../../lib/useAppLink';
-import type { FeedModel } from './model';
+import { DISMISS_NAV, type FeedModel } from './model';
 import { HEADING } from './focus';
-import { DetailTop, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus } from './parts';
+import { DetailTop, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus, SaveButton } from './parts';
 import styles from './OpportunityPhone.module.css';
 
 /** opportunity-phone.html: one opportunity, with a sticky action bar. Below 792 px. */
@@ -67,9 +67,7 @@ export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }
       </main>
 
       <div className={styles.actions} role="group" aria-label="Actions">
-        <Button size="large" aria-pressed={saved} onClick={() => model.toggleSaved(item.id)}>
-          Save to shortlist
-        </Button>
+        <SaveButton size="large" saved={saved} onClick={() => model.toggleSaved(item.id)} />
         <Button
           size="large"
           variant="secondary"
@@ -78,8 +76,9 @@ export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }
             const rows = model.items.filter((i) => !i.hideOnPhone);
             const index = rows.indexOf(item);
             const next = rows[index + 1] ?? rows[index - 1];
-            model.dismiss(item.id);
-            navigate(`/${search}`, { state: { focusRow: next && next !== item ? next.id : HEADING } });
+            model.dismiss(item.id, true);
+            // Back on the feed, the optional "Why not?" prompt waits above the list.
+            navigate(`/${search}`, { state: { focusRow: next && next !== item ? next.id : HEADING, ...DISMISS_NAV } });
           }}
         >
           Not for me

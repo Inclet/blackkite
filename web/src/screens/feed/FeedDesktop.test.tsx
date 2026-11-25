@@ -262,3 +262,24 @@ test('a modified click on a state card link is left to the browser', () => {
   expect(fireEvent.click(screen.getByRole('link', { name: 'See all sources' }), { ctrlKey: true })).toBe(true);
   expect(router.state.location.pathname).toBe('/');
 });
+
+test('saved look: pressed is the secondary button with the check icon before the same label; unpressed is primary with none', () => {
+  renderAt('/?fixture=reference');
+  const save = () => within(pane()).getByRole('button', { name: 'Save to shortlist' });
+  // The reference screen (the visual board) never shows a saved item: primary, no icon.
+  expect(save()).toHaveClass('primary');
+  expect(save()).not.toHaveClass('secondary');
+  expect(save().querySelector('svg')).toBeNull();
+  fireEvent.click(save());
+  expect(save()).toHaveAttribute('aria-pressed', 'true');
+  expect(save()).toHaveClass('secondary');
+  expect(save()).not.toHaveClass('primary');
+  const icon = save().firstElementChild!;
+  expect(icon.tagName.toLowerCase()).toBe('svg');
+  expect(icon).toHaveAttribute('data-icon', 'check');
+  expect(icon).toHaveAttribute('aria-hidden', 'true');
+  expect(save()).toHaveTextContent(/^Save to shortlist$/);
+  press('s');
+  expect(save()).toHaveClass('primary');
+  expect(save().querySelector('svg')).toBeNull();
+});

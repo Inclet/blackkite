@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useLocation } from 'react-router';
 import { api } from '../../api/client';
+import { DISMISS_REASONS } from '../../api/types';
 import { useResource } from '../../api/useResource';
 import { Button } from '../../components/Button/Button';
 import { Card } from '../../components/Card/Card';
@@ -9,13 +11,14 @@ import { StateCard } from '../../components/StateCard/StateCard';
 import { FilterChip } from '../../components/FilterChip/FilterChip';
 import { FitLine, FitReason } from '../../components/FitLine/FitLine';
 import { Flag } from '../../components/Flag/Flag';
+import { Icon } from '../../components/Icon/Icon';
 import { Tag } from '../../components/Tag/Tag';
 import type { FeedItem } from '../../fixtures/types';
 import { pillFor } from '../../lib/feed';
 import { cx, STREAMS, type Stream } from '../../lib/streams';
 import { COPY } from '../common/copy';
 import { LoadState } from '../common/LoadState';
-import type { FeedModel } from './model';
+import { DISMISS_COPY, isDismissNav, type FeedModel } from './model';
 import styles from './parts.module.css';
 
 /** All, then the four streams (the desktop board shows all four; the phone's Events chip scrolls off-screen, decision 4). */
@@ -30,13 +33,19 @@ export function FilterChips({ model, className, chipClassName }: { model: FeedMo
   );
 }
 
-/** Stream tag, profile tag and the deadline pill. */
+export const DETAIL_COPY = {
+  /** Next to the profile tag when the matched profile is provisional (spec 7.1). Not on any board (design review). */
+  provisional: 'Provisional',
+} as const;
+
+/** Stream tag, profile tag (and "Provisional" when the profile is) and the deadline pill. */
 export function DetailTop({ item, tagGap }: { item: FeedItem; tagGap: 6 | 8 }) {
   return (
     <div className={cx(styles.top, tagGap === 6 ? styles.topPhone : undefined)}>
       <span className={styles.tags}>
         <Tag kind="stream" stream={item.stream} />
         {item.detail.profile && <Tag kind="profile">{item.detail.profile}</Tag>}
+        {item.provisional && <Tag kind="profile">{DETAIL_COPY.provisional}</Tag>}
       </span>
       <DeadlinePill {...pillFor(item)} />
     </div>
@@ -59,6 +68,88 @@ export function FitSection({ item }: { item: FeedItem }) {
 
 export function hasFitSection(item: FeedItem): boolean {
   return item.fit !== null && item.fit !== 'not-scored';
+}
+
+export const SAVE_LABEL = 'Save to shortlist';
+
+/**
+ * "Save to shortlist". Unpressed: the primary button, as on the boards. Pressed
+ * (saved): the secondary button with the check icon before the same label. The
+ * boards never show a saved item, so the pressed look is not on any board (design review).
+ */
+export function SaveButton({ saved, size, onClick }: { saved: boolean; size?: 'regular' | 'large'; onClick: () => void }) {
+  return (
+    <Button
+      size={size}
+      variant={saved ? 'secondary' : 'primary'}
+      aria-pressed={saved}
+      onClick={onClick}
+      className={saved ? styles.saved : undefined}
+    >
+      {saved && <Icon name="check" size={16} strokeWidth={1.6} />}
+      {SAVE_LABEL}
+    </Button>
+  );
+}
+
+/**
+ * "Why not? (optional)" after "Not for me" / X: the five reasons as FilterChips.
+ * The item is already dismissed; a chip sends the reason. Gone after a choice or
+ * on the next navigation (the dismissal's own move to the next item does not count).
+ * Focus is not moved here, so J/K/S/X carry on; Tab reaches the chips. Design review.
+ */
+export function DismissReasonPrompt({
+  model,
+  className,
+  padding,
+  focusAfter,
+}: {
+  model: FeedModel;
+  className?: string;
+  padding?: string;
+  /** Where focus goes when a chip is chosen (the prompt and the chip leave the page). */
+  focusAfter: () => void;
+}) {
+  const prompt = model.dismissPrompt;
+  if (!prompt) return null;
+  const labelId = `why-not-${prompt.id}`;
+  return (
+    <Card className={className} padding={padding ?? '16px'} gap={10} aria-label={`${DISMISS_COPY.question}: ${prompt.title}`}>
+      <div className={styles.whyLabel} id={labelId}>
+        {DISMISS_COPY.question}
+      </div>
+      <div className={styles.progress} role="group" aria-labelledby={labelId}>
+        {DISMISS_REASONS.map((r) => (
+          <FilterChip
+            key={r}
+            stream="all"
+            label={DISMISS_COPY.reasons[r]}
+            selected={false}
+            onClick={() => {
+              model.chooseDismissReason(r);
+              focusAfter();
+            }}
+          />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Closes the "Why not?" prompt on the next navigation, except the dismissal's own
+ * move (tagged DISMISS_NAV). Called where the feed state lives (FeedRoute), so it
+ * sees every move between the feed and an item, whichever screen is showing.
+ */
+export function useDismissPromptLifetime(model: FeedModel): void {
+  const { key, state } = useLocation();
+  const lastKey = useRef(key);
+  const { closeDismissPrompt } = model;
+  useEffect(() => {
+    if (lastKey.current === key) return;
+    lastKey.current = key;
+    if (!isDismissNav(state)) closeDismissPrompt();
+  }, [key, state, closeDismissPrompt]);
 }
 
 /** Announces save and dismiss to screen readers. */

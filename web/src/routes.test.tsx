@@ -3,7 +3,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { mockApi } from './test/mockApi';
 import { setNowForTests } from './lib/now';
-import { routes } from './routes';
+import { NOT_DESIGNED, routes } from './routes';
 
 beforeEach(() => setNowForTests('2026-11-24T14:00:00+02:00'));
 afterEach(() => {
@@ -40,9 +40,14 @@ test('?fixture=reference renders the feed', () => {
   expect(screen.getByRole('heading', { level: 1, name: 'Good afternoon, Clet' })).toBeInTheDocument();
 });
 
-test.each(['/calendar', '/sources'])('%s is a not-designed placeholder', (url) => {
+test.each([
+  ['/calendar', 'Calendar'],
+  ['/sources', 'Sources'],
+])('%s is not designed yet, in the app frame with the feed board\'s sidebar', (url, title) => {
+  mockApi({ 'GET /me': { id: 'u', email: 'c@x.rw', name: 'Clet', role: 'admin' } });
   renderAt(url);
-  expect(screen.getByText(/not designed yet/)).toBeInTheDocument();
+  expect(screen.getByRole('heading', { level: 1, name: title })).toBeInTheDocument();
+  expect(screen.getByText(NOT_DESIGNED)).toBeInTheDocument();
 });
 
 test('an unknown fixture falls back to live data', () => {

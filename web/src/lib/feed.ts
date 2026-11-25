@@ -63,10 +63,12 @@ function kigaliHour(at: Date): number {
   return Number(new Intl.DateTimeFormat('en-GB', { timeZone: TIMEZONE, hour: '2-digit', hourCycle: 'h23' }).format(at));
 }
 
+/** "Good afternoon, Clet"; with no name, just "Good afternoon" (the API sends "" when unset). */
 export function greeting(name: string, at: Date = now()): string {
   const h = kigaliHour(at);
   const part = h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
-  return `Good ${part}, ${name}`;
+  const n = name.trim();
+  return n ? `Good ${part}, ${n}` : `Good ${part}`;
 }
 
 /** The weekly digest goes on Mondays: "Monday 30 November, by email". */

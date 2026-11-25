@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useMatch, useSearchParams } from 'react-router';
 import { api } from '../../api/client';
-import type { ItemState, LiveFeedItem } from '../../api/types';
+import type { DismissReason, ItemState, LiveFeedItem } from '../../api/types';
 import { useResource } from '../../api/useResource';
 import type { StateKind } from '../../components/StateCard/StateCard';
 import type { FeedItem, Fixture } from '../../fixtures/types';
@@ -15,6 +15,7 @@ import { FeedPhone } from './FeedPhone';
 import { liveStates } from './liveCopy';
 import { stateFromSearch, useFeedModel, type FeedPersist, type FeedSource } from './model';
 import { OpportunityPhone } from './OpportunityPhone';
+import { useDismissPromptLifetime } from './parts';
 
 /**
  * Layout route for / and /o/:id. The feed state lives here so it survives
@@ -38,6 +39,7 @@ function FixtureFeed({ fixture, openId, state }: { fixture: Fixture; openId: str
 
 function FeedScreens({ model, openId }: { model: ReturnType<typeof useFeedModel>; openId: string | null }) {
   const desktop = useIsDesktop();
+  useDismissPromptLifetime(model);
   if (desktop) return <FeedDesktop model={model} openId={openId} />;
   if (openId) return <OpportunityPhone model={model} id={openId} />;
   return <FeedPhone model={model} />;
@@ -115,7 +117,7 @@ function LiveFeedScreens({
         // Keep the cached shortlist and feed in step, so the next screen starts from the truth.
         setShortlist((prev) => {
           const rest = (prev ?? []).filter((i) => i.id !== item.id);
-          return state === 'saved' || state === 'acting' ? [...rest, { ...item, state }] : rest;
+          return state === 'saved' || state === 'acting' ? [...rest, { ...item, state, provisional: item.provisional ?? false }] : rest;
         });
         setFeed((prev) => {
           if (!prev) return prev;
@@ -126,6 +128,7 @@ function LiveFeedScreens({
           };
         });
       },
+      setDismissReason: (item: FeedItem, reason: DismissReason) => api.setState(item.id, 'dismissed', reason),
     }),
     [initial, setShortlist, setFeed],
   );

@@ -3,34 +3,23 @@ import { useLocation, useNavigate } from 'react-router';
 import { Button } from '../../components/Button/Button';
 import { Card } from '../../components/Card/Card';
 import { FeedRow } from '../../components/FeedRow/FeedRow';
-import { Kite } from '../../components/Kite/Kite';
 import { KiteOrbit } from '../../components/KiteOrbit/KiteOrbit';
-import { NavItem } from '../../components/NavItem/NavItem';
 import { StateCard } from '../../components/StateCard/StateCard';
 import { TextLink } from '../../components/TextLink/TextLink';
 import { TrustPanel } from '../../components/TrustNote/TrustNote';
-import { Wordmark } from '../../components/Wordmark/Wordmark';
 import type { FeedItem } from '../../fixtures/types';
-import { detailMeta, feedSummary, greeting, isClosed, nextDigest, pillFor } from '../../lib/feed';
+import { detailMeta, feedSummary, greeting, isClosed, pillFor } from '../../lib/feed';
 import { rowSubtitle } from '../../lib/subtitle';
 import { httpUrl } from '../../lib/externalUrl';
 import { useAppLink } from '../../lib/useAppLink';
-import type { FeedModel } from './model';
-import { DetailTop, FilterChips, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus } from './parts';
+import { Sidebar } from '../shell/Sidebar';
+import { DISMISS_NAV, type FeedModel } from './model';
+import { DetailTop, DismissReasonPrompt, FilterChips, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus, SaveButton } from './parts';
 import { HEADING, rowId } from './focus';
 import { useLiveList, useLiveSelection } from './liveList';
 import { useFeedKeys } from './useFeedKeys';
 import { useStateCard } from './useStateCard';
 import styles from './FeedDesktop.module.css';
-
-
-export const NAV = [
-  { label: 'Feed', to: '/' },
-  { label: 'Shortlist', to: '/shortlist' },
-  { label: 'Calendar', to: '/calendar' },
-  { label: 'Sources', to: '/sources' },
-  { label: 'Profiles', to: '/profiles' },
-] as const;
 
 /** feed-desktop.html: sidebar, greeting, filters, the list and the detail pane. Fluid from 792 px up. */
 export function FeedDesktop({ model, openId }: { model: FeedModel; openId: string | null }) {
@@ -56,7 +45,7 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
     return liveItems.current().find((i) => i.id === id);
   };
 
-  const select = (id: string) => navigate(`/o/${id}${search}`, { replace: true, state: liveSelection.select(id) });
+  const select = (id: string, extra?: object) => navigate(`/o/${id}${search}`, { replace: true, state: { ...liveSelection.select(id), ...extra } });
 
   // Where focus goes once a dismissal has re-rendered: a row id, or the heading when the list is empty.
   const pendingFocus = useRef<string | null>(null);
@@ -73,9 +62,10 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
     const row = document.getElementById(rowId(current.id));
     if (!active || active === document.body || row?.contains(active)) pendingFocus.current = next ? next.id : HEADING;
     liveItems.markDismissed(current.id);
-    model.dismiss(current.id);
-    if (next) select(next.id);
-    else navigate(`/${search}`, { replace: true, state: liveSelection.select(null) });
+    // The optional "Why not?" prompt follows; this move to the next item keeps it.
+    model.dismiss(current.id, true);
+    if (next) select(next.id, DISMISS_NAV);
+    else navigate(`/${search}`, { replace: true, state: { ...liveSelection.select(null), ...DISMISS_NAV } });
   };
 
   useEffect(() => {
@@ -120,23 +110,7 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
 
   return (
     <div className={styles.page}>
-      <nav aria-label="Main" className={styles.nav}>
-        <div className={styles.lockup}>
-          <Kite label="Blackkite" width={42} height={28} rotate={-16} />
-          <Wordmark size={22} />
-        </div>
-        <div className={styles.navList}>
-          {NAV.map((n) => (
-            <NavItem key={n.to} variant="side" current={n.to === '/'} {...link(n.to)}>
-              {n.label}
-            </NavItem>
-          ))}
-        </div>
-        <div className={styles.digest}>
-          <div className={styles.digestLabel}>Next digest</div>
-          <div>{nextDigest(feed.digest.channel)}</div>
-        </div>
-      </nav>
+      <Sidebar current="/" channel={feed.digest.channel} />
 
       <main className={styles.main}>
         <div className={styles.head}>
@@ -160,6 +134,13 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
         <div className={styles.grid}>
           <div className={styles.column}>
             <LiveStatus model={model} />
+            <DismissReasonPrompt
+              model={model}
+              focusAfter={() => {
+                const id = liveSelection.current();
+                (id ? document.getElementById(rowId(id)) : headingRef.current)?.focus();
+              }}
+            />
             {stateCard && (
               <Card gap={12} aria-label="Feed status">
                 <StateCard {...stateCard} />
@@ -226,9 +207,7 @@ function DetailPane({ item, model, onDismiss }: { item: FeedItem; model: FeedMod
         {item.detail.trust.desktop}
       </TrustPanel>
       <div className={styles.actions}>
-        <Button aria-pressed={saved} onClick={() => model.toggleSaved(item.id)}>
-          Save to shortlist
-        </Button>
+        <SaveButton saved={saved} onClick={() => model.toggleSaved(item.id)} />
         <Button variant="secondary" onClick={onDismiss}>
           Not for me
         </Button>

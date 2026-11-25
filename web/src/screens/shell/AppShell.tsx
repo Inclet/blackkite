@@ -9,17 +9,19 @@ import { Wordmark } from '../../components/Wordmark/Wordmark';
 import { useAppLink } from '../../lib/useAppLink';
 import { useIsDesktop } from '../../lib/useIsDesktop';
 import styles from './AppShell.module.css';
+import { Sidebar, SIDEBAR_NAV } from './Sidebar';
 
-/** The desktop sidebar: the board's five items, then the two settings screens (not on the board). */
-export const SHELL_NAV = [
-  { label: 'Feed', to: '/' },
-  { label: 'Shortlist', to: '/shortlist' },
-  { label: 'Calendar', to: '/calendar' },
-  { label: 'Sources', to: '/sources' },
-  { label: 'Profiles', to: '/profiles' },
-  { label: 'Digest', to: '/settings/digest' },
-  { label: 'Account', to: '/account' },
-] as const;
+/**
+ * Settings screens reached from Profiles (and the phone's More), not from the sidebar:
+ * on desktop they keep Profiles current.
+ */
+const UNDER_PROFILES = ['/settings/digest', '/account'];
+
+/** The sidebar item a desktop path belongs to. */
+export function sidebarCurrent(path: string): string | null {
+  if (UNDER_PROFILES.some((p) => path === p || path.startsWith(`${p}/`))) return '/profiles';
+  return currentFor(path, SIDEBAR_NAV);
+}
 
 /** The phone tab bar, as on feed-phone.html. Profiles, digest, account and sources live under More. */
 export const SHELL_TABS = [
@@ -55,25 +57,12 @@ export function AppShell({ path, title, summary, children }: AppShellProps) {
   const link = useAppLink();
   const navigate = useNavigate();
   const me = useResource('me', (s) => api.me(s));
-  const name = me.data?.name ?? me.data?.email ?? '';
 
   if (desktop) {
-    const current = currentFor(path, SHELL_NAV);
     return (
       <div className={styles.page}>
-        <nav aria-label="Main" className={styles.nav}>
-          <div className={styles.lockup}>
-            <Kite label="Blackkite" width={42} height={28} rotate={-16} />
-            <Wordmark size={22} />
-          </div>
-          <div className={styles.navList}>
-            {SHELL_NAV.map((n) => (
-              <NavItem key={n.to} variant="side" current={n.to === current} {...link(n.to)}>
-                {n.label}
-              </NavItem>
-            ))}
-          </div>
-        </nav>
+        {/* The digest goes by email in v1 (spec 8), as the feed's footer says. */}
+        <Sidebar current={sidebarCurrent(path)} channel="email" />
         <main className={styles.main}>
           <div className={styles.greet}>
             <h1 tabIndex={-1} className={styles.h1}>
@@ -95,7 +84,7 @@ export function AppShell({ path, title, summary, children }: AppShellProps) {
           <Kite label="Blackkite" width={39} height={26} rotate={-16} />
           <Wordmark size={20} />
         </div>
-        <AccountButton name={name} onClick={() => navigate('/account')} />
+        <AccountButton name={me.data?.name ?? ''} email={me.data?.email} onClick={() => navigate('/account')} />
       </header>
       <main className={styles.phoneMain}>
         <div className={styles.phoneGreet}>

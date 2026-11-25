@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../api/client';
-import type { DigestSettings as Settings } from '../../api/types';
+import type { AlertMinFit, DigestSettings as Settings } from '../../api/types';
 import { useResource } from '../../api/useResource';
 import { Button } from '../../components/Button/Button';
 import { Card } from '../../components/Card/Card';
@@ -35,23 +35,10 @@ export const DIGEST_COPY = {
   refused: 'Blackkite did not accept these settings. Try again.',
 } as const;
 
-/**
- * alertThreshold values (the internal 0-100 score) behind the two choices. The
- * owner may tune them; they sit near the fit-word bands (strong >= 0.7 confidence,
- * good >= 0.6, docs/api-contract.md section 1).
- */
-export const ALERT_THRESHOLDS = { strong: 75, good: 60 } as const;
-
-export type AlertChoice = keyof typeof ALERT_THRESHOLDS;
+export type AlertChoice = AlertMinFit;
 
 /** Where the choice starts when urgent alerts are switched on (design review). */
 export const DEFAULT_ALERT_CHOICE: AlertChoice = 'strong';
-
-/** The choice a stored threshold reads as: at or above the strong value is "strong only". */
-export function choiceFor(threshold: number | null): AlertChoice {
-  if (threshold === null) return DEFAULT_ALERT_CHOICE;
-  return threshold >= ALERT_THRESHOLDS.strong ? 'strong' : 'good';
-}
 
 type Status = 'idle' | 'saving' | 'saved' | 'refused' | 'unreachable';
 
@@ -71,10 +58,8 @@ export function DigestSettings() {
 
 function DigestForm({ settings, address, onSaved }: { settings: Settings; address?: string; onSaved: (s: Settings) => void }) {
   const [weekly, setWeekly] = useState(settings.frequency === 'weekly');
-  const [alerts, setAlerts] = useState(settings.alertThreshold !== null);
-  const [choice, setChoice] = useState<AlertChoice>(choiceFor(settings.alertThreshold));
-  // A stored value the owner set some other way is kept until the choice is changed.
-  const [choiceTouched, setChoiceTouched] = useState(false);
+  const [alerts, setAlerts] = useState(settings.alertMinFit !== null);
+  const [choice, setChoice] = useState<AlertChoice>(settings.alertMinFit ?? DEFAULT_ALERT_CHOICE);
   const [streams, setStreams] = useState<Stream[] | null>(settings.streams);
   const [status, setStatus] = useState<Status>('idle');
 
@@ -91,10 +76,9 @@ function DigestForm({ settings, address, onSaved }: { settings: Settings; addres
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const value = !alerts ? null : !choiceTouched && settings.alertThreshold !== null ? settings.alertThreshold : ALERT_THRESHOLDS[choice];
     setStatus('saving');
     // Exactly the keys PUT takes: the API refuses any other.
-    const next: Settings = { channel: 'email', frequency: weekly ? 'weekly' : 'off', day: 'mon', alertThreshold: value, streams };
+    const next: Settings = { channel: 'email', frequency: weekly ? 'weekly' : 'off', day: 'mon', alertMinFit: alerts ? choice : null, streams };
     try {
       const saved = await api.saveDigestSettings(next);
       onSaved(saved && typeof saved === 'object' ? saved : next);
@@ -166,7 +150,6 @@ function DigestForm({ settings, address, onSaved }: { settings: Settings; addres
                   selected={choice === c}
                   onClick={() => {
                     touch();
-                    setChoiceTouched(true);
                     setChoice(c);
                   }}
                 />

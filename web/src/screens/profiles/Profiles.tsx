@@ -4,6 +4,7 @@ import type { Profile } from '../../api/types';
 import { useResource } from '../../api/useResource';
 import { Button } from '../../components/Button/Button';
 import { Card } from '../../components/Card/Card';
+import { NavItem } from '../../components/NavItem/NavItem';
 import { StateCard } from '../../components/StateCard/StateCard';
 import { Tag } from '../../components/Tag/Tag';
 import { TextLink } from '../../components/TextLink/TextLink';
@@ -12,6 +13,7 @@ import { useAppLink } from '../../lib/useAppLink';
 import { LoadState } from '../common/LoadState';
 import { AppShell } from '../shell/AppShell';
 import { SignIn } from '../SignIn';
+import settingsStyles from '../settings/Settings.module.css';
 import styles from './Profiles.module.css';
 
 export const PROFILES_COPY = {
@@ -24,6 +26,7 @@ export const PROFILES_COPY = {
   edit: 'Edit',
   paused: 'Paused',
   provisional: 'Provisional',
+  settings: 'Settings',
 } as const;
 
 export function profileMeta(p: Profile): string {
@@ -33,6 +36,12 @@ export function profileMeta(p: Profile): string {
 }
 
 /** /profiles: the caller's profiles, and the way to add one. Not on any board (design review). */
+/** The settings screens, reached from here on desktop (the sidebar has only the board's five items). */
+export const PROFILE_SETTINGS_LINKS = [
+  { label: 'Digest settings', to: '/settings/digest' },
+  { label: 'Account', to: '/account' },
+] as const;
+
 export function Profiles() {
   const link = useAppLink();
   const navigate = useNavigate();
@@ -84,6 +93,16 @@ export function Profiles() {
           </Button>
         </div>
       )}
+      {/* Off the sidebar (it matches the feed board's): the settings screens live here and under More. Design review. */}
+      <Card padding="12px" aria-label={PROFILES_COPY.settings}>
+        <div className={settingsStyles.links}>
+          {PROFILE_SETTINGS_LINKS.map((l) => (
+            <NavItem key={l.to} variant="side" {...link(l.to)}>
+              {l.label}
+            </NavItem>
+          ))}
+        </div>
+      </Card>
     </AppShell>
   );
 }

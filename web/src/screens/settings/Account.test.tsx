@@ -20,7 +20,10 @@ test('shows who is signed in', async () => {
   mockApi({ 'GET /me': ME });
   renderAt('/account');
   expect(await screen.findByText('clet@example.rw')).toBeInTheDocument();
-  expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Account' })).toHaveAttribute('aria-current', 'page');
+  // Account is reached from Profiles on desktop: the sidebar keeps the board's five items, Profiles current.
+  const nav = within(screen.getByRole('navigation', { name: 'Main' }));
+  expect(nav.queryByRole('link', { name: 'Account' })).toBeNull();
+  expect(nav.getByRole('link', { name: 'Profiles' })).toHaveAttribute('aria-current', 'page');
 });
 
 test('export: GET /api/me/export becomes a download', async () => {

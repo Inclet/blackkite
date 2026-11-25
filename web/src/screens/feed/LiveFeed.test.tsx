@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { referenceItems } from '../../fixtures/reference';
 import type { ItemState } from '../../api/types';
 import type { FeedContent, FeedItem } from '../../fixtures/types';
@@ -7,7 +7,7 @@ import { setNowForTests } from '../../lib/now';
 import { mockApi, status } from '../../test/mockApi';
 import { COPY } from '../common/copy';
 import { SIGN_IN } from '../SignIn';
-import { LIVE_COPY } from './parts';
+import { DETAIL_COPY, LIVE_COPY } from './parts';
 import { renderAt, setViewport } from './testUtils';
 
 beforeEach(() => {
@@ -270,4 +270,63 @@ test('phone: the account button opens the account screen', async () => {
   await screen.findByRole('heading', { level: 1, name: 'Good afternoon, Clet' });
   fireEvent.click(screen.getByRole('button', { name: 'Your account' }));
   expect(router.state.location.pathname).toBe('/account');
+});
+
+describe('a provisional profile', () => {
+  const items = () => referenceItems().map((i) => ({ ...i, provisional: i.detail.profile === 'AI lab' }));
+  const aiItem = () => items().find((i) => i.provisional)!;
+
+  test('desktop pane: a neutral "Provisional" tag right after the profile tag', async () => {
+    const id = aiItem().id;
+    liveApi({ 'GET /api/feed': feed(items()) });
+    renderAt(`/o/${id}`);
+    const pane = within(await ready());
+    const profile = pane.getByText('AI lab');
+    const tag = pane.getByText(DETAIL_COPY.provisional);
+    expect(tag.className).toBe(profile.className);
+    expect(profile.nextElementSibling).toBe(tag);
+  });
+
+  test('phone page: the same tag; items of other profiles show none', async () => {
+    setViewport('phone');
+    liveApi({ 'GET /api/feed': feed(items()) });
+    renderAt(`/o/${aiItem().id}`);
+    expect(await screen.findByText(DETAIL_COPY.provisional)).toBeInTheDocument();
+    expect(screen.getByText('AI lab').nextElementSibling).toHaveTextContent(DETAIL_COPY.provisional);
+  });
+
+  test('not provisional: no tag (the reference fixture never shows one)', async () => {
+    liveApi({ 'GET /api/feed': feed(items()) });
+    renderAt('/o/wfp-logistics');
+    await ready();
+    expect(screen.queryByText(DETAIL_COPY.provisional)).toBeNull();
+  });
+});
+
+describe('no name on the account', () => {
+  const nameless = () => ({ ...feed(), user: { name: '' } });
+
+  test('desktop: "Good afternoon" with no name', async () => {
+    liveApi({ 'GET /api/feed': nameless(), 'GET /me': { id: 'u', email: 'clet@x.rw', name: null, role: 'admin' } });
+    renderAt('/');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Good afternoon' })).toBeInTheDocument();
+  });
+
+  test('phone: the account button shows the email\'s first letter, from GET /me', async () => {
+    setViewport('phone');
+    const api = liveApi({ 'GET /api/feed': nameless(), 'GET /me': { id: 'u', email: 'amina@x.rw', name: null, role: 'admin' } });
+    renderAt('/');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Good afternoon' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Your account' })).toHaveTextContent(/^A$/));
+    expect(screen.getByRole('button', { name: 'Your account' })).not.toHaveTextContent('T');
+    expect(api.calls.map((c) => c.key)).toContain('GET /me');
+  });
+
+  test('phone with a name: the name\'s letter', async () => {
+    setViewport('phone');
+    liveApi({ 'GET /me': { id: 'u', email: 'zed@x.rw', name: 'Clet', role: 'admin' } });
+    renderAt('/');
+    await screen.findByRole('heading', { level: 1, name: 'Good afternoon, Clet' });
+    expect(screen.getByRole('button', { name: 'Your account' })).toHaveTextContent(/^C$/);
+  });
 });

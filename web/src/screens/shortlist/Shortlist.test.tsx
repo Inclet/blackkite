@@ -46,6 +46,13 @@ test('phone: the phone rows and the tab bar', async () => {
   await waitFor(() => expect(screen.getByRole('button', { name: 'Your account' })).toHaveTextContent('C'));
 });
 
+test.each([null, ''])('phone shell, no name (%j): the account button shows the email\'s first letter', async (name) => {
+  setViewport('phone');
+  mockApi({ 'GET /api/shortlist': [], 'GET /me': { ...ME, email: 'amina@x.rw', name } });
+  renderAt('/shortlist');
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Your account' })).toHaveTextContent(/^A$/));
+});
+
 test('empty: the nothing-new card pointing at the feed', async () => {
   mockApi({ 'GET /api/shortlist': [], 'GET /me': ME });
   const router = renderAt('/shortlist');
