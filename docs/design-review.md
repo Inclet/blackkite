@@ -10,13 +10,13 @@ Anything built without a reference board. Built from existing components and tok
 | Unselected "All" chip | Phase 1, FilterChip | White, 1px stone-200 border, padding 0 15px |
 | Switch off state | Phase 1, Switch | Stone-300 track, thumb left |
 | "Closes today" pill | Phase 1, DeadlinePill | Same as "Closes tomorrow" (alert red) |
-| Sources, Profiles, Shortlist, Calendar, admin, evening mode | Not built | Per brief |
+| Sources, Calendar, admin screens, evening mode | Not built (Sources UI is M3) | Calendar and Sources render in the app frame as "Not designed yet."; evening mode not shipped. Profiles and Shortlist are built (Phase 4, below) |
 | Layout between 792 and 1024 px | Phase 2, FeedDesktop | Follows the board's own flex/grid; the detail pane stacks under the list below about 1200 px |
 | Sign-in confirm page `/auth/confirm` | Phase 2, AuthConfirm | Wordmark, heading, body, one primary "Continue to sign in" button; plain error message (decision 17) |
 | State cards inside the feed | Phase 2, feed | Checking, source down and first visit sit above the list; nothing new replaces list and pane; phone card margin 0 12px, padding 22px 24px; first visit shows the list unranked |
 | Nothing-new card reused when everything is dismissed or filtered away | Phase 2, feed | Same card and copy |
-| Save action | Phase 2, feed | Button keeps one label, "Save to shortlist"; aria-pressed carries the saved state. S or a second press unsaves |
-| Dismiss action | Phase 2, feed | Row leaves the list, selection moves to next (or previous); phone returns to the feed; no undo, no reason yet |
+| Save action | Phase 2, updated Phase 4 | One label, "Save to shortlist"; aria-pressed carries the state. Saved: secondary style with the ui "check" icon (16px, stroke 1.6, 8px gap) before the label; unsaved: primary, no icon. S or a second press unsaves |
+| Dismiss action | Phase 2, updated Phase 4 | Row leaves the list, selection moves to next (or previous); phone returns to the feed; no undo. Optional reason: see "Dismiss reason card" |
 | Live region announcements | Phase 2, feed | Visually hidden, for save and dismiss |
 | Selected-row hover | Phase 2, FeedRow | Text turns slate (board's a:hover); no hover fill |
 | New-row drop | Phase 2, FeedRow | 8 px over --bk-settle with --bk-ease, once |
@@ -45,8 +45,13 @@ Anything built without a reference board. Built from existing components and tok
 | Digest settings | Phase 4 | Weekly digest switch ("Every Monday, by email to {address}."), stream chips incl. "My profiles' streams", the board's Urgent alerts switch, "Alert me about": "Strong fits only" / "Strong and good fits" |
 | Account | Phase 4 | Signed in as, Sign out, "Export my data", "Delete my account" with typed-email confirm ("Delete my account for good" / "Keep my account"), "Your account is deleted." |
 | More (phone) | Phase 4 | Card of NavItems: Profiles, Digest, Sources, Account |
-| Urgent alert email | Phase 4 | Heading "Closing within 5 days"; subject "Closes {date}: {title}" / "{N} items close within 5 days"; intro "Found today and above your alert level, so it should not wait for Monday's digest."; footer about alert settings |
+| Urgent alert email | Phase 4 | Heading "Closing within 5 days"; subject "Closes {date}: {title}" / "{N} items close within 5 days"; intro "Found today and at your alert level, so it should not wait for Monday's digest."; footer names the chosen fit word ("…is a strong fit for one of your profiles…") and links to alert settings |
 | Digest additions | Phase 4 | "Closing in 7 days" block (15px bold heading); value line "Value: FRW 12,000,000 ({note})"; full dates with times; subject and intro wording for counts; greeting by time of day |
 | Trust copy not on the boards | Phase 4 | Confirmed: "Matched to the notice on {publisher}'s own site." / "Listed on {publisher}'s own site."; conflict without an original; private item "You added this item yourself, so nobody else has checked it." |
 | Rules-only scoring | Phase 4 | Fit word at most "Possible" without the model |
 | Demo data | Phase 4 | `bk demo-seed` items titled "[Demo] …", organisations "(fictional)"; dev only |
+| Provisional tag | Phase 4 | Neutral profile-style Tag "Provisional" after the profile Tag in the desktop detail pane and the phone opportunity page; the tag row may wrap on a narrow phone (the boards never wrap) |
+| Provisional in emails | Phase 4 | Digest and alert labels read "TENDER · FOR AI LAB (PROVISIONAL)" |
+| Greeting without a name | Phase 4 | App: "Good afternoon" (morning/evening alike) with no name; digest: "Good morning" |
+| Account button fallback | Phase 4 | First letter of the name, else of the email, else empty |
+| Profiles "Settings" card | Phase 4 | Card with two side NavItems, "Digest settings" and "Account", on desktop and phone; desktop Digest settings and Account highlight Profiles in the sidebar |
