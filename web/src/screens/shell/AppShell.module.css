@@ -1,0 +1,148 @@
+/* Not on any board (design review). The frame copies the feed boards' values:
+   desktop sidebar and main from feed-desktop.html, header and tab bar from feed-phone.html. */
+
+.page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: var(--bk-mist);
+  color: var(--bk-graphite);
+  font-family: var(--bk-font);
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.nav {
+  flex: 1 1 232px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 28px 20px;
+  border-right: 1px solid var(--bk-stone-200);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.lockup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+}
+
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 15px;
+}
+
+.main {
+  flex: 999 1 560px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.greet {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.h1:focus {
+  outline: none;
+}
+
+.summary {
+  font-size: 15px;
+  color: var(--bk-slate);
+}
+
+/* Content column: one card wide, as the feed's list column (minmax 440px). */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 720px;
+  min-width: 0;
+}
+
+/* Phone */
+.phonePage {
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  background: var(--bk-mist);
+  color: var(--bk-graphite);
+  font-family: var(--bk-font);
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px 6px;
+}
+
+.phoneLockup {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.phoneMain {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 20px;
+}
+
+.phoneGreet {
+  padding: 10px 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.phoneH1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.phoneH1:focus {
+  outline: none;
+}
+
+/* Cards sit 12px in from the edges, as the phone feed's list card. */
+.phoneBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 12px;
+}
+
+.tabs {
+  margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  background: var(--bk-white);
+  border-top: 1px solid var(--bk-stone-200);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 6px 8px 10px;
+}

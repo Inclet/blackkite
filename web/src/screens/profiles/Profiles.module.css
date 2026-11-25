@@ -1,0 +1,99 @@
+/* Not on any board (design review). Values from the Components board's Fields card
+   (14px field gap, 13px/500 labels, 12px/500 alert-text errors) and the feed's detail actions. */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  /* The shell's column gap (24px desktop, 12px phone). */
+  gap: inherit;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 14px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.groupLabel {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.error {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bk-alert-text);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.status {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--bk-slate);
+}
+
+.alertStatus {
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 500;
+  color: var(--bk-alert-text);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+}
+
+.row + .row {
+  border-top: 1px solid var(--bk-stone-200);
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rowTitle {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+.meta {
+  font-size: 13px;
+  color: var(--bk-slate);
+}

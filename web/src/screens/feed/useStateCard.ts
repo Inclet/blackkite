@@ -1,4 +1,6 @@
+import type { MouseEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router';
+import { isModifiedClick } from '../../lib/useAppLink';
 import type { StateCardProps, StateKind } from '../../components/StateCard/StateCard';
 import type { FeedModel } from './model';
 
@@ -17,7 +19,7 @@ const ACTION_TARGET: Partial<Record<StateKind, string>> = {
 export function useStateCard(model: FeedModel): StateCardProps | null {
   const navigate = useNavigate();
   const { search } = useLocation();
-  const card = model.stateCard ?? (model.items.length === 0 ? (model.fixture.styleguide.states.find((s) => s.kind === 'nothing-new') ?? null) : null);
+  const card = model.stateCard ?? (model.items.length === 0 ? (model.states.find((s) => s.kind === 'nothing-new') ?? null) : null);
   if (!card?.action) return card;
   const target = ACTION_TARGET[card.kind];
   if (!target) return card;
@@ -28,7 +30,12 @@ export function useStateCard(model: FeedModel): StateCardProps | null {
     action: {
       label: card.action.label,
       href,
-      onClick: () => navigate(href),
+      // StateCard hands the link's click event through; without preventDefault the browser would also load the page.
+      onClick: ((event?: MouseEvent) => {
+        if (event && (event.defaultPrevented || isModifiedClick(event))) return;
+        event?.preventDefault();
+        navigate(href);
+      }) as () => void,
     },
   };
 }

@@ -76,6 +76,11 @@
   margin: 0 12px;
 }
 
+/* Live data only (design review): the loading or unreachable card, 12px above the next card. */
+.statusCard {
+  margin: 0 12px 12px;
+}
+
 .tabs {
   margin-top: auto;
   position: sticky;

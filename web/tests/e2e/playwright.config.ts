@@ -20,7 +20,7 @@ function freePort(): Promise<number> {
   });
 }
 
-// The preview server proxies the API paths here; auth.spec.ts listens on it with a stub API.
+// The preview server proxies the API paths here; globalSetup starts the stub API on it (stubApi.ts).
 // Chosen once in the main process; workers inherit it through the environment.
 process.env.BK_E2E_API_PORT ??= String(await freePort());
 export const API_ORIGIN = `http://127.0.0.1:${process.env.BK_E2E_API_PORT}`;
@@ -29,6 +29,7 @@ export const API_ORIGIN = `http://127.0.0.1:${process.env.BK_E2E_API_PORT}`;
 export default defineConfig({
   testDir: '.',
   testMatch: '*.spec.ts',
+  globalSetup: path.join(here, 'globalSetup.ts'),
   outputDir: path.join(webRoot, 'test-results/e2e'),
   fullyParallel: true,
   forbidOnly: true,

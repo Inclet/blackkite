@@ -11,7 +11,7 @@ import { feedSummary, greeting, isClosed, pillFor } from '../../lib/feed';
 import { rowSubtitle } from '../../lib/subtitle';
 import { useAppLink } from '../../lib/useAppLink';
 import type { FeedModel } from './model';
-import { FilterChips, LiveRegion } from './parts';
+import { FilterChips, LiveRegion, LiveStatus } from './parts';
 import { HEADING, rowId } from './focus';
 import { useLiveList } from './liveList';
 import { useFeedKeys } from './useFeedKeys';
@@ -28,7 +28,7 @@ export const TABS = [
 /** feed-phone.html: header, greeting, scrolling chips, the list and the tab bar. Below 792 px (decision 6). */
 export function FeedPhone({ model }: { model: FeedModel }) {
   const link = useAppLink();
-  const { feed } = model.fixture;
+  const { feed } = model;
   // The summary counts the whole feed, as on the board (which omits a row on the phone, decision 4).
   const rows = model.items.filter((i) => !i.hideOnPhone);
   const stateCard = useStateCard(model);
@@ -96,7 +96,7 @@ export function FeedPhone({ model }: { model: FeedModel }) {
           <Kite label="Blackkite" width={39} height={26} rotate={-16} />
           <Wordmark size={20} />
         </div>
-        <AccountButton name={feed.user.name} />
+        <AccountButton name={feed.user.name} onClick={() => navigate(`/account${location.search}`)} />
       </header>
 
       <main className={styles.main}>
@@ -109,6 +109,7 @@ export function FeedPhone({ model }: { model: FeedModel }) {
 
         <FilterChips model={model} className={styles.chips} chipClassName={styles.chip} />
 
+        <LiveStatus model={model} className={styles.statusCard} padding="22px 24px" />
         {stateCard && (
           <Card className={styles.card} padding="22px 24px" gap={12} aria-label="Feed status">
             <StateCard {...stateCard} />
