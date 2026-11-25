@@ -14,8 +14,8 @@ import { httpUrl } from '../../lib/externalUrl';
 import { useAppLink } from '../../lib/useAppLink';
 import { Sidebar } from '../shell/Sidebar';
 import { DISMISS_NAV, type FeedModel } from './model';
-import { DetailTop, DismissReasonPrompt, FilterChips, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus, SaveButton } from './parts';
-import { HEADING, rowId } from './focus';
+import { DetailTop, DismissReasonPrompt, FilterChips, focusInDismissPrompt, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus, SaveButton } from './parts';
+import { HEADING, PROMPT, rowId } from './focus';
 import { useLiveList, useLiveSelection } from './liveList';
 import { useFeedKeys } from './useFeedKeys';
 import { useStateCard } from './useStateCard';
@@ -45,13 +45,24 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
     return liveItems.current().find((i) => i.id === id);
   };
 
-  const select = (id: string, extra?: object) => navigate(`/o/${id}${search}`, { replace: true, state: { ...liveSelection.select(id), ...extra } });
+  const select = (id: string, extra?: object) => {
+    // J/K close the prompt; focus on one of its chips follows the selection instead of falling to the page.
+    if (!extra && focusInDismissPrompt()) pendingFocus.current = id;
+    return navigateTo(id, extra);
+  };
+  const navigateTo = (id: string, extra?: object) => navigate(`/o/${id}${search}`, { replace: true, state: { ...liveSelection.select(id), ...extra } });
 
   // Where focus goes once a dismissal has re-rendered: a row id, or the heading when the list is empty.
   const pendingFocus = useRef<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const firstChipRef = useRef<HTMLButtonElement>(null);
 
-  const dismissSelected = () => {
+  /**
+   * X, or the pane's "Not for me" (`fromPane`). After the button, focus moves to
+   * the first "Why not?" chip: the button would otherwise stay focused on the next
+   * item's pane. After X it stays put (or follows the selection), so J/K/S/X carry on.
+   */
+  const dismissSelected = (fromPane = false) => {
     const current = liveSelected();
     if (!current) return;
     const list = liveItems.current();
@@ -60,7 +71,8 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
     // If focus is on the row being removed (or already lost), it follows the selection.
     const active = document.activeElement;
     const row = document.getElementById(rowId(current.id));
-    if (!active || active === document.body || row?.contains(active)) pendingFocus.current = next ? next.id : HEADING;
+    if (fromPane) pendingFocus.current = PROMPT;
+    else if (!active || active === document.body || row?.contains(active)) pendingFocus.current = next ? next.id : HEADING;
     liveItems.markDismissed(current.id);
     // The optional "Why not?" prompt follows; this move to the next item keeps it.
     model.dismiss(current.id, true);
@@ -71,6 +83,12 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
   useEffect(() => {
     const target = pendingFocus.current;
     if (!target) return;
+    if (target === PROMPT) {
+      if (!firstChipRef.current) return;
+      pendingFocus.current = null;
+      firstChipRef.current.focus();
+      return;
+    }
     if (target !== HEADING && target !== selected?.id) return;
     pendingFocus.current = null;
     if (target === HEADING) headingRef.current?.focus();
@@ -96,7 +114,7 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
       const current = liveSelected();
       if (current) model.toggleSaved(current.id);
     },
-    onDismiss: dismissSelected,
+    onDismiss: () => dismissSelected(),
   });
 
   // Keep the selected row in view as J and K move through a long list.
@@ -136,6 +154,7 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
             <LiveStatus model={model} />
             <DismissReasonPrompt
               model={model}
+              firstChipRef={firstChipRef}
               focusAfter={() => {
                 const id = liveSelection.current();
                 (id ? document.getElementById(rowId(id)) : headingRef.current)?.focus();
@@ -171,7 +190,7 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
             )}
           </div>
 
-          {showList && selected && <DetailPane item={selected} model={model} onDismiss={dismissSelected} />}
+          {showList && selected && <DetailPane item={selected} model={model} onDismiss={() => dismissSelected(true)} />}
           {notFound && (
             <Card as="article" padding="24px" gap={16} aria-label="Not found">
               <div className={styles.summary}>We could not find that item. It may have been removed at the source.</div>

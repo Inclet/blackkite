@@ -92,6 +92,8 @@ export const DISMISS_COPY = {
     already_knew: 'Already knew about it',
     other: 'Other',
   } satisfies Record<DismissReason, string>,
+  /** Appended to the "Marked not for me: {title}" announcement when the prompt follows. */
+  ask: 'You can say why (optional).',
   noted: 'Thanks, noted.',
   reasonFailed: 'We could not reach Blackkite just now, so the reason was not saved.',
 } as const;
@@ -190,6 +192,7 @@ export function useFeedModel(
       change(id, 'dismissed');
       const item = all.find((i) => i.id === id);
       setDismissPrompt(ask && item ? { id, title: item.title, item, seq: ++promptSeq.current } : null);
+      if (ask && item) setAnnouncement(`${ANNOUNCE.dismissed}: ${item.title}. ${DISMISS_COPY.ask}`);
     },
     [change, all],
   );

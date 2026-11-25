@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type Ref } from 'react';
 import { useLocation } from 'react-router';
 import { api } from '../../api/client';
 import { DISMISS_REASONS } from '../../api/types';
@@ -92,23 +92,38 @@ export function SaveButton({ saved, size, onClick }: { saved: boolean; size?: 'r
   );
 }
 
+/** Marks the reason chips' group, so the screens can tell when focus is inside the prompt. */
+export const DISMISS_PROMPT_ATTR = 'data-dismiss-prompt';
+
+/** True when focus is on one of the prompt's chips. */
+export function focusInDismissPrompt(): boolean {
+  return document.activeElement?.closest(`[${DISMISS_PROMPT_ATTR}]`) != null;
+}
+
 /**
- * "Why not? (optional)" after "Not for me" / X: the five reasons as FilterChips.
- * The item is already dismissed; a chip sends the reason. Gone after a choice or
- * on the next navigation (the dismissal's own move to the next item does not count).
- * Focus is not moved here, so J/K/S/X carry on; Tab reaches the chips. Design review.
+ * "Why not? (optional)" after "Not for me" / X: the five reasons as one-shot
+ * FilterChips (`action`: no aria-pressed). The item is already dismissed; a chip
+ * sends the reason. Gone after a choice or on the next navigation (the
+ * dismissal's own move to the next item does not count): J/K close it by design,
+ * since moving on means the user chose not to answer.
+ *
+ * Focus: after X it stays where it was, so J/K/S/X carry on and Tab reaches the
+ * chips. After the desktop pane's "Not for me" button the screen moves focus to
+ * the first chip (`firstChipRef`). Design review.
  */
 export function DismissReasonPrompt({
   model,
   className,
   padding,
   focusAfter,
+  firstChipRef,
 }: {
   model: FeedModel;
   className?: string;
   padding?: string;
   /** Where focus goes when a chip is chosen (the prompt and the chip leave the page). */
   focusAfter: () => void;
+  firstChipRef?: Ref<HTMLButtonElement>;
 }) {
   const prompt = model.dismissPrompt;
   if (!prompt) return null;
@@ -118,13 +133,14 @@ export function DismissReasonPrompt({
       <div className={styles.whyLabel} id={labelId}>
         {DISMISS_COPY.question}
       </div>
-      <div className={styles.progress} role="group" aria-labelledby={labelId}>
-        {DISMISS_REASONS.map((r) => (
+      <div className={styles.progress} role="group" aria-labelledby={labelId} {...{ [DISMISS_PROMPT_ATTR]: '' }}>
+        {DISMISS_REASONS.map((r, i) => (
           <FilterChip
             key={r}
+            ref={i === 0 ? firstChipRef : undefined}
             stream="all"
+            action
             label={DISMISS_COPY.reasons[r]}
-            selected={false}
             onClick={() => {
               model.chooseDismissReason(r);
               focusAfter();

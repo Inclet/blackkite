@@ -51,8 +51,46 @@ test('"Not for me": dismissed at once, then "Why not? (optional)" with the five 
   expect(chips().map((c) => c.textContent)).toEqual(LABELS);
   for (const c of chips()) {
     expect(c).toHaveAttribute('type', 'button');
-    expect(c).toHaveAttribute('aria-pressed', 'false');
+    // One-shot actions, not toggles.
+    expect(c).not.toHaveAttribute('aria-pressed');
   }
+});
+
+test('desktop "Not for me" button: focus moves to the first reason chip; a choice returns it to the selected row', () => {
+  renderAt('/?fixture=reference');
+  const button = within(screen.getByRole('article')).getByRole('button', { name: 'Not for me' });
+  button.focus();
+  fireEvent.click(button);
+  expect(document.activeElement).toBe(chips()[0]);
+  expect(document.activeElement).toHaveTextContent('Not my sector');
+  fireEvent.click(chips()[0]!);
+  expect(prompt()).toBeNull();
+  expect(document.activeElement).toHaveTextContent('ABH Summit');
+});
+
+test('desktop X: focus stays on the list (not moved to the prompt), so J/K/S/X carry on', () => {
+  renderAt('/?fixture=reference');
+  within(screen.getByRole('region', { name: 'Opportunities' })).getAllByRole('link')[0]!.focus();
+  press('x');
+  expect(prompt()).not.toBeNull();
+  expect(document.activeElement).toHaveTextContent('ABH Summit');
+  expect(document.activeElement!.closest('section')).not.toBe(prompt());
+});
+
+test('J from a focused chip closes the prompt and focus follows the selection, not the page', () => {
+  const router = renderAt('/?fixture=reference');
+  fireEvent.click(within(screen.getByRole('article')).getByRole('button', { name: 'Not for me' }));
+  expect(document.activeElement).toBe(chips()[0]);
+  press('j');
+  expect(prompt()).toBeNull();
+  const id = router.state.location.pathname.replace('/o/', '');
+  expect(document.activeElement).toHaveAttribute('id', `row-${id}`);
+});
+
+test('the announcement after a dismiss names the item and the optional prompt', () => {
+  renderAt('/?fixture=reference');
+  press('x');
+  expect(announcer()).toHaveTextContent(`Marked not for me: Logistics, transport and warehousing support. ${DISMISS_COPY.ask}`);
 });
 
 test('X: the prompt survives the move to the next item; J (the next navigation) closes it', () => {
