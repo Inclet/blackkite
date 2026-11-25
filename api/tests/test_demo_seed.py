@@ -33,6 +33,21 @@ def count(db, model, *where):
     return db.scalar(sa.select(sa.func.count()).select_from(model).where(*where))
 
 
+def test_demo_seed_leaves_no_backfill_for_the_worker(db, Sessions):
+    from blackkite.worker.backfills import run_pending_backfills
+
+    demo_seed(db, env="dev", admin_email=ADMIN, now=NOW)
+    db.commit()
+    profiles = db.scalars(sa.select(Profile)).all()
+    assert len(profiles) == 3
+    assert all(p.backfill_requested_at is None for p in profiles)
+
+    def fail(*a, **k):
+        raise AssertionError("the worker repeated the demo scoring")
+
+    assert run_pending_backfills(Sessions, deps=fail) == []
+
+
 def test_refuses_outside_dev(db):
     with pytest.raises(DemoRefused, match="BK_ENV is 'prod'"):
         demo_seed(db, env="prod", admin_email=ADMIN, now=NOW)

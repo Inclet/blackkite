@@ -7,11 +7,20 @@ What asks for a backfill (member/profiles.py):
 
 * a new active profile;
 * a change to its type or data (streams included) while active;
-* activation, only when the profile was never fully scored at its current
-  version (``scored_version``);
+* activation, always (decision 36): items may have arrived while the profile
+  was off and the worker skips inactive profiles; judgement reuse keeps the
+  catch-up cheap;
 * a mute or unmute: every active profile of that user (``muted_source_only``).
+  An unmute is due at the next tick, without the debounce. Until then the feed
+  treats the user's ``muted_source_only`` rows on items no longer carried only by
+  muted sources as unscored (member/view.py), so they show again at once. The
+  rows are rescored in place, never deleted, so ``created_at`` (the alerts'
+  "found today") stays and an old item cannot alert because of an unmute.
 
-A rename or a deactivation asks for nothing. Each request stamps
+A rename or a deactivation asks for nothing. A run outside the worker that
+scores a profile fully (``bk score``, ``bk backfill``, ``bk demo-seed``) clears
+its pending request (``clear_requests``); ``bk bootstrap`` scores nothing, so the
+new profiles' requests stay for the worker. Each request stamps
 ``backfill_requested_at``; the worker runs a profile once the newest stamp is at
 least ``BACKFILL_DEBOUNCE`` old, so a run of quick edits costs one backfill.
 """
@@ -19,12 +28,13 @@ least ``BACKFILL_DEBOUNCE`` old, so a run of quick edits costs one backfill.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-from blackkite.db.models import OpportunitySource, Profile, UserOpportunityScore
+from blackkite.db.models import Profile
 
 BACKFILL_DEBOUNCE = timedelta(seconds=60)
 
@@ -32,36 +42,51 @@ BACKFILL_DEBOUNCE = timedelta(seconds=60)
 def request_backfill(profile: Profile, now: datetime) -> None:
     """Mark one profile (ORM object, saved by the caller's commit)."""
     profile.backfill_requested_at = now
+    profile.backfill_attempts = 0
 
 
-def request_user_rescore(db: Session, user_id: uuid.UUID, now: datetime) -> int:
+def request_user_rescore(
+    db: Session, user_id: uuid.UUID, now: datetime, *, immediate: bool = False
+) -> int:
     """Mark every active profile of one user. Not an edit: ``updated_at`` stays.
-    Returns how many were marked; the caller commits."""
+    With ``immediate`` the request skips the debounce and is due on the next
+    worker tick (an unmute). Returns how many were marked; the caller commits."""
+    if immediate:
+        now = now - BACKFILL_DEBOUNCE
     return db.execute(
         sa.update(Profile)
         .where(Profile.user_id == user_id, Profile.active.is_(True))
-        .values(backfill_requested_at=now, updated_at=Profile.updated_at)
+        .values(
+            backfill_requested_at=now,
+            backfill_attempts=0,
+            updated_at=Profile.updated_at,
+        )
         .execution_options(synchronize_session=False)
     ).rowcount
 
 
-def clear_muted_rows(db: Session, user_id: uuid.UUID, source_id: uuid.UUID) -> int:
-    """After an unmute: drop this user's ``muted_source_only`` rows for items the
-    source carries, so they show again at once (unscored) instead of staying
-    hidden until the worker re-scores them. Those rows hold no model judgement.
-    Items still carried only by muted sources stay hidden (the feed applies
-    mutes at query time). The caller commits."""
+def clear_requests(
+    db: Session, profile_ids: Iterable[uuid.UUID], scored_from: datetime
+) -> int:
+    """After a run outside the worker scored these profiles (``bk score``, ``bk
+    backfill``, the demo seed): drop their pending requests stamped at or before
+    ``scored_from`` (when that run started), so the worker does not repeat it. A
+    request that arrived during the run stays. Not an edit: ``updated_at`` stays.
+    Returns how many were cleared; the caller commits."""
+    ids = list(profile_ids)
+    if not ids:
+        return 0
     return db.execute(
-        sa.delete(UserOpportunityScore)
+        sa.update(Profile)
         .where(
-            UserOpportunityScore.user_id == user_id,
-            UserOpportunityScore.score_breakdown["hard_filtered"].astext
-            == "muted_source_only",
-            UserOpportunityScore.opportunity_id.in_(
-                sa.select(OpportunitySource.opportunity_id).where(
-                    OpportunitySource.source_id == source_id
-                )
-            ),
+            Profile.id.in_(ids),
+            Profile.active.is_(True),
+            Profile.backfill_requested_at <= scored_from,
+        )
+        .values(
+            backfill_requested_at=None,
+            backfill_attempts=0,
+            updated_at=Profile.updated_at,
         )
         .execution_options(synchronize_session=False)
     ).rowcount

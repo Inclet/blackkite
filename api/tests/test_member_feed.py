@@ -898,3 +898,44 @@ def test_feed_items_carry_the_callers_state(db, ana, login):
     # Per user: Ben's view is his own.
     a.put(f"/api/opportunities/{opp.id}/state", json={"state": "saved"})
     assert [i["state"] for i in _items(b)] == ["unseen"]
+
+
+def test_rules_only_rows_show_only_their_rules_reasons(db, ana, login):
+    """Detail pane: "Scored without the model" is never shown as a reason."""
+    src = f.source(db, "Src")
+    ironji = f.profile(db, ana, "Ironji-Trade")
+    cold = f.opportunity(db, "Cold chain tender", deadline_at=kigali(2026, 12, 10))
+    f.link(db, cold, src)
+    f.score(
+        db,
+        ana,
+        cold,
+        ironji,
+        60,
+        reason="Scored without the model",
+        fit_word="possible",
+        reasons=[
+            "Scored without the model",
+            "It mentions cold chain, which this profile lists.",
+        ],
+    )
+    bare = f.opportunity(db, "Bare tender", deadline_at=kigali(2026, 12, 11))
+    f.link(db, bare, src)
+    f.score(
+        db,
+        ana,
+        bare,
+        ironji,
+        50,
+        reason="Scored without the model.",
+        fit_word="possible",
+        reasons=[],
+    )
+    db.commit()
+    c = login(ana.email)
+    detail = c.get(f"/api/opportunities/{cold.id}").json()["detail"]
+    assert detail["reasons"] == ["It mentions cold chain, which this profile lists."]
+    assert c.get(f"/api/opportunities/{bare.id}").json()["detail"]["reasons"] == []
+    items = {i["title"]: i for i in _items(c)}
+    assert items["Cold chain tender"]["detail"]["reasons"] == detail["reasons"]
+    assert "without the model" not in str(items)
