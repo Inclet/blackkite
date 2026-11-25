@@ -18,6 +18,8 @@ export interface Box {
   /** Height of the invisible ::after hit area, if any. */
   hitH: number;
   hitW: number;
+  /** Inside a sticky or fixed bar (tab bar, action bar): it floats over scrolled content by design. */
+  floating: boolean;
 }
 
 /** Every visible interactive element with its box and its invisible hit area. */
@@ -42,6 +44,13 @@ export function interactiveBoxes(page: Page): Promise<Box[]> {
           h: r.height,
           hitH: has ? parseFloat(after.height) : 0,
           hitW: has ? parseFloat(after.width) : 0,
+          floating: (() => {
+            for (let n: Element | null = el; n; n = n.parentElement) {
+              const p = getComputedStyle(n).position;
+              if (p === 'sticky' || p === 'fixed') return true;
+            }
+            return false;
+          })(),
         };
       });
   });
