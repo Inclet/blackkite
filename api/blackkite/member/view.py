@@ -96,10 +96,12 @@ class ScoreView:
 
     @property
     def reasons(self) -> list[str]:
+        """The reasons shown to the member. A rules-only score's "Scored without
+        the model" says nothing about the item, so only its rules reasons show."""
         rs = [r for r in self.breakdown.get("reasons") or [] if isinstance(r, str)]
         if not rs and self.reason:
             rs = [self.reason]
-        return rs
+        return [r for r in rs if not _is_no_model(r)]
 
     @property
     def flags(self) -> list[dict[str, Any]]:
@@ -117,7 +119,7 @@ class ScoreView:
         reason that names the match is used instead."""
         if self.reason and not _is_no_model(self.reason):
             return self.reason
-        return next((r for r in self.reasons if not _is_no_model(r)), None)
+        return next(iter(self.reasons), None)
 
     @property
     def rank(self) -> int:
