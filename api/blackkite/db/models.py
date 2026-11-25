@@ -106,6 +106,9 @@ class User(Base):
         default=new_unsubscribe_nonce,
         server_default=sa.text(UNSUBSCRIBE_NONCE_SQL),
     )
+    # When a session was last started (magic link spent). For the admin users
+    # screen; NULL = never signed in.
+    last_sign_in_at: Mapped[datetime | None] = _ts()
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 
@@ -314,6 +317,35 @@ class SourceRun(Base):
         sa.Integer, nullable=False, server_default="0"
     )
     error: Mapped[str | None] = mapped_column(sa.Text)
+
+
+class SourceStatusChange(Base):
+    """A source's status history for the admin source screen (spec 4.4): one row
+    per change, including creation (``old_status`` NULL) and the automatic move
+    back to testing when an active source's config changes (decision 27).
+    Admin audit data, shared, not per user; ``changed_by`` is NULL for system
+    changes and after the admin's account is deleted."""
+
+    __tablename__ = "source_status_change"
+    __table_args__ = (
+        sa.Index("ix_source_status_change_source_id_at", "source_id", "at"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("source.id", ondelete="CASCADE"), nullable=False
+    )
+    old_status: Mapped[str | None] = mapped_column(
+        enum(*SOURCE_STATUSES, name="old_status")
+    )
+    new_status: Mapped[str] = mapped_column(
+        enum(*SOURCE_STATUSES, name="new_status"), nullable=False
+    )
+    changed_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("user.id", ondelete="SET NULL"), index=True
+    )
+    reason: Mapped[str | None] = mapped_column(sa.String(200))
+    at: Mapped[datetime] = created_at()
 
 
 class HttpCache(Base):

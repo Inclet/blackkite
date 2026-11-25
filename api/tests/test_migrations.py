@@ -70,6 +70,7 @@ def test_schema_has_every_spec_table():
         "login_token",
         "http_cache",  # conditional GET cache for collectors (not per user)
         "alert_log",  # urgent alerts sent, one per (user, opportunity)
+        "source_status_change",  # admin audit: source status history (spec 4.4)
     }
     assert spec == set(Base.metadata.tables)
 
@@ -343,4 +344,30 @@ def test_0010_backfill_attempts_start_at_zero(make_database):
     ]
     command.downgrade(cfg, "0009")
     assert _exec(url, "SELECT count(*) FROM profile") == [(1,)]
+    command.upgrade(cfg, "head")
+
+
+def test_0013_backfills_last_sign_in_from_sessions(make_database):
+    url = make_database("bk_migr")
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0012")
+    _exec(
+        url, "INSERT INTO \"user\" (email) VALUES ('a@example.com'), ('b@example.com')"
+    )
+    _exec(
+        url,
+        """INSERT INTO session (token_hash, user_id, created_at, expires_at)
+           SELECT md5(random()::text) || md5(random()::text), id,
+                  timestamptz '2026-11-20 10:00+00' + n * interval '1 day',
+                  now() + interval '30 days'
+           FROM "user", generate_series(0, 1) n WHERE email = 'a@example.com'""",
+    )
+    command.upgrade(cfg, "0013")
+    rows = _exec(
+        url,
+        """SELECT email, to_char(last_sign_in_at AT TIME ZONE 'UTC', 'YYYY-MM-DD')
+           FROM "user" ORDER BY email""",
+    )
+    assert rows == [("a@example.com", "2026-11-21"), ("b@example.com", None)]
+    command.downgrade(cfg, "0012")
     command.upgrade(cfg, "head")

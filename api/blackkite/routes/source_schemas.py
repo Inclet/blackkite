@@ -1,4 +1,9 @@
-"""Request/response models for source routes (spec 4)."""
+"""Request/response models for source routes (spec 4).
+
+JSON is camelCase like the rest of the API (docs/api-contract.md section 2);
+request bodies also accept snake_case keys. A source's ``config`` object is data
+for its collector and keeps the collector's own keys (``list_url``, ...).
+"""
 
 from __future__ import annotations
 
@@ -6,9 +11,10 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from blackkite.collectors.registry import validate_config
+from blackkite.member.schemas import CamelIn, CamelModel
 from blackkite.sources.service import parse_schedule
 from blackkite.sources.urlsafety import UnsafeURL, check_url
 
@@ -62,8 +68,8 @@ def _config(ctype: str, config: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(str(e)) from None
 
 
-class _SourceFields(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+class _SourceFields(CamelIn):
+    model_config = ConfigDict(str_strip_whitespace=True)
 
     @field_validator("home_url", check_fields=False)
     @classmethod
@@ -90,7 +96,7 @@ class SourceIn(_SourceFields):
     streams: Streams
     kind: Kind
     collector_type: CollectorType
-    config: dict[str, Any] = {}
+    config: dict[str, Any] = Field(default_factory=dict)
     schedule: str | None = None
     rate_limit: RateLimit | None = None
     access_note: Note | None = None
@@ -106,7 +112,7 @@ class SourceIn(_SourceFields):
 
 
 class SourcePatch(_SourceFields):
-    """Edit. Status changes go through POST /admin/sources/{id}/status."""
+    """Edit. Status changes go through POST /api/admin/sources/{id}/status."""
 
     name: Name | None = None
     home_url: str | None = None
@@ -120,14 +126,13 @@ class SourcePatch(_SourceFields):
     access_note: Note | None = None
 
 
-class PreviewIn(BaseModel):
+class PreviewIn(CamelIn):
     """Unsaved config for a test run."""
 
-    model_config = ConfigDict(extra="forbid")
     collector_type: CollectorType
     config: dict[str, Any]
     home_url: str | None = None
-    streams: Streams = ["tender"]
+    streams: Streams = Field(default_factory=lambda: ["tender"])
     rate_limit: RateLimit | None = None
 
     @field_validator("home_url")
@@ -141,11 +146,11 @@ class PreviewIn(BaseModel):
         return self
 
 
-class StatusIn(BaseModel):
+class StatusIn(CamelIn):
     status: SourceStatus
 
 
-class SourceOut(BaseModel):
+class SourceOut(CamelModel):
     """Admin view: the full record plus run stats."""
 
     id: uuid.UUID
@@ -168,11 +173,38 @@ class SourceOut(BaseModel):
     health: Health
     last_success_at: datetime | None
     last_run_at: datetime | None
-    items_30d: int
+    items_30d: int = Field(alias="items30d")
     promotion_runs: int  # qualifying runs toward the 2 needed for active
 
 
-class MemberSourceOut(BaseModel):
+class PromotionGateOut(CamelModel):
+    """Spec 4.3 step 4: runs that succeeded and found items since the config last
+    changed, toward the ``needed`` (2) for promotion to active."""
+
+    good_runs: int
+    needed: int
+    since: datetime | None
+    met: bool
+
+
+class StatusChangeOut(CamelModel):
+    model_config = ConfigDict(from_attributes=True)
+    at: datetime
+    old_status: SourceStatus | None  # None: the source was created
+    new_status: SourceStatus
+    changed_by: uuid.UUID | None  # None: a system change, or a deleted account
+    reason: str | None  # e.g. "config changed" (decision 27)
+
+
+class SourceDetailOut(SourceOut):
+    """GET /api/admin/sources/{id}: the full record, the promotion gate and the
+    status history, newest first (history starts with migration 0012)."""
+
+    promotion_gate: PromotionGateOut
+    status_history: list[StatusChangeOut]
+
+
+class MemberSourceOut(CamelModel):
     """Sources page (spec 4.4)."""
 
     id: uuid.UUID
@@ -182,12 +214,12 @@ class MemberSourceOut(BaseModel):
     kind: str
     streams: list[str]
     last_success_at: datetime | None
-    items_30d: int
+    items_30d: int = Field(alias="items30d")
     health: Health
     muted: bool
 
 
-class RunOut(BaseModel):
+class RunOut(CamelModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     started_at: datetime
@@ -199,7 +231,12 @@ class RunOut(BaseModel):
     error: str | None
 
 
-class PreviewItemOut(BaseModel):
+class RunPage(CamelModel):
+    total: int
+    items: list[RunOut]
+
+
+class PreviewItemOut(CamelModel):
     url: str
     title: str
     organisation: str | None
@@ -210,7 +247,7 @@ class PreviewItemOut(BaseModel):
     extra: dict[str, str]
 
 
-class PreviewOut(BaseModel):
+class PreviewOut(CamelModel):
     ok: bool
     error: str | None
     items: list[PreviewItemOut]
@@ -219,8 +256,51 @@ class PreviewOut(BaseModel):
     elapsed_seconds: float
 
 
-class SuggestionIn(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+FieldKind = Literal[
+    "string",
+    "url",
+    "integer",
+    "number",
+    "boolean",
+    "choice",
+    "string_list",
+    "selector",
+    "object",
+    "object_list",
+    "map",
+    "json",
+]
+
+
+class ConfigFieldOut(CamelModel):
+    """One config key of a collector type (``name`` is the key in ``config``)."""
+
+    model_config = ConfigDict(from_attributes=True)
+    name: str
+    kind: FieldKind
+    required: bool
+    help: str
+    default: Any = None
+    options: list[str] | None = None  # kind "choice"
+    min: float | None = None
+    max: float | None = None
+    fields: list[ConfigFieldOut] | None = None  # kinds "object", "object_list"
+
+
+class CollectorTypeOut(CamelModel):
+    """GET /api/admin/collector-types: the config form for each type (spec 4.2).
+    ``schemaSource`` is "model" when read from the collector's config model,
+    "declared" when the collector has none yet (spec 4.2 fields)."""
+
+    model_config = ConfigDict(from_attributes=True)
+    type: CollectorType
+    implemented: bool
+    schema_source: Literal["model", "declared"]
+    fields: list[ConfigFieldOut]
+
+
+class SuggestionIn(CamelIn):
+    model_config = ConfigDict(str_strip_whitespace=True)
     url: Annotated[str, Field(min_length=1, max_length=2048)]
     note: Annotated[str, Field(max_length=2000)] | None = None
 
@@ -230,7 +310,7 @@ class SuggestionIn(BaseModel):
         return _url(v)
 
 
-class SuggestionOut(BaseModel):
+class SuggestionOut(CamelModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     url: str
