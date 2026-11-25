@@ -27,7 +27,7 @@ Anything built without a reference board. Built from existing components and tok
 | Trust panel, confirmed and conflict | Phase 2, TrustPanel | Conflict title in alert-text; confirmed with graphite icon |
 | Unknown item | Phase 2, feed | "We could not find that item" in the pane (desktop) or as a page with a back link (phone) |
 | Account button | Phase 2, updated Phase 4 | Phone header button opens /account |
-| Placeholder screens | Phase 2, updated Phase 4 | /calendar and /sources are still placeholders; the rest are built (below) |
+| Placeholder screens | Phase 2, updated M3 | Only /calendar is still a placeholder; the rest are built (below) |
 | Invented fixture details | Phase 2, fixtures | Reasons, trust copy, profile tags, URLs for the five non-WFP items; edge-case items |
 | Digest, investment items | Phase 2, digest template | Lagoon text/swatch from tokens; the board has no investment item |
 | Digest count wording | Phase 2, digest template | "1 more is waiting there."; line omitted at 0; "The 1 source was checked this week." |
