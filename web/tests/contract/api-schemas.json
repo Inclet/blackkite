@@ -43,6 +43,154 @@
     ]
   },
   "schemas": {
+    "AdminSuggestionOut": {
+      "properties": {
+        "createdAt": {
+          "format": "date-time",
+          "title": "Createdat",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        },
+        "reviewedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reviewedat"
+        },
+        "reviewedBy": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reviewedby"
+        },
+        "sourceId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sourceid"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "userId": {
+          "format": "uuid",
+          "title": "Userid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "url",
+        "note",
+        "status",
+        "createdAt",
+        "reviewedAt",
+        "sourceId",
+        "userId",
+        "reviewedBy"
+      ],
+      "title": "AdminSuggestionOut",
+      "type": "object"
+    },
+    "AdminUserOut": {
+      "description": "A user as the admin users screen shows them (camelCase, like the rest of\n/api).",
+      "properties": {
+        "createdAt": {
+          "format": "date-time",
+          "title": "Createdat",
+          "type": "string"
+        },
+        "email": {
+          "title": "Email",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "lastSignInAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lastsigninat"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "name",
+        "role",
+        "status",
+        "createdAt",
+        "lastSignInAt"
+      ],
+      "title": "AdminUserOut",
+      "type": "object"
+    },
     "BusinessData": {
       "$defs": {
         "Capacity": {
@@ -394,6 +542,329 @@
         "streams"
       ],
       "title": "BusinessData",
+      "type": "object"
+    },
+    "CataloguePage": {
+      "$defs": {
+        "CatalogueItem": {
+          "properties": {
+            "createdAt": {
+              "format": "date-time",
+              "title": "Createdat",
+              "type": "string"
+            },
+            "deadline": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deadline"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "memberVisible": {
+              "title": "Membervisible",
+              "type": "boolean"
+            },
+            "needsReview": {
+              "title": "Needsreview",
+              "type": "boolean"
+            },
+            "organisation": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Organisation"
+            },
+            "reviewReasons": {
+              "items": {
+                "$ref": "#/$defs/ReviewReason"
+              },
+              "title": "Reviewreasons",
+              "type": "array"
+            },
+            "sources": {
+              "items": {
+                "$ref": "#/$defs/CatalogueSource"
+              },
+              "title": "Sources",
+              "type": "array"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "stream": {
+              "title": "Stream",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "trust": {
+              "title": "Trust",
+              "type": "string"
+            },
+            "updatedAt": {
+              "format": "date-time",
+              "title": "Updatedat",
+              "type": "string"
+            },
+            "verification": {
+              "title": "Verification",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "stream",
+            "title",
+            "organisation",
+            "status",
+            "verification",
+            "trust",
+            "needsReview",
+            "reviewReasons",
+            "deadline",
+            "memberVisible",
+            "sources",
+            "createdAt",
+            "updatedAt"
+          ],
+          "title": "CatalogueItem",
+          "type": "object"
+        },
+        "CatalogueSource": {
+          "properties": {
+            "isOriginal": {
+              "title": "Isoriginal",
+              "type": "boolean"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "url": {
+              "title": "Url",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "status",
+            "kind",
+            "isOriginal",
+            "url"
+          ],
+          "title": "CatalogueSource",
+          "type": "object"
+        },
+        "ReviewReason": {
+          "properties": {
+            "code": {
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "detail"
+          ],
+          "title": "ReviewReason",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/CatalogueItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "items"
+      ],
+      "title": "CataloguePage",
+      "type": "object"
+    },
+    "CollectorTypeOut": {
+      "$defs": {
+        "ConfigFieldOut": {
+          "description": "One config key of a collector type (``name`` is the key in ``config``).",
+          "properties": {
+            "default": {
+              "default": null,
+              "title": "Default"
+            },
+            "fields": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/$defs/ConfigFieldOut"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Fields"
+            },
+            "help": {
+              "title": "Help",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "string",
+                "url",
+                "integer",
+                "number",
+                "boolean",
+                "choice",
+                "string_list",
+                "selector",
+                "object",
+                "object_list",
+                "map",
+                "json"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "max": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Max"
+            },
+            "min": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Min"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "options": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Options"
+            },
+            "required": {
+              "title": "Required",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "name",
+            "kind",
+            "required",
+            "help"
+          ],
+          "title": "ConfigFieldOut",
+          "type": "object"
+        }
+      },
+      "description": "GET /api/admin/collector-types: the config form for each type (spec 4.2).\n``schemaSource`` is \"model\" when read from the collector's config model,\n\"declared\" when the collector has none yet (spec 4.2 fields).",
+      "properties": {
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/ConfigFieldOut"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "implemented": {
+          "title": "Implemented",
+          "type": "boolean"
+        },
+        "schemaSource": {
+          "enum": [
+            "model",
+            "declared"
+          ],
+          "title": "Schemasource",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "rss",
+            "html_list",
+            "browser_list",
+            "json_api",
+            "search_query",
+            "email_ingest",
+            "custom"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "implemented",
+        "schemaSource",
+        "fields"
+      ],
+      "title": "CollectorTypeOut",
       "type": "object"
     },
     "DigestSettingsIn": {
@@ -1214,6 +1685,152 @@
       "title": "FeedItem",
       "type": "object"
     },
+    "InviteOut": {
+      "properties": {
+        "acceptedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Acceptedat"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "title": "Createdat",
+          "type": "string"
+        },
+        "email": {
+          "title": "Email",
+          "type": "string"
+        },
+        "expiresAt": {
+          "format": "date-time",
+          "title": "Expiresat",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "invitedBy": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Invitedby"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "invitedBy",
+        "createdAt",
+        "expiresAt",
+        "acceptedAt",
+        "status"
+      ],
+      "title": "InviteOut",
+      "type": "object"
+    },
+    "MemberSourceOut": {
+      "description": "Sources page (spec 4.4).",
+      "properties": {
+        "health": {
+          "enum": [
+            "ok",
+            "degraded",
+            "failing",
+            "unknown"
+          ],
+          "title": "Health",
+          "type": "string"
+        },
+        "homeUrl": {
+          "title": "Homeurl",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "items30d": {
+          "title": "Items30D",
+          "type": "integer"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "lastSuccessAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lastsuccessat"
+        },
+        "muted": {
+          "title": "Muted",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "publisher": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Publisher"
+        },
+        "streams": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Streams",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "homeUrl",
+        "publisher",
+        "kind",
+        "streams",
+        "lastSuccessAt",
+        "items30d",
+        "health",
+        "muted"
+      ],
+      "title": "MemberSourceOut",
+      "type": "object"
+    },
     "OpportunityOut": {
       "$defs": {
         "ChangeOut": {
@@ -1987,6 +2604,213 @@
       "title": "PersonalData",
       "type": "object"
     },
+    "PreviewIn": {
+      "additionalProperties": false,
+      "description": "Unsaved config for a test run.",
+      "properties": {
+        "collectorType": {
+          "enum": [
+            "rss",
+            "html_list",
+            "browser_list",
+            "json_api",
+            "search_query",
+            "email_ingest",
+            "custom"
+          ],
+          "title": "Collectortype",
+          "type": "string"
+        },
+        "config": {
+          "additionalProperties": true,
+          "title": "Config",
+          "type": "object"
+        },
+        "homeUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Homeurl"
+        },
+        "rateLimit": {
+          "anyOf": [
+            {
+              "maximum": 3600,
+              "minimum": 1.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ratelimit"
+        },
+        "streams": {
+          "items": {
+            "enum": [
+              "tender",
+              "investment",
+              "funding",
+              "event"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Streams",
+          "type": "array"
+        }
+      },
+      "required": [
+        "collectorType",
+        "config"
+      ],
+      "title": "PreviewIn",
+      "type": "object"
+    },
+    "PreviewOut": {
+      "$defs": {
+        "PreviewItemOut": {
+          "properties": {
+            "detailUrl": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Detailurl"
+            },
+            "extra": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "title": "Extra",
+              "type": "object"
+            },
+            "listedDeadline": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Listeddeadline"
+            },
+            "listedPublished": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Listedpublished"
+            },
+            "organisation": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Organisation"
+            },
+            "snippet": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Snippet"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "url": {
+              "title": "Url",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url",
+            "title",
+            "organisation",
+            "listedPublished",
+            "listedDeadline",
+            "snippet",
+            "detailUrl",
+            "extra"
+          ],
+          "title": "PreviewItemOut",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "elapsedSeconds": {
+          "title": "Elapsedseconds",
+          "type": "number"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/PreviewItemOut"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "requestsMade": {
+          "title": "Requestsmade",
+          "type": "integer"
+        },
+        "totalParsed": {
+          "title": "Totalparsed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ok",
+        "error",
+        "items",
+        "totalParsed",
+        "requestsMade",
+        "elapsedSeconds"
+      ],
+      "title": "PreviewOut",
+      "type": "object"
+    },
     "ProfileIn": {
       "additionalProperties": false,
       "properties": {
@@ -2071,6 +2895,894 @@
       "title": "ProfileOut",
       "type": "object"
     },
+    "RunPage": {
+      "$defs": {
+        "RunOut": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "finishedAt": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finishedat"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "itemsFailed": {
+              "title": "Itemsfailed",
+              "type": "integer"
+            },
+            "itemsFound": {
+              "title": "Itemsfound",
+              "type": "integer"
+            },
+            "itemsNew": {
+              "title": "Itemsnew",
+              "type": "integer"
+            },
+            "startedAt": {
+              "format": "date-time",
+              "title": "Startedat",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "startedAt",
+            "finishedAt",
+            "status",
+            "itemsFound",
+            "itemsNew",
+            "itemsFailed",
+            "error"
+          ],
+          "title": "RunOut",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/RunOut"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "items"
+      ],
+      "title": "RunPage",
+      "type": "object"
+    },
+    "SourceDetailOut": {
+      "$defs": {
+        "PromotionGateOut": {
+          "description": "Spec 4.3 step 4: runs that succeeded and found items since the config last\nchanged, toward the ``needed`` (2) for promotion to active.",
+          "properties": {
+            "goodRuns": {
+              "title": "Goodruns",
+              "type": "integer"
+            },
+            "met": {
+              "title": "Met",
+              "type": "boolean"
+            },
+            "needed": {
+              "title": "Needed",
+              "type": "integer"
+            },
+            "since": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          "required": [
+            "goodRuns",
+            "needed",
+            "since",
+            "met"
+          ],
+          "title": "PromotionGateOut",
+          "type": "object"
+        },
+        "StatusChangeOut": {
+          "properties": {
+            "at": {
+              "format": "date-time",
+              "title": "At",
+              "type": "string"
+            },
+            "changedBy": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Changedby"
+            },
+            "newStatus": {
+              "enum": [
+                "suggested",
+                "testing",
+                "active",
+                "paused",
+                "retired"
+              ],
+              "title": "Newstatus",
+              "type": "string"
+            },
+            "oldStatus": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "suggested",
+                    "testing",
+                    "active",
+                    "paused",
+                    "retired"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Oldstatus"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          "required": [
+            "at",
+            "oldStatus",
+            "newStatus",
+            "changedBy",
+            "reason"
+          ],
+          "title": "StatusChangeOut",
+          "type": "object"
+        }
+      },
+      "description": "GET /api/admin/sources/{id}: the full record, the promotion gate and the\nstatus history, newest first (history starts with migration 0012).",
+      "properties": {
+        "accessNote": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Accessnote"
+        },
+        "addedBy": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Addedby"
+        },
+        "collectorType": {
+          "title": "Collectortype",
+          "type": "string"
+        },
+        "config": {
+          "additionalProperties": true,
+          "title": "Config",
+          "type": "object"
+        },
+        "configChangedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Configchangedat"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "title": "Createdat",
+          "type": "string"
+        },
+        "effectiveSchedule": {
+          "title": "Effectiveschedule",
+          "type": "string"
+        },
+        "health": {
+          "enum": [
+            "ok",
+            "degraded",
+            "failing",
+            "unknown"
+          ],
+          "title": "Health",
+          "type": "string"
+        },
+        "homeUrl": {
+          "title": "Homeurl",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "items30d": {
+          "title": "Items30D",
+          "type": "integer"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "lastRunAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lastrunat"
+        },
+        "lastSuccessAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lastsuccessat"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "promotionGate": {
+          "$ref": "#/$defs/PromotionGateOut"
+        },
+        "promotionRuns": {
+          "title": "Promotionruns",
+          "type": "integer"
+        },
+        "publisher": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Publisher"
+        },
+        "rateLimit": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ratelimit"
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Schedule"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "statusHistory": {
+          "items": {
+            "$ref": "#/$defs/StatusChangeOut"
+          },
+          "title": "Statushistory",
+          "type": "array"
+        },
+        "streams": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Streams",
+          "type": "array"
+        },
+        "updatedAt": {
+          "format": "date-time",
+          "title": "Updatedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "homeUrl",
+        "publisher",
+        "streams",
+        "kind",
+        "collectorType",
+        "config",
+        "schedule",
+        "effectiveSchedule",
+        "rateLimit",
+        "accessNote",
+        "status",
+        "addedBy",
+        "createdAt",
+        "updatedAt",
+        "configChangedAt",
+        "health",
+        "lastSuccessAt",
+        "lastRunAt",
+        "items30d",
+        "promotionRuns",
+        "promotionGate",
+        "statusHistory"
+      ],
+      "title": "SourceDetailOut",
+      "type": "object"
+    },
+    "SourceIn": {
+      "additionalProperties": false,
+      "properties": {
+        "accessNote": {
+          "anyOf": [
+            {
+              "maxLength": 5000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accessnote"
+        },
+        "collectorType": {
+          "enum": [
+            "rss",
+            "html_list",
+            "browser_list",
+            "json_api",
+            "search_query",
+            "email_ingest",
+            "custom"
+          ],
+          "title": "Collectortype",
+          "type": "string"
+        },
+        "config": {
+          "additionalProperties": true,
+          "title": "Config",
+          "type": "object"
+        },
+        "homeUrl": {
+          "title": "Homeurl",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "original",
+            "publisher",
+            "aggregator",
+            "news",
+            "community"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "publisher": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Publisher"
+        },
+        "rateLimit": {
+          "anyOf": [
+            {
+              "maximum": 3600,
+              "minimum": 1.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ratelimit"
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schedule"
+        },
+        "streams": {
+          "items": {
+            "enum": [
+              "tender",
+              "investment",
+              "funding",
+              "event"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Streams",
+          "type": "array"
+        },
+        "suggestionId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggestionid"
+        }
+      },
+      "required": [
+        "name",
+        "homeUrl",
+        "streams",
+        "kind",
+        "collectorType"
+      ],
+      "title": "SourceIn",
+      "type": "object"
+    },
+    "SourceOut": {
+      "description": "Admin view: the full record plus run stats.",
+      "properties": {
+        "accessNote": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Accessnote"
+        },
+        "addedBy": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Addedby"
+        },
+        "collectorType": {
+          "title": "Collectortype",
+          "type": "string"
+        },
+        "config": {
+          "additionalProperties": true,
+          "title": "Config",
+          "type": "object"
+        },
+        "configChangedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Configchangedat"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "title": "Createdat",
+          "type": "string"
+        },
+        "effectiveSchedule": {
+          "title": "Effectiveschedule",
+          "type": "string"
+        },
+        "health": {
+          "enum": [
+            "ok",
+            "degraded",
+            "failing",
+            "unknown"
+          ],
+          "title": "Health",
+          "type": "string"
+        },
+        "homeUrl": {
+          "title": "Homeurl",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "items30d": {
+          "title": "Items30D",
+          "type": "integer"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "lastRunAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lastrunat"
+        },
+        "lastSuccessAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lastsuccessat"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "promotionRuns": {
+          "title": "Promotionruns",
+          "type": "integer"
+        },
+        "publisher": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Publisher"
+        },
+        "rateLimit": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ratelimit"
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Schedule"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "streams": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Streams",
+          "type": "array"
+        },
+        "updatedAt": {
+          "format": "date-time",
+          "title": "Updatedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "homeUrl",
+        "publisher",
+        "streams",
+        "kind",
+        "collectorType",
+        "config",
+        "schedule",
+        "effectiveSchedule",
+        "rateLimit",
+        "accessNote",
+        "status",
+        "addedBy",
+        "createdAt",
+        "updatedAt",
+        "configChangedAt",
+        "health",
+        "lastSuccessAt",
+        "lastRunAt",
+        "items30d",
+        "promotionRuns"
+      ],
+      "title": "SourceOut",
+      "type": "object"
+    },
+    "SourcePatch": {
+      "additionalProperties": false,
+      "description": "Edit. Status changes go through POST /api/admin/sources/{id}/status.",
+      "properties": {
+        "accessNote": {
+          "anyOf": [
+            {
+              "maxLength": 5000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accessnote"
+        },
+        "collectorType": {
+          "anyOf": [
+            {
+              "enum": [
+                "rss",
+                "html_list",
+                "browser_list",
+                "json_api",
+                "search_query",
+                "email_ingest",
+                "custom"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Collectortype"
+        },
+        "config": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Config"
+        },
+        "homeUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Homeurl"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "original",
+                "publisher",
+                "aggregator",
+                "news",
+                "community"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "publisher": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Publisher"
+        },
+        "rateLimit": {
+          "anyOf": [
+            {
+              "maximum": 3600,
+              "minimum": 1.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ratelimit"
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schedule"
+        },
+        "streams": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "tender",
+                  "investment",
+                  "funding",
+                  "event"
+                ],
+                "type": "string"
+              },
+              "maxItems": 4,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Streams"
+        }
+      },
+      "title": "SourcePatch",
+      "type": "object"
+    },
     "StateIn": {
       "additionalProperties": false,
       "properties": {
@@ -2109,6 +3821,124 @@
         "state"
       ],
       "title": "StateIn",
+      "type": "object"
+    },
+    "StatusIn": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "suggested",
+            "testing",
+            "active",
+            "paused",
+            "retired"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "StatusIn",
+      "type": "object"
+    },
+    "SuggestionIn": {
+      "additionalProperties": false,
+      "properties": {
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "url": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "SuggestionIn",
+      "type": "object"
+    },
+    "SuggestionOut": {
+      "properties": {
+        "createdAt": {
+          "format": "date-time",
+          "title": "Createdat",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        },
+        "reviewedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reviewedat"
+        },
+        "sourceId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sourceid"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "url",
+        "note",
+        "status",
+        "createdAt",
+        "reviewedAt",
+        "sourceId"
+      ],
+      "title": "SuggestionOut",
       "type": "object"
     },
     "UserOut": {
@@ -2157,6 +3987,30 @@
         "created_at"
       ],
       "title": "UserOut",
+      "type": "object"
+    },
+    "UserPatch": {
+      "additionalProperties": false,
+      "description": "PATCH /api/admin/users/{id}.",
+      "properties": {
+        "role": {
+          "anyOf": [
+            {
+              "enum": [
+                "member",
+                "admin"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        }
+      },
+      "title": "UserPatch",
       "type": "object"
     }
   }
