@@ -9,7 +9,7 @@ import { Wordmark } from '../../components/Wordmark/Wordmark';
 import { useAppLink } from '../../lib/useAppLink';
 import { useIsDesktop } from '../../lib/useIsDesktop';
 import styles from './AppShell.module.css';
-import { Sidebar, SIDEBAR_NAV } from './Sidebar';
+import { ADMIN_NAV, Sidebar, SIDEBAR_NAV } from './Sidebar';
 
 /**
  * Settings screens reached from Profiles (and the phone's More), not from the sidebar:
@@ -20,10 +20,11 @@ const UNDER_PROFILES = ['/settings/digest', '/account'];
 /** The sidebar item a desktop path belongs to. */
 export function sidebarCurrent(path: string): string | null {
   if (UNDER_PROFILES.some((p) => path === p || path.startsWith(`${p}/`))) return '/profiles';
+  if (path === ADMIN_NAV.to || path.startsWith(`${ADMIN_NAV.to}/`)) return ADMIN_NAV.to;
   return currentFor(path, SIDEBAR_NAV);
 }
 
-/** The phone tab bar, as on feed-phone.html. Profiles, digest, account and sources live under More. */
+/** The phone tab bar, as on feed-phone.html. Profiles, digest, account, sources and admin live under More. */
 export const SHELL_TABS = [
   { label: 'Feed', to: '/' },
   { label: 'Shortlist', to: '/shortlist' },
