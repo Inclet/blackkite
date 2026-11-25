@@ -313,6 +313,7 @@ def _ingest_one(
             max_bytes=ps.document_max_bytes,
             max_attachments=ps.documents_per_item,
             pdf_timeout=ps.pdf_text_timeout_seconds,
+            pdf_memory_mb=ps.pdf_text_max_memory_mb,
         )
         if deps.llm is None:
             review(

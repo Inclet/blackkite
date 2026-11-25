@@ -137,11 +137,57 @@ def test_slow_extraction_is_killed_after_the_limit():
         run_limited(crash_child, b"", 10.0)
 
 
+def allocate_too_much(_arg):  # runs in the child process
+    return b"x" * (2 * 1024 * 1024 * 1024)  # 2 GB, over a 256 MB cap
+
+
+def small_allocation(_arg):  # runs in the child process
+    return len(b"x" * (32 * 1024 * 1024))
+
+
+def test_child_memory_limit_turns_an_allocation_into_an_error():
+    import pytest
+
+    from blackkite.pipeline.enrich import run_limited
+
+    with pytest.raises(ValueError, match=r"hit the memory limit \(256 MB\)"):
+        run_limited(allocate_too_much, b"", 20.0, memory_mb=256)
+    # Under the cap the child works normally.
+    assert run_limited(small_allocation, b"", 20.0, memory_mb=256) == 32 * 1024 * 1024
+
+
+def test_memory_limit_hit_is_the_items_enrich_error(tmp_path: Path, monkeypatch):
+    from blackkite.pipeline import enrich as mod
+
+    monkeypatch.setattr(mod, "pdf_to_text", allocate_too_much)
+    f = FakeFetcher(
+        {
+            "https://example.org/t/1": ("text/html", DETAIL),
+            "https://example.org/files/bid-document.pdf": (
+                "application/pdf",
+                make_pdf("big"),
+            ),
+        }
+    )
+    out = enrich(
+        f,
+        "https://example.org/t/1",
+        data_dir=tmp_path,
+        max_bytes=1_000_000,
+        max_attachments=1,
+        pdf_memory_mb=256,
+    )
+    [att] = out.attachments
+    assert att.text is None and att.file_path
+    assert any("memory limit (256 MB)" in e for e in out.errors), out.errors
+
+
 def test_pdf_timeout_is_an_item_error_not_a_crash(tmp_path: Path, monkeypatch):
     from blackkite.pipeline import enrich as mod
 
-    def fake_limited(content, timeout):
+    def fake_limited(content, timeout, memory_mb):
         assert timeout == 7.5
+        assert memory_mb == 512
         raise mod.PdfTimeout("PDF text extraction took over 7.5 s; stopped")
 
     monkeypatch.setattr(mod, "pdf_to_text_limited", fake_limited)

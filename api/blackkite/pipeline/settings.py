@@ -21,6 +21,9 @@ class PipelineSettings(BaseSettings):
     document_max_bytes: int = 10_000_000
     # Wall-clock limit for extracting one PDF's text (killed after this).
     pdf_text_timeout_seconds: float = Field(default=20.0, gt=0)
+    # Address-space limit (MB) of the PDF text extraction child; over it the
+    # extraction fails as this item's enrich error.
+    pdf_text_max_memory_mb: int = Field(default=512, ge=64)
     # Attachments (PDFs) followed per item.
     documents_per_item: int = 3
     # Characters of source text sent to the extraction model.
