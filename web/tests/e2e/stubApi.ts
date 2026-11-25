@@ -6,7 +6,8 @@ import http from 'node:http';
  * State is per session: the `bk_stub` cookie names it, so parallel tests do not
  * see each other's saves. No cookie: every member route answers 401.
  *
- * Member routes answer only under /api (GET /me and /auth/* keep their paths), so a
+ * Member routes (sources and source suggestions included) answer only under /api
+ * (GET /me and /auth/* keep their paths), so a
  * client call on an old path fails the run.
  *
  * Control routes for the tests themselves (not proxied, called from Node):

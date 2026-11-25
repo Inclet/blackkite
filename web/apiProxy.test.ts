@@ -20,6 +20,9 @@ test('/api and the earlier API paths go to the API origin', () => {
     '/api/me',
     '/api/me/export',
     '/api/admin/catalogue',
+    '/api/sources',
+    '/api/sources/3/mute',
+    '/api/source-suggestions',
     '/auth/verify',
     '/auth/request-link',
     '/auth/logout',
@@ -30,15 +33,12 @@ test('/api and the earlier API paths go to the API origin', () => {
     '/admin/sources/3',
     '/admin/source-suggestions',
     '/admin?q=1',
-    '/sources/3/mute',
-    '/source-suggestions',
-    '/source-suggestions?x=1',
   ]) {
     expect(proxied(url), url).toBe(true);
   }
 });
 
-test('web routes, including the confirm page, /shortlist and /profiles, stay on the web server', () => {
+test('web routes, including the confirm page, /shortlist, /profiles and /sources, stay on the web server', () => {
   for (const url of [
     '/',
     '/shortlist',
@@ -48,6 +48,8 @@ test('web routes, including the confirm page, /shortlist and /profiles, stay on 
     '/profiles/new/personal',
     '/sources',
     '/sources?x=1',
+    '/sources/3/mute',
+    '/source-suggestions',
     '/auth/confirm',
     '/auth/confirm?token=a',
     '/auth/verify/x',
