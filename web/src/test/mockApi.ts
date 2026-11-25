@@ -7,7 +7,7 @@ export interface MockApi {
   fetch: ReturnType<typeof vi.fn>;
   /** Every call as "METHOD /path" with its parsed body. */
   calls: { key: string; body: unknown }[];
-  /** Replace or add a route ("PUT /opportunities/x/state"). */
+  /** Replace or add a route ("PUT /api/opportunities/x/state"). */
   on: (key: string, handler: Handler | unknown) => void;
 }
 

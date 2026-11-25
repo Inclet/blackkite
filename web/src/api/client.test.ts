@@ -28,7 +28,7 @@ test('GET: same-origin credentials, JSON accepted, no body, manual redirects', a
   const feed = await api.feed();
   expect(feed.user.name).toBe('Clet');
   const { url, init, headers } = call(fn);
-  expect(url).toBe('/feed');
+  expect(url).toBe('/api/feed');
   expect(init.method).toBe('GET');
   expect(init.credentials).toBe('same-origin');
   expect(init.redirect).toBe('manual');
@@ -39,30 +39,30 @@ test('GET: same-origin credentials, JSON accepted, no body, manual redirects', a
 test('feed filters become the query string; empty ones are left out', async () => {
   const fn = stub(reply(200, { items: [] }));
   await api.feed({ stream: 'tender', profile: 'AI lab', window: '' });
-  expect(call(fn).url).toBe('/feed?stream=tender&profile=AI+lab');
+  expect(call(fn).url).toBe('/api/feed?stream=tender&profile=AI+lab');
 });
 
 test.each([
-  ['opportunity', () => api.opportunity('wfp/1'), '/opportunities/wfp%2F1', 'GET', undefined],
-  ['state', () => api.setState('wfp', 'saved'), '/opportunities/wfp/state', 'PUT', { state: 'saved' }],
-  ['dismiss with reason', () => api.setState('wfp', 'dismissed', 'Too far'), '/opportunities/wfp/state', 'PUT', { state: 'dismissed', dismissReason: 'Too far' }],
-  ['note', () => api.setNote('wfp', 'Call Tuesday'), '/opportunities/wfp/note', 'PUT', { note: 'Call Tuesday' }],
-  ['shortlist', () => api.shortlist(), '/shortlist', 'GET', undefined],
-  ['profiles', () => api.profiles(), '/profiles', 'GET', undefined],
-  ['create profile', () => api.createProfile({ name: 'X', type: 'business', data: {} }), '/profiles', 'POST', { name: 'X', type: 'business', data: {} }],
-  ['update profile', () => api.updateProfile('p1', { name: 'Y' }), '/profiles/p1', 'PATCH', { name: 'Y' }],
-  ['delete profile', () => api.deleteProfile('p1'), '/profiles/p1', 'DELETE', undefined],
-  ['digest settings', () => api.digestSettings(), '/digest-settings', 'GET', undefined],
+  ['opportunity', () => api.opportunity('wfp/1'), '/api/opportunities/wfp%2F1', 'GET', undefined],
+  ['state', () => api.setState('wfp', 'saved'), '/api/opportunities/wfp/state', 'PUT', { state: 'saved' }],
+  ['dismiss with reason', () => api.setState('wfp', 'dismissed', 'Too far'), '/api/opportunities/wfp/state', 'PUT', { state: 'dismissed', dismissReason: 'Too far' }],
+  ['note', () => api.setNote('wfp', 'Call Tuesday'), '/api/opportunities/wfp/note', 'PUT', { note: 'Call Tuesday' }],
+  ['shortlist', () => api.shortlist(), '/api/shortlist', 'GET', undefined],
+  ['profiles', () => api.profiles(), '/api/profiles', 'GET', undefined],
+  ['create profile', () => api.createProfile({ name: 'X', type: 'business', data: {} }), '/api/profiles', 'POST', { name: 'X', type: 'business', data: {} }],
+  ['update profile', () => api.updateProfile('p1', { name: 'Y' }), '/api/profiles/p1', 'PATCH', { name: 'Y' }],
+  ['delete profile', () => api.deleteProfile('p1'), '/api/profiles/p1', 'DELETE', undefined],
+  ['digest settings', () => api.digestSettings(), '/api/digest-settings', 'GET', undefined],
   [
     'save digest settings',
     () => api.saveDigestSettings({ channel: 'email', frequency: 'off', day: 'mon', alertThreshold: null, streams: null }),
-    '/digest-settings',
+    '/api/digest-settings',
     'PUT',
     { channel: 'email', frequency: 'off', day: 'mon', alertThreshold: null, streams: null },
   ],
   ['me', () => api.me(), '/me', 'GET', undefined],
-  ['export', () => api.exportMe(), '/me/export', 'GET', undefined],
-  ['delete account', () => api.deleteMe(), '/me', 'DELETE', undefined],
+  ['export', () => api.exportMe(), '/api/me/export', 'GET', undefined],
+  ['delete account', () => api.deleteMe(), '/api/me', 'DELETE', undefined],
   ['request link', () => api.requestLink('a@b.rw'), '/auth/request-link', 'POST', { email: 'a@b.rw' }],
   ['logout', () => api.logout(), '/auth/logout', 'POST', undefined],
 ])('%s: %s %s', async (_name, run, url, method, body) => {

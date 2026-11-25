@@ -6,6 +6,9 @@ import http from 'node:http';
  * State is per session: the `bk_stub` cookie names it, so parallel tests do not
  * see each other's saves. No cookie: every member route answers 401.
  *
+ * Member routes answer only under /api (GET /me and /auth/* keep their paths), so a
+ * client call on an old path fails the run.
+ *
  * Control routes for the tests themselves (not proxied, called from Node):
  *   POST /__stub/sessions/:id   body: Partial<Seed>, resets that session
  *   GET  /__stub/sessions/:id/seen   the requests that session made
@@ -172,12 +175,16 @@ function sortSoonest(items: Item[]): Item[] {
 }
 
 /** Handle one member-API request for a session. */
-function member(s: Session, method: string, path: string, body: unknown, res: http.ServerResponse): void {
+function member(s: Session, method: string, fullPath: string, body: unknown, res: http.ServerResponse): void {
+  // Earlier routes keep their paths; every other member route is under /api (contract section 2).
+  if (method === 'GET' && fullPath === '/me') return send(res, 200, { id: 'u1', email: 'clet@example.rw', name: 'Clet', role: 'admin', status: 'active' });
+  if (method === 'POST' && fullPath === '/auth/logout') return send(res, 204);
+  if (!fullPath.startsWith('/api/')) return send(res, 404, { detail: 'Not found' });
+  const path = fullPath.slice('/api'.length);
   const withState = (i: Item) => (s.states[i.id] ? { ...i, state: s.states[i.id] } : i);
   const opp = path.match(/^\/opportunities\/([^/]+)(\/state|\/note)?$/);
   const prof = path.match(/^\/profiles\/([^/]+)$/);
 
-  if (method === 'GET' && path === '/me') return send(res, 200, { id: 'u1', email: 'clet@example.rw', name: 'Clet', role: 'admin', status: 'active' });
   if (method === 'DELETE' && path === '/me') return send(res, 204);
   if (method === 'GET' && path === '/me/export') return send(res, 200, { profiles: s.profiles, digest: s.digest, states: s.states, notes: s.notes });
   if (method === 'GET' && path === '/feed') {
@@ -233,7 +240,6 @@ function member(s: Session, method: string, path: string, body: unknown, res: ht
       return send(res, 200, s.digest);
     }
   }
-  if (method === 'POST' && path === '/auth/logout') return send(res, 204);
   return send(res, 404, { detail: 'Not found' });
 }
 

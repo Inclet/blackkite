@@ -16,10 +16,10 @@ function renderAt(url: string) {
 }
 
 test.each(['/', '/o/wfp-logistics'])('%s without a fixture loads from the API, with the circling kite meanwhile', (url) => {
-  const api = mockApi({ 'GET /feed': () => new Promise(() => {}) });
+  const api = mockApi({ 'GET /api/feed': () => new Promise(() => {}) });
   renderAt(url);
   expect(screen.getByTestId('kite-orbit')).toBeInTheDocument();
-  expect(api.calls.map((c) => c.key)).toContain('GET /feed');
+  expect(api.calls.map((c) => c.key)).toContain('GET /api/feed');
 });
 
 test('/digest/preview stays a placeholder (the harness serves the digest itself)', () => {
@@ -46,7 +46,7 @@ test.each(['/calendar', '/sources'])('%s is a not-designed placeholder', (url) =
 });
 
 test('an unknown fixture falls back to live data', () => {
-  const api = mockApi({ 'GET /feed': () => new Promise(() => {}) });
+  const api = mockApi({ 'GET /api/feed': () => new Promise(() => {}) });
   renderAt('/?fixture=nope');
-  expect(api.calls.map((c) => c.key)).toContain('GET /feed');
+  expect(api.calls.map((c) => c.key)).toContain('GET /api/feed');
 });
