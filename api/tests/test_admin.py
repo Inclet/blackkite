@@ -48,6 +48,7 @@ def test_admin_routes_exist(app):
         ("DELETE", "/api/admin/invites/{invite_id}"),
         ("GET", "/api/admin/users"),
         ("POST", "/api/admin/users/{user_id}/deactivate"),
+        ("PATCH", "/api/admin/users/{user_id}"),
         ("GET", "/api/admin/sources"),
         ("POST", "/api/admin/sources"),
         ("GET", "/api/admin/sources/{source_id}"),
@@ -387,3 +388,82 @@ def test_member_routes_live_under_api(app):
     assert not old & {p for _, p in paths}
     assert ("PATCH", "/me") not in paths and ("DELETE", "/me") not in paths
     assert not any(p.startswith(("/opportunities", "/admin")) for _, p in paths)
+
+
+# --- role changes ---------------------------------------------------------------------
+
+
+def test_admin_promotes_a_member_and_back(app, admin_client, db, outbox):
+    member = make_user(db, MEMBER)
+    m = sign_in(_new_client(app), outbox, MEMBER)
+    assert m.get("/api/admin/users").status_code == 403
+    r = admin_client.patch(f"/api/admin/users/{member.id}", json={"role": "admin"})
+    assert r.status_code == 200, r.text
+    assert r.json()["role"] == "admin"
+    # Role is read on every request: the same session now has admin rights.
+    assert m.get("/me").json()["role"] == "admin"
+    assert m.get("/api/admin/users").status_code == 200
+    r = admin_client.patch(f"/api/admin/users/{member.id}", json={"role": "member"})
+    assert r.status_code == 200 and r.json()["role"] == "member"
+    assert m.get("/api/admin/users").status_code == 403
+
+
+def test_admin_cannot_change_own_role(admin_client, db):
+    me = db.scalar(sa.select(User).where(User.email == ADMIN))
+    for role in ("member", "admin"):
+        r = admin_client.patch(f"/api/admin/users/{me.id}", json={"role": role})
+        assert r.status_code == 400
+    db.refresh(me)
+    assert me.role == "admin"
+
+
+def test_role_change_validates(admin_client, db):
+    member = make_user(db, MEMBER)
+    url = f"/api/admin/users/{member.id}"
+    assert admin_client.patch(url, json={"role": "owner"}).status_code == 422
+    assert admin_client.patch(url, json={"status": "active"}).status_code == 422
+    assert admin_client.patch(url, json={}).json()["role"] == "member"
+    r = admin_client.patch(f"/api/admin/users/{uuid.uuid4()}", json={"role": "admin"})
+    assert r.status_code == 404
+
+
+def test_cannot_demote_or_deactivate_the_last_active_admin(
+    app, admin_client, db, outbox
+):
+    """The caller is always an active admin and cannot act on themselves, so the
+    guard bites when the caller has lost admin rights mid-request or when only
+    deactivated admins remain besides the target."""
+    from blackkite.auth.deps import require_admin
+    from blackkite.routes import admin as admin_routes
+
+    other = make_user(db, "admin2@example.com", role="admin")
+    old = make_user(db, "old@example.com", role="admin", status="deactivated")
+    me = db.scalar(sa.select(User).where(User.email == ADMIN))
+
+    # Simulate a race: by the time the change runs, the caller is no longer an
+    # active admin in the database (another admin demoted them).
+    stale = User(id=uuid.uuid4(), email="ghost@example.com", role="admin")
+    app.dependency_overrides[require_admin] = lambda: stale
+    try:
+        c = _new_client(app)
+        r = c.patch(f"/api/admin/users/{other.id}", json={"role": "member"})
+        assert r.status_code == 403
+        assert c.post(f"/api/admin/users/{other.id}/deactivate").status_code == 403
+    finally:
+        del app.dependency_overrides[require_admin]
+
+    # Demoting a deactivated admin is fine: it does not change who is active.
+    r = admin_client.patch(f"/api/admin/users/{old.id}", json={"role": "member"})
+    assert r.status_code == 200
+
+    # The other admin goes; the caller remains, so it is allowed.
+    r = admin_client.patch(f"/api/admin/users/{other.id}", json={"role": "member"})
+    assert r.status_code == 200
+
+    # Directly: with the caller as the only active admin, losing them is refused.
+    with pytest.raises(admin_routes.HTTPException) as e:
+        admin_routes._keep_an_admin(db, me, me)
+    assert e.value.status_code == 409
+    db.rollback()
+    db.refresh(me)
+    assert me.role == "admin" and me.status == "active"

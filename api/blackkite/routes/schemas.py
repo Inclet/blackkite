@@ -2,10 +2,11 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from blackkite.member.schemas import CamelModel
+from blackkite.member.schemas import CamelIn, CamelModel
 
 
 class EmailIn(BaseModel):
@@ -50,6 +51,12 @@ class AdminUserOut(CamelModel):
     status: str
     created_at: datetime
     last_sign_in_at: datetime | None  # None: never signed in
+
+
+class UserPatch(CamelIn):
+    """PATCH /api/admin/users/{id}."""
+
+    role: Literal["member", "admin"] | None = None
 
 
 class InviteOut(CamelModel):

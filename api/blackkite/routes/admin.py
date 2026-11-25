@@ -10,7 +10,7 @@ from blackkite.auth import service
 from blackkite.auth.deps import AdminUser, DbDep, SettingsDep, require_admin
 from blackkite.db.models import Invite, User
 from blackkite.delivery.mail import MailTransport, get_mail_transport
-from blackkite.routes.schemas import AdminUserOut, EmailIn, InviteOut
+from blackkite.routes.schemas import AdminUserOut, EmailIn, InviteOut, UserPatch
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
 
@@ -83,7 +83,47 @@ def deactivate(user_id: uuid.UUID, admin: AdminUser, db: DbDep) -> AdminUserOut:
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(404, "User not found")
+    if user.role == "admin" and user.status == "active":
+        _keep_an_admin(db, admin, user)
     service.deactivate_user(db, user)
     db.commit()
     db.refresh(user)
+    return AdminUserOut.model_validate(user)
+
+
+def _keep_an_admin(db, caller: User, losing: User) -> None:
+    """``losing`` is about to stop being an active admin. Lock every active admin
+    row so two admins acting on each other at once cannot leave none, then
+    check the caller is still one of them and someone else remains."""
+    admins = set(
+        db.scalars(
+            sa.select(User.id)
+            .where(User.role == "admin", User.status == "active")
+            .with_for_update()
+        )
+    )
+    if caller.id not in admins:
+        raise HTTPException(403, "Admins only")
+    if not admins - {losing.id}:
+        raise HTTPException(409, "There must be at least one active admin")
+
+
+@router.patch("/users/{user_id}", response_model=AdminUserOut)
+def edit_user(
+    user_id: uuid.UUID, body: UserPatch, admin: AdminUser, db: DbDep
+) -> AdminUserOut:
+    """Change a user's role (member <-> admin). Not your own, and never the last
+    active admin. Spec 3 lists invite and deactivate only; a role change is
+    what lets the first admin make a second one."""
+    if user_id == admin.id:
+        raise HTTPException(400, "You cannot change your own role")
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(404, "User not found")
+    if body.role is not None and body.role != user.role:
+        if user.role == "admin" and user.status == "active":
+            _keep_an_admin(db, admin, user)
+        user.role = body.role
+        db.commit()
+        db.refresh(user)
     return AdminUserOut.model_validate(user)
