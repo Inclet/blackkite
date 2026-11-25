@@ -54,6 +54,7 @@ from blackkite.pipeline.visibility import (
     visible_source_link,
     visible_to,
 )
+from blackkite.scoring.service import NO_MODEL_REASON
 
 CLOSED_STATUSES = ("expired", "awarded", "cancelled")
 # Streams that show a fit word; events and investments never do (decision 24).
@@ -66,6 +67,10 @@ TO_CHECK_PREFIX = "To check: "
 
 
 # --- scores -------------------------------------------------------------------------
+
+
+def _is_no_model(reason: str) -> bool:
+    return reason.strip().rstrip(".") == NO_MODEL_REASON.rstrip(".")
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,7 +108,12 @@ class ScoreView:
 
     @property
     def one_line_reason(self) -> str | None:
-        return self.reason or (self.reasons[0] if self.reasons else None)
+        """The reason for digests and alerts. A rules-only score's reason ("Scored
+        without the model") says nothing about the item, so the first rules
+        reason that names the match is used instead."""
+        if self.reason and not _is_no_model(self.reason):
+            return self.reason
+        return next((r for r in self.reasons if not _is_no_model(r)), None)
 
     @property
     def rank(self) -> int:

@@ -155,6 +155,49 @@ def test_provisional_profile_label(db, ana, world, settings):
     assert "Stop these emails: https://testserver/settings/digest" in mail.text
 
 
+def test_rules_only_reason_is_never_printed(db, ana, world, settings):
+    """A score made without the model uses its rules reason in the digest."""
+    o = f.opportunity(
+        db, "Cold chain tender", organisation="RBC", deadline_at=kigali(2026, 12, 10)
+    )
+    f.link(db, o, world.src, "https://example.org/cold")
+    f.score(
+        db,
+        ana,
+        o,
+        world.ironji,
+        60,
+        reason="Scored without the model",
+        fit_word="possible",
+        reasons=[
+            "Scored without the model",
+            "It mentions cold chain, which this profile lists.",
+        ],
+    )
+    bare = f.opportunity(
+        db, "Bare tender", organisation="MINAGRI", deadline_at=kigali(2026, 12, 11)
+    )
+    f.link(db, bare, world.src, "https://example.org/bare")
+    f.score(
+        db,
+        ana,
+        bare,
+        world.ironji,
+        50,
+        reason="Scored without the model.",
+        fit_word="possible",
+        reasons=["Scored without the model."],
+    )
+    db.commit()
+    out = MemoryTransport()
+    assert send_digest(db, ana, settings, out, MONDAY).status == "sent"
+    [mail] = out.outbox
+    assert "RBC. It mentions cold chain, which this profile lists." in mail.text
+    assert "MINAGRI.\n" in mail.text
+    assert "without the model" not in mail.text
+    assert "without the model" not in mail.html
+
+
 def test_wording_helpers():
     assert (
         W.deadline_line(kigali(2026, 12, 7, 23, 59)) == "Closes Monday 7 December 2026"
