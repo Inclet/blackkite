@@ -25,6 +25,15 @@ const ROUTES = [
   '/account',
   '/more',
   '/sign-in',
+  // Sources and the admin screens (M3; the stub session is an admin).
+  '/sources',
+  '/admin',
+  '/admin/sources',
+  '/admin/sources/new',
+  '/admin/sources/src-umucyo',
+  '/admin/suggestions',
+  '/admin/review',
+  '/admin/users',
 ];
 
 /** Fewest interactive elements each page must have (the sign-in and unsubscribe pages have one or two controls). */

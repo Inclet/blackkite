@@ -1,4 +1,4 @@
-"""Dump the member API's response JSON schemas for the web contract test.
+"""Dump the member and admin API's JSON schemas for the web contract test.
 
 Run from the api/ directory (it imports the API's own Pydantic models):
 
@@ -19,8 +19,10 @@ from pydantic.alias_generators import to_camel
 
 from blackkite.member import profiles as P
 from blackkite.member import schemas as S
+from blackkite.routes import source_schemas as SS
+from blackkite.routes.catalogue import CataloguePage
 from blackkite.routes.digest_settings import DigestSettingsIn, DigestSettingsOut
-from blackkite.routes.schemas import UserOut
+from blackkite.routes.schemas import AdminUserOut, InviteOut, UserOut, UserPatch
 
 MODELS = {
     # Responses.
@@ -37,6 +39,25 @@ MODELS = {
     "ProfileIn": P.ProfileIn,
     "DigestSettingsIn": DigestSettingsIn,
     "StateIn": S.StateIn,
+    # Sources and admin (docs/api-contract.md section 4.1): responses.
+    "SourceOut": SS.SourceOut,
+    "SourceDetailOut": SS.SourceDetailOut,
+    "MemberSourceOut": SS.MemberSourceOut,
+    "RunPage": SS.RunPage,
+    "PreviewOut": SS.PreviewOut,
+    "CollectorTypeOut": SS.CollectorTypeOut,
+    "SuggestionOut": SS.SuggestionOut,
+    "AdminSuggestionOut": SS.AdminSuggestionOut,
+    "AdminUserOut": AdminUserOut,
+    "InviteOut": InviteOut,
+    "CataloguePage": CataloguePage,
+    # Sources and admin: request bodies.
+    "SourceIn": SS.SourceIn,
+    "SourcePatch": SS.SourcePatch,
+    "PreviewIn": SS.PreviewIn,
+    "StatusIn": SS.StatusIn,
+    "SuggestionIn": SS.SuggestionIn,
+    "UserPatch": UserPatch,
 }
 
 

@@ -18,6 +18,7 @@ afterEach(() => {
 });
 
 const ME = { id: 'u', email: 'c@x.rw', name: 'Clet', role: 'admin' };
+const MEMBER = { ...ME, role: 'member' };
 const BOARD = ['Feed', 'Shortlist', 'Calendar', 'Sources', 'Profiles'];
 
 function sidebar() {
@@ -39,9 +40,9 @@ test.each([
   ['/settings/digest', 'Profiles'],
   ['/account', 'Profiles'],
   ['/more', null],
-])('%s: the feed board\'s five items and the "Next digest" footer, %s current', async (url, current) => {
+])('%s: the feed board\'s five items and the "Next digest" footer, %s current (a member)', async (url, current) => {
   mockApi({
-    'GET /me': ME,
+    'GET /me': MEMBER,
     'GET /api/shortlist': [],
     'GET /api/profiles': [],
     'GET /api/profiles/p1': {},
@@ -53,6 +54,36 @@ test.each([
   expect(s.items).toEqual(BOARD);
   expect(s.current).toBe(current);
   expect(s.text).toContain('Next digestMonday 30 November, by email');
+});
+
+test('a live admin session adds "Admin" after the board\'s five items; the fixture feed never does', async () => {
+  mockApi({ 'GET /me': ME, 'GET /api/shortlist': [] });
+  renderAt('/shortlist');
+  await waitFor(() => expect(sidebar().items).toEqual([...BOARD, 'Admin']));
+  expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Admin' })).toHaveAttribute('href', '/admin');
+  expect(sidebarCurrent('/admin/sources/3')).toBe('/admin');
+  expect(sidebarCurrent('/admin')).toBe('/admin');
+});
+
+test('the fixture feed keeps the board\'s sidebar even for an admin, and asks nobody', async () => {
+  const api = mockApi({ 'GET /me': ME });
+  renderAt('/?fixture=reference');
+  await waitFor(() => expect(screen.getByRole('navigation', { name: 'Main' })).toBeInTheDocument());
+  await new Promise((r) => setTimeout(r, 20));
+  expect(sidebar().items).toEqual(BOARD);
+  expect(api.calls).toEqual([]);
+});
+
+test('phone More: Admin only for admins', async () => {
+  setViewport('phone');
+  mockApi({ 'GET /me': MEMBER });
+  renderAt('/more');
+  const more = within(await screen.findByRole('region', { name: 'More' }));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(more.queryByRole('link', { name: 'Admin' })).toBeNull();
+  mockApi({ 'GET /me': ME });
+  renderAt('/more');
+  expect(await screen.findByRole('link', { name: 'Admin' })).toHaveAttribute('href', '/admin');
 });
 
 test('SIDEBAR_NAV is the board\'s list; Digest and Account are not on it', () => {

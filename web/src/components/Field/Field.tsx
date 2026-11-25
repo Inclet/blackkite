@@ -6,14 +6,18 @@ export interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   label: string;
   /** Shown under the input; marks the input invalid. */
   error?: string;
+  /** One line of help under the input (12px/500 slate, as card labels), read with it. */
+  hint?: string;
   id?: string;
   className?: string;
 }
 
-export function Field({ label, error, id, className, type = 'text', ...rest }: FieldProps) {
+export function Field({ label, error, hint, id, className, type = 'text', ...rest }: FieldProps) {
   const auto = useId();
   const inputId = id ?? `field-${auto}`;
   const errorId = `${inputId}-error`;
+  const hintId = `${inputId}-hint`;
+  const described = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ') || undefined;
   return (
     <div className={cx(styles.field, className)}>
       <label htmlFor={inputId} className={styles.label}>
@@ -25,8 +29,13 @@ export function Field({ label, error, id, className, type = 'text', ...rest }: F
         type={type}
         className={cx(styles.input, error && styles.invalid)}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
+        aria-describedby={described}
       />
+      {hint && (
+        <div id={hintId} className={styles.hint}>
+          {hint}
+        </div>
+      )}
       {error && (
         <div id={errorId} className={styles.error}>
           {error}

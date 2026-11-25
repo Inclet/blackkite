@@ -4,6 +4,7 @@ import { Wordmark } from '../../components/Wordmark/Wordmark';
 import { nextDigest } from '../../lib/feed';
 import { useAppLink } from '../../lib/useAppLink';
 import styles from './Sidebar.module.css';
+import { useIsAdmin } from './useIsAdmin';
 
 /** The feed board's sidebar items, the same on every desktop screen. */
 export const SIDEBAR_NAV = [
@@ -14,12 +15,18 @@ export const SIDEBAR_NAV = [
   { label: 'Profiles', to: '/profiles' },
 ] as const;
 
+/** Added after the board's five items for live admin sessions only (never on fixtures). Design review. */
+export const ADMIN_NAV = { label: 'Admin', to: '/admin' } as const;
+
 /**
- * feed-desktop.html's sidebar: lockup, the five items and the "Next digest" footer.
+ * feed-desktop.html's sidebar: lockup, the five items and the "Next digest" footer
+ * (plus "Admin" for a live admin session).
  * Used by the feed and by every other desktop screen (AppShell), so they match.
  */
 export function Sidebar({ current, channel }: { current: string | null; channel: string }) {
   const link = useAppLink();
+  const admin = useIsAdmin();
+  const items = admin ? [...SIDEBAR_NAV, ADMIN_NAV] : SIDEBAR_NAV;
   return (
     <nav aria-label="Main" className={styles.nav}>
       <div className={styles.lockup}>
@@ -27,7 +34,7 @@ export function Sidebar({ current, channel }: { current: string | null; channel:
         <Wordmark size={22} />
       </div>
       <div className={styles.navList}>
-        {SIDEBAR_NAV.map((n) => (
+        {items.map((n) => (
           <NavItem key={n.to} variant="side" current={n.to === current} {...link(n.to)}>
             {n.label}
           </NavItem>
