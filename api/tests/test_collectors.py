@@ -393,15 +393,13 @@ def test_search_query_bad_config(config):
 # --- registry ------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "ctype", [t for t in COLLECTOR_TYPES if t not in registry.IMPLEMENTED]
-)
-def test_unimplemented_types_fail_cleanly(ctype):
-    web = FakeWeb()
-    with pytest.raises(CollectorError, match="not implemented yet"):
-        build_collector(ctype, make_client(web)).fetch(source(ctype, {"feed_url": "x"}))
-    assert web.requests == []
-    assert validate_config(ctype, {"anything": 1}) == {"anything": 1}
+def test_every_collector_type_is_implemented():
+    assert set(registry.IMPLEMENTED) == set(COLLECTOR_TYPES)
+    for ctype in COLLECTOR_TYPES:
+        c = build_collector(ctype, make_client(FakeWeb()))
+        assert callable(c.fetch)
+        with pytest.raises(ValueError):
+            validate_config(ctype, {"anything": 1})
 
 
 def test_validate_config_limits():
@@ -411,3 +409,5 @@ def test_validate_config_limits():
         validate_config("html_list", {"x": "y" * 30_000})
     with pytest.raises(CollectorError, match="unknown"):
         build_collector("ftp", make_client(FakeWeb()))
+    with pytest.raises(ValueError, match="unknown"):
+        validate_config("ftp", {})

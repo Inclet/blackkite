@@ -5,9 +5,9 @@ API renders the config editor from ``config_form(collector_type)`` (field name,
 type, required, help text, default; plus the full JSON schema) and validates what
 the admin sends with ``validate_config``.
 
-Types without an implementation yet get ``UnimplementedCollector``, which raises
-``CollectorError("not implemented yet")`` so a source of that type fails cleanly
-and the run moves on.
+Every type in ``COLLECTOR_TYPES`` has a collector and a config model (checked at
+import). A bad config fails the source's run with a readable ``CollectorError``;
+the run moves on to the next source.
 """
 
 from __future__ import annotations
@@ -57,14 +57,8 @@ _PARSERS: dict[str, Callable[[dict[str, Any]], BaseModel]] = {
 IMPLEMENTED = tuple(CONFIG_MODELS)
 
 
-class UnimplementedCollector:
-    def __init__(self, collector_type: str) -> None:
-        self.collector_type = collector_type
-
-    def fetch(self, source):
-        raise CollectorError(
-            f"collector type {self.collector_type} is not implemented yet"
-        )
+if set(CONFIG_MODELS) != set(COLLECTOR_TYPES):  # pragma: no cover - import-time check
+    raise RuntimeError("every collector type needs a config model and a collector")
 
 
 def build_collector(
@@ -102,8 +96,6 @@ def build_collector(
         return email_ingest.EmailIngestCollector(
             mailbox_factory or email_ingest.mailbox_from_env, preview=preview
         )
-    if collector_type in COLLECTOR_TYPES:
-        return UnimplementedCollector(collector_type)
     raise CollectorError(f"unknown collector type {collector_type!r}")
 
 
@@ -111,23 +103,20 @@ def validate_config(collector_type: str, config: Any) -> dict[str, Any]:
     """Check an admin-entered config. Raises ValueError (TypeError for a non-object)
     with a readable message. Returns the config as it should be stored.
 
-    Implemented types are validated strictly (URLs through the URL guard, selectors
-    compiled as CSS). Others are stored as given (size-limited) until their
-    collector exists.
+    Every type is validated strictly by its config model (URLs through the URL
+    guard, selectors compiled as CSS, unknown keys refused).
     """
     if not isinstance(config, dict):
         raise TypeError("config must be a JSON object")
     if len(json.dumps(config)) > MAX_CONFIG_BYTES:
         raise ValueError(f"config larger than {MAX_CONFIG_BYTES} bytes")
     parser = _PARSERS.get(collector_type)
-    if parser is not None:
-        try:
-            return parser(config).model_dump(mode="json", exclude_none=True)
-        except CollectorError as e:
-            raise ValueError(str(e)) from None
-    if collector_type not in COLLECTOR_TYPES:
+    if parser is None:
         raise ValueError(f"unknown collector type {collector_type!r}")
-    return config
+    try:
+        return parser(config).model_dump(mode="json", exclude_none=True)
+    except CollectorError as e:
+        raise ValueError(str(e)) from None
 
 
 def config_form(collector_type: str) -> dict[str, Any]:
