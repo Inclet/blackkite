@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from blackkite.db.models import Opportunity, OpportunitySource, Source, SourceRun
 from blackkite.pipeline import ingest
 from blackkite.worker import runner
-from blackkite.worker.main import TICK_SECONDS, build_scheduler
+from blackkite.worker.main import TICK_SECONDS, build_scheduler, refresh_job
 from tests.fakes import FakeWeb, make_client, pipeline_deps
 from tests.pipeline.fakes import FakeEmbedder, FakeLLM, q
 
@@ -319,12 +319,62 @@ def test_due_rechecked_inside_the_lock(Sessions, db, web):
     )
 
 
-def test_scheduler_has_one_tick_job(Sessions, settings, web):
+def test_scheduler_jobs(Sessions, settings, web):
     sched = build_scheduler(Sessions, settings, client=make_client(web))
-    (job,) = sched.get_jobs()
-    assert job.id == "run-due-sources"
-    assert job.trigger.interval.total_seconds() == TICK_SECONDS
-    assert job.max_instances == 1 and job.coalesce
+    jobs = {j.id: j for j in sched.get_jobs()}
+    assert set(jobs) == {"run-due-sources", "refresh-statuses"}
+    tick = jobs["run-due-sources"]
+    assert tick.trigger.interval.total_seconds() == TICK_SECONDS
+    assert tick.max_instances == 1 and tick.coalesce
+    daily = jobs["refresh-statuses"]
+    assert daily.func is refresh_job and daily.max_instances == 1 and daily.coalesce
+    fire = daily.trigger.get_next_fire_time(None, NOW)
+    assert (fire.hour, fire.minute) == (22, 5)  # 00:05 Africa/Kigali
+    assert daily.trigger.get_next_fire_time(None, fire + timedelta(seconds=1)) == (
+        fire + timedelta(days=1)
+    )
+
+
+def test_refresh_statuses_job_moves_items_on_under_its_lock(Sessions, db, engine):
+    from blackkite.db.models import ChangeEvent
+
+    db.add_all(
+        [
+            Opportunity(
+                stream="tender",
+                title="closes soon",
+                status="open",
+                deadline_at=NOW + timedelta(days=3),
+            ),
+            Opportunity(
+                stream="tender",
+                title="closed",
+                status="closing_soon",
+                deadline_at=NOW - timedelta(hours=1),
+            ),
+            Opportunity(
+                stream="tender",
+                title="far",
+                status="open",
+                deadline_at=NOW + timedelta(days=30),
+            ),
+        ]
+    )
+    db.commit()
+    with runner.advisory_lock(
+        engine, runner.JOB_LOCK_NAMESPACE, runner.REFRESH_STATUSES_KEY
+    ) as got:
+        assert got
+        assert runner.refresh_statuses_locked(Sessions, now=lambda: NOW) is None
+    assert runner.refresh_statuses_locked(Sessions, now=lambda: NOW) == 2
+    db.expire_all()
+    assert dict(db.execute(sa.select(Opportunity.title, Opportunity.status)).all()) == {
+        "closes soon": "closing_soon",
+        "closed": "expired",
+        "far": "open",
+    }
+    assert db.scalar(sa.select(sa.func.count()).select_from(ChangeEvent)) == 2
+    assert runner.refresh_statuses_locked(Sessions, now=lambda: NOW) == 0
 
 
 def test_runs_feed_last_seen_and_items_found_in_30_days(db, web, tmp_path):

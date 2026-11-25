@@ -49,6 +49,9 @@ log = logging.getLogger("blackkite.worker")
 ERROR_MAX_CHARS = 2000
 # First key of the two-int advisory lock: "BK". Second: crc32 of the source id.
 LOCK_NAMESPACE = 0x424B
+# Periodic jobs that are not sources: their own namespace ("BJ"), one key per job.
+JOB_LOCK_NAMESPACE = 0x424A
+REFRESH_STATUSES_KEY = 1
 
 DepsFactory = Callable[[Fetcher], ingest.PipelineDeps]
 
@@ -114,27 +117,39 @@ def lock_key(source_id: uuid.UUID) -> int:
 
 
 @contextmanager
-def source_lock(engine: sa.Engine, source_id: uuid.UUID) -> Iterator[bool]:
-    """Session-level advisory lock on its own connection (independent of the run's
+def advisory_lock(engine: sa.Engine, namespace: int, key: int) -> Iterator[bool]:
+    """Session-level advisory lock on its own connection (independent of the work's
     transactions). Yields False if another worker holds it."""
     with engine.connect() as conn:
         conn = conn.execution_options(isolation_level="AUTOCOMMIT")
-        got = bool(
-            conn.scalar(
-                sa.select(
-                    sa.func.pg_try_advisory_lock(LOCK_NAMESPACE, lock_key(source_id))
-                )
-            )
-        )
+        got = bool(conn.scalar(sa.select(sa.func.pg_try_advisory_lock(namespace, key))))
         try:
             yield got
         finally:
             if got:
-                conn.scalar(
-                    sa.select(
-                        sa.func.pg_advisory_unlock(LOCK_NAMESPACE, lock_key(source_id))
-                    )
-                )
+                conn.scalar(sa.select(sa.func.pg_advisory_unlock(namespace, key)))
+
+
+def source_lock(engine: sa.Engine, source_id: uuid.UUID):
+    return advisory_lock(engine, LOCK_NAMESPACE, lock_key(source_id))
+
+
+# --- daily status refresh -------------------------------------------------------------
+
+
+def refresh_statuses_locked(sessions: sessionmaker[Session], now=_now) -> int | None:
+    """Move open/closing_soon items on as deadlines pass (ingest.refresh_statuses),
+    under its own advisory lock. Returns how many changed, or None if another
+    worker holds the lock."""
+    with (
+        sessions() as s,
+        advisory_lock(s.get_bind(), JOB_LOCK_NAMESPACE, REFRESH_STATUSES_KEY) as got,
+    ):
+        if not got:
+            return None
+        changed = ingest.refresh_statuses(s, now())
+        s.commit()
+        return changed
 
 
 # --- schedule -----------------------------------------------------------------------
