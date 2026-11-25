@@ -151,6 +151,7 @@ def test_wfp_item_matches_the_reference_fixture(db, ana, login):
     assert item == {
         "id": str(opp.id),
         "stream": "tender",
+        "state": "unseen",
         "title": "Logistics, transport and warehousing support",
         "organisation": "World Food Programme",
         "organisationShort": "WFP",
@@ -225,6 +226,7 @@ def test_developpp_item_matches_the_reference_fixture(db, ana, login):
     assert item == {
         "id": str(opp.id),
         "stream": "funding",
+        "state": "unseen",
         "title": "develoPPP Ventures, cohort 6",
         "organisation": "develoPPP",
         "fit": "good",
@@ -299,6 +301,7 @@ def test_event_item_matches_the_reference_fixture(db, ana, login):
     assert item == {
         "id": str(opp.id),
         "stream": "event",
+        "state": "unseen",
         "title": "ABH Summit and Grand Finale",
         "organisation": "Africa's Business Heroes",
         "fit": None,
@@ -767,3 +770,32 @@ def test_best_profile_ignores_a_higher_inactive_profile(db, ana, login):
     assert "topFlag" not in item
     assert c.get(f"/api/opportunities/{opp.id}").json()["detail"]["profile"] == "Live"
     assert _items(c, profile=str(old.id)) == []
+
+
+def test_feed_items_carry_the_callers_state(db, ana, login):
+    """Contract section 2: FeedItem.state on feed, shortlist and detail items."""
+    src = f.source(db, "Src")
+    opp = f.opportunity(db, "X", deadline_at=kigali(2026, 12, 10))
+    f.link(db, opp, src)
+    db.commit()
+    a = login(ana.email)
+    make_user(db, "ben@example.com")
+    b = login("ben@example.com")
+    assert [i["state"] for i in _items(a)] == ["unseen"]
+    for state, in_shortlist in [
+        ("saved", True),
+        ("acting", True),
+        ("done", False),
+        ("unseen", False),
+    ]:
+        r = a.put(f"/api/opportunities/{opp.id}/state", json={"state": state})
+        assert r.status_code == 200, r.text
+        detail = a.get(f"/api/opportunities/{opp.id}").json()
+        assert detail["state"] == state and detail["detail"]["state"] == state
+        shortlist = a.get("/api/shortlist").json()
+        assert [i["state"] for i in shortlist] == ([state] if in_shortlist else [])
+        if state != "done":
+            assert [i["state"] for i in _items(a, state=state)] == [state]
+    # Per user: Ben's view is his own.
+    a.put(f"/api/opportunities/{opp.id}/state", json={"state": "saved"})
+    assert [i["state"] for i in _items(b)] == ["unseen"]

@@ -396,6 +396,7 @@ def _item_fields(row: Row, now: datetime) -> dict[str, Any]:
     return {
         "id": str(o.id),
         "stream": o.stream,
+        "state": row.state,
         "title": o.title,
         "organisation": o.organisation or "",
         "organisation_short": o.organisation_short,

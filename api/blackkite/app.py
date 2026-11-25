@@ -14,7 +14,6 @@ from blackkite.routes import (
     sources,
 )
 
-
 API_PREFIX = "/api"
 
 
