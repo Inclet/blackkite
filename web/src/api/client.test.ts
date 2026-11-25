@@ -87,6 +87,7 @@ test.each([
   [404, 'not-found'],
   [400, 'invalid'],
   [422, 'invalid'],
+  [409, 'conflict'],
   [429, 'too-many'],
   [500, 'unreachable'],
   [502, 'unreachable'],
