@@ -256,6 +256,49 @@ class PreviewOut(CamelModel):
     elapsed_seconds: float
 
 
+FieldKind = Literal[
+    "string",
+    "url",
+    "integer",
+    "number",
+    "boolean",
+    "choice",
+    "string_list",
+    "selector",
+    "object",
+    "object_list",
+    "map",
+    "json",
+]
+
+
+class ConfigFieldOut(CamelModel):
+    """One config key of a collector type (``name`` is the key in ``config``)."""
+
+    model_config = ConfigDict(from_attributes=True)
+    name: str
+    kind: FieldKind
+    required: bool
+    help: str
+    default: Any = None
+    options: list[str] | None = None  # kind "choice"
+    min: float | None = None
+    max: float | None = None
+    fields: list[ConfigFieldOut] | None = None  # kinds "object", "object_list"
+
+
+class CollectorTypeOut(CamelModel):
+    """GET /api/admin/collector-types: the config form for each type (spec 4.2).
+    ``schemaSource`` is "model" when read from the collector's config model,
+    "declared" when the collector has none yet (spec 4.2 fields)."""
+
+    model_config = ConfigDict(from_attributes=True)
+    type: CollectorType
+    implemented: bool
+    schema_source: Literal["model", "declared"]
+    fields: list[ConfigFieldOut]
+
+
 class SuggestionIn(CamelIn):
     model_config = ConfigDict(str_strip_whitespace=True)
     url: Annotated[str, Field(min_length=1, max_length=2048)]

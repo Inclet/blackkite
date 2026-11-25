@@ -29,6 +29,7 @@ from blackkite.pipeline.visibility import refresh_verification_for_source
 from blackkite.routes.source_schemas import (
     ORIGINAL_SEARCH_QUERY,
     AdminSuggestionOut,
+    CollectorTypeOut,
     MemberSourceOut,
     PreviewIn,
     PreviewItemOut,
@@ -47,6 +48,7 @@ from blackkite.routes.source_schemas import (
 )
 from blackkite.scoring.backfill import request_user_rescore
 from blackkite.sources import service
+from blackkite.sources.collector_types import collector_type_schemas
 from blackkite.sources.testrun import PreviewResult, preview_source, transient_source
 
 log = logging.getLogger("blackkite.sources")
@@ -345,6 +347,13 @@ def source_runs(
         .offset(offset)
     )
     return RunPage(total=total or 0, items=[RunOut.model_validate(r) for r in rows])
+
+
+@admin_router.get("/collector-types", response_model=list[CollectorTypeOut])
+def collector_types() -> list[CollectorTypeOut]:
+    """Config fields per collector type, from the collectors' own config models,
+    so the web editor renders forms without hard-coding them."""
+    return [CollectorTypeOut.model_validate(t) for t in collector_type_schemas()]
 
 
 # --- admin: test runs ------------------------------------------------------------------

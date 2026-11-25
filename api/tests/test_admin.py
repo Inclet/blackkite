@@ -56,6 +56,7 @@ def test_admin_routes_exist(app):
         ("GET", "/api/admin/sources/{source_id}/runs"),
         ("POST", "/api/admin/sources/test-run"),
         ("POST", "/api/admin/sources/{source_id}/test-run"),
+        ("GET", "/api/admin/collector-types"),
         ("GET", "/api/admin/source-suggestions"),
         ("POST", "/api/admin/source-suggestions/{suggestion_id}/accept"),
         ("POST", "/api/admin/source-suggestions/{suggestion_id}/reject"),
