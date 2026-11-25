@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 import sqlalchemy as sa
+from sqlalchemy.orm import Session
 
 from blackkite.db.models import Opportunity, OpportunitySource, Source, SourceRun
 from blackkite.pipeline import ingest
@@ -532,3 +533,116 @@ def test_client_fetcher_memo_is_bounded_and_canonical():
     assert f.get(f"https://{H}/b")[1] == b"b"
     assert f.memo_hits == 1
     assert web.paths(H) == ["/robots.txt", "/a?utm_source=x", "/b", "/b"]
+
+
+# --- after a run: score, then alerts ---------------------------------------------------
+
+
+@pytest.fixture
+def order(monkeypatch, recorded):
+    """Record ingest, scoring and alerts in the order they run."""
+    from blackkite import scoring
+    from blackkite.scoring.service import RunStats
+    from blackkite.worker import main as worker_main
+
+    events: list[tuple] = []
+    real_ingest = ingest.ingest_items
+
+    def ingest_spy(session, source, items, **kw):
+        events.append(("ingest", source.name))
+        return real_ingest(session, source, items, **kw)
+
+    def score_spy(session, since, **kw):
+        # Scoring sees the run's committed catalogue writes.
+        with Session(bind=session.get_bind()) as other:
+            n = other.scalar(sa.select(sa.func.count()).select_from(Opportunity))
+        events.append(("score", since, n))
+        return RunStats()
+
+    def alerts_spy(sessions, settings, transport, **kw):
+        events.append(("alerts",))
+        return 0
+
+    monkeypatch.setattr(ingest, "ingest_items", ingest_spy)
+    monkeypatch.setattr(scoring, "score_new_opportunities", score_spy)
+    monkeypatch.setattr(worker_main, "alerts_job", alerts_spy)
+    return events
+
+
+def test_tick_runs_source_then_scores_then_alerts(Sessions, db, settings, web, order):
+    from blackkite.delivery.mail import MemoryTransport
+    from blackkite.worker import main as worker_main
+
+    add_source(db, "Board", created=datetime(2026, 1, 1, tzinfo=UTC))
+    worker_main.tick(Sessions, make_client(web), settings, MemoryTransport())
+    [run] = runs(db)
+    assert run.status == "succeeded"
+    assert [e[0] for e in order] == ["ingest", "score", "alerts"]
+    _, since, committed = order[1]
+    assert since == run.started_at and committed == 2
+
+
+def test_failed_run_is_not_scored_and_sends_no_alerts(
+    Sessions, db, settings, web, order
+):
+    from blackkite.delivery.mail import MemoryTransport
+    from blackkite.worker import main as worker_main
+
+    add_source(
+        db,
+        "Blocked",
+        config={**CONFIG, "list_url": f"https://{H}/blocked"},
+        created=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    worker_main.tick(Sessions, make_client(web), settings, MemoryTransport())
+    assert runs(db)[0].status == "failed"
+    assert order == []
+
+
+def test_scoring_failure_is_logged_and_never_fails_the_run(
+    Sessions, db, settings, web, order, monkeypatch, caplog
+):
+    from blackkite import scoring
+    from blackkite.delivery.mail import MemoryTransport
+    from blackkite.worker import main as worker_main
+
+    def broken(session, since, **kw):
+        order.append(("score",))
+        session.execute(sa.text("SELECT 1"))
+        raise RuntimeError("scoring blew up")
+
+    monkeypatch.setattr(scoring, "score_new_opportunities", broken)
+    add_source(db, "Board", created=datetime(2026, 1, 1, tzinfo=UTC))
+    with caplog.at_level("ERROR", logger="blackkite.worker"):
+        worker_main.tick(Sessions, make_client(web), settings, MemoryTransport())
+    [run] = runs(db)
+    assert (run.status, run.error, run.items_found) == ("succeeded", None, 2)
+    assert db.scalar(sa.select(sa.func.count()).select_from(Opportunity)) == 2
+    assert "scoring after source Board failed" in caplog.text
+    # The alert job still runs on the items already scored.
+    assert [e[0] for e in order] == ["ingest", "score", "alerts"]
+
+
+def test_run_source_calls_the_real_scoring_entry_point(db, web, recorded, monkeypatch):
+    from blackkite import scoring
+    from blackkite.scoring import service
+    from tests import factories as f
+    from tests.conftest import make_user
+
+    seen = []
+    real = service.score_new_opportunities
+
+    def spy(session, since, **kw):
+        stats = real(session, since, **kw)
+        seen.append(stats)
+        return stats
+
+    monkeypatch.setattr(scoring, "score_new_opportunities", spy)
+    u = make_user(db, "ana@example.com")
+    f.profile(db, u, "P")
+    db.commit()
+    s = add_source(db, "Board")
+    run = runner.run_source(db, s, client=make_client(web))
+    assert run.status == "succeeded"
+    [stats] = seen
+    assert stats.profiles == 1  # rules-only (conftest: no model, no embedder)

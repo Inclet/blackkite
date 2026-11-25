@@ -11,6 +11,12 @@ enrichment gets the same URL guard, robots.txt, per-host delay, User-Agent, size
 cap and cache as collection. ``make_deps(fetcher) -> PipelineDeps`` builds the
 rest (model clients); it defaults to ``ingest.default_deps``.
 
+After a successful run, the per-user stages score what it brought in
+(``scoring.score_new_opportunities`` over items created or updated since the run
+started) and commit. A scoring failure is logged and rolled back; it never marks
+the source run failed (the catalogue writes are already committed). The worker's
+urgent-alert job runs after this, so alerts see the new scores.
+
 ``run_due_sources`` runs every active/testing source whose schedule says a run is
 due. Each source is isolated: one failing (even with an unexpected exception)
 never stops the others. A Postgres advisory lock per source makes sure two
@@ -36,6 +42,7 @@ import sqlalchemy as sa
 from pydantic import SecretStr
 from sqlalchemy.orm import Session, sessionmaker
 
+from blackkite import scoring
 from blackkite.collectors.base import CollectorError
 from blackkite.collectors.http import ClientFetcher, FetchClient
 from blackkite.collectors.registry import build_collector
@@ -77,7 +84,8 @@ def run_source(
     make_deps: DepsFactory | None = None,
     now=_now,
 ) -> SourceRun:
-    run = SourceRun(source_id=source.id, status="running", started_at=now())
+    started_at = now()
+    run = SourceRun(source_id=source.id, status="running", started_at=started_at)
     session.add(run)
     session.commit()
     run_id = run.id
@@ -110,7 +118,23 @@ def run_source(
         run.error = _error_text(e)
         run.finished_at = now()
         session.commit()
-    return run
+        return run
+    score_after_run(session, started_at, source_name=source.name)
+    refreshed = session.get(SourceRun, run_id)
+    assert refreshed is not None
+    return refreshed
+
+
+def score_after_run(session: Session, since: datetime, *, source_name: str) -> None:
+    """Score the items a successful run created or updated, then commit. Never
+    raises: a failure is logged and rolled back, and the run stays succeeded."""
+    try:
+        stats = scoring.score_new_opportunities(session, since)
+        session.commit()
+        log.info("scored after source %s: %s", source_name, stats.summary())
+    except Exception:
+        log.exception("scoring after source %s failed", source_name)
+        session.rollback()
 
 
 # --- locking ------------------------------------------------------------------------
