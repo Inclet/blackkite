@@ -7,7 +7,7 @@
  * camelCase, so an older snake_case answer reads the same. `config` and preview
  * `extra` are data: their keys are the collector's own (list_url…), never renamed.
  */
-import { request } from './client';
+import { request, type FieldError } from './client';
 import type { Stream } from '../lib/streams';
 
 export type Health = 'ok' | 'degraded' | 'failing' | 'unknown';
@@ -130,6 +130,8 @@ export interface PreviewItem {
 export interface Preview {
   ok: boolean;
   error: string | null;
+  /** When the config itself was refused: one entry per field (api FieldErrorOut); otherwise empty. Older answers leave it out. */
+  errors?: FieldError[];
   items: PreviewItem[];
   totalParsed: number;
   requestsMade: number;

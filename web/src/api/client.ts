@@ -36,10 +36,38 @@ export class ApiError extends Error {
     readonly status: number,
     /** The server's `detail`, when it sent one. Not shown as is; screens use their own wording. */
     readonly detail?: unknown,
+    /** The whole JSON answer (admin refusals add `errors`, the promotion refusal `goodRuns` and `needed`). */
+    readonly body?: unknown,
   ) {
     super(`${kind} (${status})`);
     this.name = 'ApiError';
   }
+}
+
+/** One refused field of an admin refusal (api FieldErrorOut). `field` is a dotted path, null when not about one field. */
+export interface FieldError {
+  field: string | null;
+  message: string;
+}
+
+/** An admin refusal (api RefusalOut): the plain-sentence `detail` and the per-field `errors`. */
+export interface Refusal {
+  detail: string | null;
+  errors: FieldError[];
+}
+
+/** The field errors in an answer, keeping only well-formed entries. */
+export function fieldErrors(raw: unknown): FieldError[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((e): e is { field?: unknown; message: string } => e !== null && typeof e === 'object' && typeof (e as { message?: unknown }).message === 'string')
+    .map((e) => ({ field: typeof e.field === 'string' && e.field ? e.field : null, message: e.message }));
+}
+
+/** The refusal an ApiError carries: `detail` when it is a string, and `errors` when sent. */
+export function refusalOf(err: ApiError): Refusal {
+  const body = err.body !== null && typeof err.body === 'object' ? (err.body as { errors?: unknown }) : {};
+  return { detail: typeof err.detail === 'string' && err.detail.trim() ? err.detail.trim() : null, errors: fieldErrors(body.errors) };
 }
 
 function kindFor(status: number): ApiErrorKind {
@@ -76,13 +104,14 @@ export async function request<T>(path: string, { method = 'GET', body, signal }:
     throw new ApiError('unreachable', 0);
   }
   if (res.status < 200 || res.status >= 300) {
-    let detail: unknown;
+    let answer: unknown;
     try {
-      detail = ((await res.json()) as { detail?: unknown } | null)?.detail;
+      answer = await res.json();
     } catch {
-      detail = undefined;
+      answer = undefined;
     }
-    throw new ApiError(kindFor(res.status), res.status, detail);
+    const detail = answer !== null && typeof answer === 'object' ? (answer as { detail?: unknown }).detail : undefined;
+    throw new ApiError(kindFor(res.status), res.status, detail, answer);
   }
   if (res.status === 204) return undefined as T;
   try {
