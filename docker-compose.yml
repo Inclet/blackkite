@@ -3,6 +3,7 @@
 #   docker compose --profile dev up -d          # plus Mailpit (dev mail, UI on :8025)
 #   docker compose run --rm api bk bootstrap    # first admin + seed profiles
 #   docker compose run --rm api bk seed-sources # seed sources (status testing)
+#   docker compose up -d worker                 # scheduler: runs active/testing sources
 name: blackkite
 
 services:
@@ -36,6 +37,29 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
+    healthcheck:
+      # Healthy once migrations have run and uvicorn serves; the worker waits for it.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Scheduler (spec 5 stage 1): one APScheduler process; a Postgres advisory lock
+  # per source keeps two workers from running the same source.
+  worker:
+    build: ./api
+    restart: unless-stopped
+    command: ["bk", "worker"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      BK_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-blackkite}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-blackkite}
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
 
   mailpit:
     image: axllent/mailpit:v1.20

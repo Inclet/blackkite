@@ -244,6 +244,10 @@ class Source(Base):
     added_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("user.id", ondelete="SET NULL"), index=True
     )
+    # When collector_type or config last changed. Promotion to active counts only
+    # runs started after this (spec 4.3 step 4: two sane runs of the config being
+    # promoted). NULL = unchanged since creation, every run counts.
+    config_changed_at: Mapped[datetime | None] = _ts()
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 
@@ -272,6 +276,20 @@ class SourceRun(Base):
         sa.Integer, nullable=False, server_default="0"
     )
     error: Mapped[str | None] = mapped_column(sa.Text)
+
+
+class HttpCache(Base):
+    """Last response per URL, for conditional GET (ETag / Last-Modified). Shared,
+    not per user. Only responses that carry a validator are stored."""
+
+    __tablename__ = "http_cache"
+
+    url: Mapped[str] = mapped_column(sa.Text, primary_key=True)
+    etag: Mapped[str | None] = mapped_column(sa.Text)
+    last_modified: Mapped[str | None] = mapped_column(sa.Text)
+    content_type: Mapped[str | None] = mapped_column(sa.Text)
+    content: Mapped[bytes] = mapped_column(sa.LargeBinary, nullable=False)
+    fetched_at: Mapped[datetime] = created_at()
 
 
 class SourceSuggestion(Base):

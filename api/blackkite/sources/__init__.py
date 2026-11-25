@@ -1,1 +1,1 @@
-"""Source registry: seed sources now; URL safety and test runs come in M1."""
+"""Source registry: URL safety, registry service (status graph, health), sandboxed test runs."""
