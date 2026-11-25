@@ -368,6 +368,14 @@ def set_status(
     source = _get_source(db, source_id)
     try:
         service.change_status(db, source, body.status, admin)
+    except service.PromotionBlocked as e:
+        # The server's own gate numbers, so the web never counts for itself.
+        raise Refusal(
+            409,
+            [],
+            detail=str(e),
+            extra={"goodRuns": e.gate.good_runs, "needed": e.gate.needed},
+        ) from None
     except service.TransitionError as e:
         raise HTTPException(409, str(e)) from None
     db.commit()

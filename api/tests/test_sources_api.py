@@ -275,12 +275,24 @@ def test_promotion_needs_two_successful_runs_with_items(admin, db):
         f"/api/admin/sources/{s.id}/status", json={"status": "active"}
     )
     r = promote()
-    assert r.status_code == 409 and "has 0" in r.json()["detail"]
+    assert r.status_code == 409
+    assert r.json() == {
+        "detail": "This source needs 2 successful runs that found items since its "
+        "config last changed before it can be made active; it has 0.",
+        "errors": [],
+        "goodRuns": 0,
+        "needed": 2,
+    }
     add_run(db, s, "succeeded", found=4, ago_hours=5)
     add_run(db, s, "failed", found=0, ago_hours=4)
     add_run(db, s, "succeeded", found=0, ago_hours=3)  # ran, but found nothing
     add_run(db, s, "running", found=9, ago_hours=0.1)
-    assert promote().status_code == 409
+    r = promote()
+    assert r.status_code == 409
+    assert (r.json()["goodRuns"], r.json()["needed"]) == (1, 2)
+    # The same numbers as the detail screen's gate.
+    gate = admin.get(f"/api/admin/sources/{s.id}").json()["promotionGate"]
+    assert (gate["goodRuns"], gate["needed"]) == (1, 2)
     add_run(db, s, "succeeded", found=2, ago_hours=2)
     r = promote()
     assert r.status_code == 200, r.text

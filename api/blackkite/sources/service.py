@@ -66,7 +66,11 @@ class TransitionError(Exception):
 
 
 class PromotionBlocked(TransitionError):
-    pass
+    """Promotion to active refused by the gate; ``gate`` holds the numbers."""
+
+    def __init__(self, message: str, gate: PromotionGate) -> None:
+        super().__init__(message)
+        self.gate = gate
 
 
 def now_utc() -> datetime:
@@ -168,11 +172,13 @@ def change_status(
     if new not in ALLOWED.get(old, frozenset()):
         raise TransitionError(f"cannot move a source from {old} to {new}")
     if new == "active":
-        n = qualifying_runs(db, source)
-        if n < PROMOTE_MIN_RUNS:
+        gate = promotion_gate(db, source)
+        if not gate.met:
             raise PromotionBlocked(
-                f"needs {PROMOTE_MIN_RUNS} successful runs that found items since its "
-                f"config last changed; has {n}"
+                f"This source needs {gate.needed} successful runs that found items "
+                f"since its config last changed before it can be made active; it "
+                f"has {gate.good_runs}.",
+                gate,
             )
     source.status = new
     record_status(db, source, old, by, reason)
