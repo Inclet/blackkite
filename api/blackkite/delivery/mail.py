@@ -1,8 +1,10 @@
 """Pluggable mail transport.
 
 `console` prints messages to stdout (dev); `smtp` sends through an SMTP server
-(dev target: Mailpit on port 1025). The production provider is chosen later
-(decision 13); it only has to implement `MailTransport.send`.
+(dev target: Mailpit on port 1025); `resend` posts to Resend's HTTP API, the
+production provider (decision 45, delivery/resend.py), and refuses to send
+while BK_MAIL_ALLOW_REAL_SEND is false. A transport only has to implement
+`MailTransport.send`.
 
 A `Mail` is plain text, optionally with an HTML alternative and inline images
 the HTML refers to as ``cid:<content id>`` (the digest's kite logo is
@@ -45,6 +47,13 @@ class Mail:
     text: str
     html: str | None = None
     inline: tuple[InlineImage, ...] = ()
+    # Extra headers, e.g. List-Unsubscribe (delivery/unsubscribe.py).
+    headers: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        for name, value in self.headers:
+            if any(c in name + value for c in "\r\n") or not name.strip():
+                raise ValueError(f"invalid mail header {name!r}")
 
 
 def build_message(mail: Mail, sender: str) -> EmailMessage:
@@ -52,6 +61,8 @@ def build_message(mail: Mail, sender: str) -> EmailMessage:
     msg["From"] = sender
     msg["To"] = mail.to
     msg["Subject"] = mail.subject
+    for name, value in mail.headers:
+        msg[name] = value
     msg.set_content(mail.text)
     if mail.html is not None:
         msg.add_alternative(mail.html, subtype="html")
@@ -65,6 +76,11 @@ def build_message(mail: Mail, sender: str) -> EmailMessage:
                 filename=img.filename,
                 disposition="inline",
             )
+    if mail.headers:
+        # Long header values (List-Unsubscribe URLs) stay on one line: the
+        # default 78-column fold would turn them into encoded words, which mail
+        # clients do not read as URLs. RFC 5322 allows lines up to 998.
+        msg.policy = msg.policy.clone(max_line_length=998)
     return msg
 
 
@@ -90,6 +106,7 @@ def format_console(mail: Mail, sender: str) -> str:
         f"From: {sender}",
         f"To: {mail.to}",
         f"Subject: {mail.subject}",
+        *(f"{name}: {value}" for name, value in mail.headers),
         "",
     ]
     if mail.html is None:
@@ -134,6 +151,10 @@ class MemoryTransport:
 def make_transport(settings: Settings) -> MailTransport:
     if settings.mail_transport == "smtp":
         return SmtpTransport(settings)
+    if settings.mail_transport == "resend":
+        from blackkite.delivery.resend import ResendTransport
+
+        return ResendTransport(settings)
     return ConsoleTransport(settings.mail_from)
 
 

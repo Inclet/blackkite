@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 
-from blackkite.auth.ratelimit import LinkRequestLimiter
+from blackkite.auth.ratelimit import LinkRequestLimiter, SlidingWindowLimiter
 from blackkite.config import Settings, get_settings, warn_ignored_env
 from blackkite.routes import (
     admin,
@@ -12,6 +12,7 @@ from blackkite.routes import (
     member,
     profiles,
     sources,
+    unsubscribe,
 )
 
 API_PREFIX = "/api"
@@ -27,6 +28,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         per_email=settings.link_rate_per_email_per_hour,
         per_ip=settings.link_rate_per_ip_per_hour,
     )
+    # One-click unsubscribe (no session): per client address, like link requests.
+    app.state.unsubscribe_limiter = SlidingWindowLimiter(
+        settings.link_rate_per_ip_per_hour
+    )
     app.include_router(auth.router)
     app.include_router(admin.router)
     app.include_router(sources.member_router, prefix=API_PREFIX)
@@ -38,6 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(catalogue.router, prefix=API_PREFIX)
     app.include_router(profiles.router, prefix=API_PREFIX)
     app.include_router(digest_settings.router, prefix=API_PREFIX)
+    app.include_router(unsubscribe.router, prefix=API_PREFIX)
 
     @app.get("/healthz", include_in_schema=False)
     def healthz() -> dict[str, str]:

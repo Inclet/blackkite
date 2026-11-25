@@ -1,7 +1,7 @@
 """Settings, read from environment variables (prefix BK_) or a .env file.
 
 Third-party API keys keep their conventional names without the prefix
-(ANTHROPIC_API_KEY, VOYAGE_API_KEY, BRAVE_API_KEY).
+(ANTHROPIC_API_KEY, VOYAGE_API_KEY, BRAVE_API_KEY, RESEND_API_KEY).
 """
 
 import logging
@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import dotenv_values
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Dimension of opportunity.embedding. Voyage AI embedding models (decision 12)
@@ -53,13 +53,29 @@ class Settings(BaseSettings):
     link_rate_per_ip_per_hour: int = 20
 
     # Mail
-    mail_transport: Literal["console", "smtp"] = "console"
+    mail_transport: Literal["console", "smtp", "resend"] = "console"
+    # Sender. The resend transport requires it to be set explicitly.
     mail_from: str = "Blackkite <no-reply@example.com>"
+    # Safety switch for providers that deliver real email (resend, decision 45).
+    # While false the resend transport refuses to send and logs what it would
+    # have sent. Set true only with the owner's go-ahead.
+    mail_allow_real_send: bool = False
     smtp_host: str = "localhost"
     smtp_port: int = 1025
     smtp_username: str | None = None
     smtp_password: SecretStr | None = None
     smtp_starttls: bool = False
+
+    # One-click unsubscribe (decision 43). Links in every digest and alert are
+    # HMAC-signed with this secret (at least 32 characters; required to send
+    # digests and alerts). Changing it revokes every link already sent.
+    unsubscribe_secret: SecretStr | None = Field(default=None, min_length=32)
+    # Public origin of the API, for the List-Unsubscribe one-click URL
+    # ({api_public_url}/api/unsubscribe?token=...). Unset: the web origin, which
+    # proxies /api/* to the API.
+    api_public_url: str | None = None
+    # Optional address for a List-Unsubscribe mailto: link. Unset: no mailto.
+    unsubscribe_mailto: str | None = None
 
     # Weekly digest: Mondays at this hour, Africa/Kigali (decision 18).
     digest_hour: int = Field(default=7, ge=0, le=23)
@@ -100,6 +116,21 @@ class Settings(BaseSettings):
     brave_api_key: SecretStr | None = Field(
         default=None, validation_alias=AliasChoices("BRAVE_API_KEY")
     )
+    resend_api_key: SecretStr | None = Field(
+        default=None, validation_alias=AliasChoices("RESEND_API_KEY")
+    )
+
+    @field_validator(
+        "unsubscribe_secret",
+        "api_public_url",
+        "unsubscribe_mailto",
+        "resend_api_key",
+        mode="before",
+    )
+    @classmethod
+    def _empty_is_unset(cls, v: object) -> object:
+        """An empty variable in .env means "not set"."""
+        return None if isinstance(v, str) and not v.strip() else v
 
 
 # Variables that no longer set anything, with what to use instead.

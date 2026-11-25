@@ -177,6 +177,7 @@ def test_alert_html_is_email_safe():
         ],
         cta_url="https://testserver/",
         settings_url="https://testserver/settings/digest",
+        unsubscribe_url="https://testserver/unsubscribe#token=abc",
     )
     _, html, _ = render_alert(view)
     assert "<b>T</b>" not in html and "&lt;b&gt;T&lt;/b&gt;" in html

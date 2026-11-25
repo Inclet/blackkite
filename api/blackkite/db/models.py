@@ -3,6 +3,7 @@
 Per-user tables carry a non-null, indexed `user_id`; see PER_USER_TABLES.
 """
 
+import secrets
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
@@ -74,6 +75,14 @@ def _user_fk(ondelete: str = "CASCADE") -> Mapped[uuid.UUID]:
 # --- Identity ----------------------------------------------------------------
 
 
+# 16 random bytes as hex, in Python and (for rows inserted by SQL) in Postgres.
+UNSUBSCRIBE_NONCE_SQL = "replace(gen_random_uuid()::text, '-', '')"
+
+
+def new_unsubscribe_nonce() -> str:
+    return secrets.token_hex(16)
+
+
 class User(Base):
     __tablename__ = "user"
     __table_args__ = (
@@ -88,6 +97,14 @@ class User(Base):
     )
     status: Mapped[str] = mapped_column(
         enum(*USER_STATUSES, name="status"), nullable=False, server_default="active"
+    )
+    # Per-user part of every unsubscribe link (decision 43, delivery/unsubscribe.py).
+    # 32 hex characters; a new value revokes every link sent before.
+    unsubscribe_nonce: Mapped[str] = mapped_column(
+        sa.String(32),
+        nullable=False,
+        default=new_unsubscribe_nonce,
+        server_default=sa.text(UNSUBSCRIBE_NONCE_SQL),
     )
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()

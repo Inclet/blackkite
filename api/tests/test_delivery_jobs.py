@@ -20,7 +20,7 @@ from blackkite.delivery.jobs import (
 from blackkite.delivery.mail import MemoryTransport
 from blackkite.worker.runner import JOB_LOCK_NAMESPACE, advisory_lock
 from tests import factories as f
-from tests.conftest import make_user
+from tests.conftest import TEST_UNSUBSCRIBE_SECRET, make_user
 from tests.factories import KIGALI, kigali
 
 MONDAY_7 = datetime(2026, 11, 30, 7, 0, tzinfo=KIGALI)
@@ -144,6 +144,7 @@ def bk(db_url, engine, monkeypatch, tmp_path):
     monkeypatch.setenv("BK_DATABASE_URL", db_url)
     monkeypatch.setenv("BK_MAIL_TRANSPORT", "console")
     monkeypatch.setenv("BK_WEB_BASE_URL", "https://app.example")
+    monkeypatch.setenv("BK_UNSUBSCRIBE_SECRET", TEST_UNSUBSCRIBE_SECRET)
     for fn in (get_settings, get_engine, get_sessionmaker):
         fn.cache_clear()
     runner = CliRunner()

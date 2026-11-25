@@ -30,6 +30,8 @@ class AlertView(_Model):
     items: list[DigestItem] = Field(min_length=1)
     cta_url: LinkUrl
     settings_url: LinkUrl
+    # Signed one-click link that turns alerts off (decision 43).
+    unsubscribe_url: LinkUrl
     footer_line: str = FOOTER_LINE
 
     @property
@@ -54,6 +56,7 @@ def _text(view: AlertView) -> str:
         "--",
         view.footer_line,
         f"Change alert settings: {view.settings_url}",
+        f"Stop these alerts: {view.unsubscribe_url}",
         "",
     ]
     return "\n".join(lines)

@@ -186,7 +186,9 @@ def digest_cmd(
                 raise typer.Exit(2)
             setting = email_setting(db, account)
             to = setting.address if setting else account.email
-            typer.echo(format_console(digest_mail(built.view, to), "dry run"))
+            typer.echo(
+                format_console(digest_mail(built.view, to, built.headers), "dry run")
+            )
             return
         out = send_digest(
             db,
