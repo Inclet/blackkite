@@ -38,14 +38,27 @@ export const DETAIL_COPY = {
   provisional: 'Provisional',
 } as const;
 
+/**
+ * Whether the profile (and Provisional) tags belong on the item. Tenders and
+ * funding are scored: with no fit word (null or "not-scored") no match was made,
+ * so a profile tag would imply one. Events and investments are never given a fit
+ * word (contract: fit null by design) and keep the profile the API sends.
+ */
+export function showsProfile(item: FeedItem): boolean {
+  if (!item.detail.profile) return false;
+  if (item.fit === 'not-scored') return false;
+  return item.fit !== null || (item.stream !== 'tender' && item.stream !== 'funding');
+}
+
 /** Stream tag, profile tag (and "Provisional" when the profile is) and the deadline pill. */
 export function DetailTop({ item, tagGap }: { item: FeedItem; tagGap: 6 | 8 }) {
+  const profile = showsProfile(item);
   return (
     <div className={cx(styles.top, tagGap === 6 ? styles.topPhone : undefined)}>
       <span className={styles.tags}>
         <Tag kind="stream" stream={item.stream} />
-        {item.detail.profile && <Tag kind="profile">{item.detail.profile}</Tag>}
-        {item.provisional && <Tag kind="profile">{DETAIL_COPY.provisional}</Tag>}
+        {profile && <Tag kind="profile">{item.detail.profile}</Tag>}
+        {profile && item.provisional && <Tag kind="profile">{DETAIL_COPY.provisional}</Tag>}
       </span>
       <DeadlinePill {...pillFor(item)} />
     </div>
