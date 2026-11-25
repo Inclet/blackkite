@@ -588,10 +588,10 @@ def test_states_and_notes_are_per_user(db, ana, login):
     a, b = login(ana.email), login(ben.email)
     r = a.put(
         f"/api/opportunities/{opp.id}/state",
-        json={"state": "dismissed", "dismissReason": "too far"},
+        json={"state": "dismissed", "dismissReason": "too_small"},
     )
     assert r.status_code == 200
-    assert r.json()["state"] == "dismissed" and r.json()["dismissReason"] == "too far"
+    assert r.json()["state"] == "dismissed" and r.json()["dismissReason"] == "too_small"
     a.put(f"/api/opportunities/{opp.id}/note", json={"note": "  call Monday "})
     assert _items(a) == []
     assert [i["id"] for i in _items(a, state="dismissed")] == [str(opp.id)]
@@ -601,7 +601,7 @@ def test_states_and_notes_are_per_user(db, ana, login):
     assert detail_b["note"] is None and detail_b["state"] == "unseen"
     detail_a = a.get(f"/api/opportunities/{opp.id}").json()["detail"]
     assert detail_a["note"] == "call Monday"
-    assert detail_a["state"] == "dismissed" and detail_a["dismissReason"] == "too far"
+    assert detail_a["state"] == "dismissed" and detail_a["dismissReason"] == "too_small"
     # Moving off dismissed drops the reason; the note stays.
     r = a.put(f"/api/opportunities/{opp.id}/state", json={"state": "saved"})
     assert r.json() == {
@@ -635,6 +635,62 @@ def test_state_body_is_validated(db, ana, login):
         ).status_code
         == 422
     )
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ["not_my_sector", "too_small", "cant_meet_requirements", "already_knew", "other"],
+)
+def test_dismiss_reasons_from_the_fixed_list(db, ana, login, reason):
+    src = f.source(db, "Src")
+    opp = f.opportunity(db, "X")
+    f.link(db, opp, src)
+    db.commit()
+    c = login(ana.email)
+    url = f"/api/opportunities/{opp.id}/state"
+    r = c.put(url, json={"state": "dismissed", "dismissReason": reason})
+    assert r.status_code == 200 and r.json()["dismissReason"] == reason
+    assert c.get(f"/api/opportunities/{opp.id}").json()["detail"]["dismissReason"] == (
+        reason
+    )
+    [state] = c.get("/api/me/export").json()["states"]
+    assert state["state"] == "dismissed" and state["dismissReason"] == reason
+    # Another state clears it.
+    r = c.put(url, json={"state": "saved", "dismissReason": reason})
+    assert r.json()["dismissReason"] is None
+
+
+@pytest.mark.parametrize(
+    "reason", ["too far", "Too_small", "", "other: too far", 3, ["other"]]
+)
+def test_dismiss_reason_outside_the_list_is_refused(db, ana, login, reason):
+    src = f.source(db, "Src")
+    opp = f.opportunity(db, "X")
+    f.link(db, opp, src)
+    db.commit()
+    c = login(ana.email)
+    r = c.put(
+        f"/api/opportunities/{opp.id}/state",
+        json={"state": "dismissed", "dismissReason": reason},
+    )
+    assert r.status_code == 422
+    db.expire_all()
+    assert db.query(UserOpportunity).count() == 0
+
+
+def test_free_text_reason_from_before_the_list_reads_as_other(db, ana, login):
+    src = f.source(db, "Src")
+    opp = f.opportunity(db, "X")
+    f.link(db, opp, src)
+    uo = f.state(db, ana, opp, "dismissed")
+    uo.dismiss_reason = "too far away"
+    db.commit()
+    c = login(ana.email)
+    detail = c.get(f"/api/opportunities/{opp.id}").json()["detail"]
+    assert detail["dismissReason"] == "other"
+    # The export keeps what was stored (spec 10: the user's own data).
+    [state] = c.get("/api/me/export").json()["states"]
+    assert state["dismissReason"] == "too far away"
 
 
 def test_shortlist_is_saved_and_acting_soonest_first(db, ana, login):

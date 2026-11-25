@@ -567,7 +567,7 @@ def opportunity_out(db: Session, row: Row, now: datetime) -> S.OpportunityOut:
         changes=_changes(db, o.id),
         note=row.uo.note if row.uo else None,
         state=row.state,
-        dismiss_reason=row.uo.dismiss_reason if row.uo else None,
+        dismiss_reason=S.dismiss_reason_out(row.uo.dismiss_reason if row.uo else None),
     )
     return S.OpportunityOut(**_item_fields(row, now), detail=detail)
 
