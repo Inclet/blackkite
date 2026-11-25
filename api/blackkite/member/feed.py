@@ -20,6 +20,7 @@ from blackkite.db.models import (
 from blackkite.member import schemas as S
 from blackkite.member.view import (
     CLOSED_STATUSES,
+    SCORED_STREAMS,
     SHORTLIST_STATES,
     Row,
     closing_soonest,
@@ -98,7 +99,24 @@ def feed_rows(db: Session, user: User, f: FeedFilters, now: datetime) -> list[Ro
             o for o in opps if (d := sort_date(o)) is not None and today <= d <= last
         ]
     rows = load_rows(db, user, opps, profile_id=f.profile_id)
+    rows = [r for r in rows if not _hidden_without_fit_word(r)]
     return closing_soonest(rows, now)[:FEED_LIMIT]
+
+
+# States that keep an item in the feed even with no fit word (decision 41).
+KEPT_STATES = ("saved", "acting", "done")
+
+
+def _hidden_without_fit_word(row: Row) -> bool:
+    """Decision 41: a tender or funding item whose best active-profile row has no
+    fit word (scored below "possible", or not scored yet) stays out of the feed,
+    unless the caller has saved it, is acting on it or has done it. Events and
+    investments never carry a fit word and are unaffected."""
+    if row.opp.stream not in SCORED_STREAMS:
+        return False
+    if row.state in KEPT_STATES:
+        return False
+    return row.best is None or row.best.fit_word is None
 
 
 def feed_content(

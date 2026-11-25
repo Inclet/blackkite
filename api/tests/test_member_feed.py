@@ -11,7 +11,13 @@ import pytest
 import sqlalchemy as sa
 from fastapi.testclient import TestClient
 
-from blackkite.db.models import ChangeEvent, Document, UserOpportunity, UserSourceMute
+from blackkite.db.models import (
+    ChangeEvent,
+    Document,
+    Profile,
+    UserOpportunity,
+    UserSourceMute,
+)
 from blackkite.routes.member import now_utc
 from tests import factories as f
 from tests.conftest import make_user, sign_in
@@ -63,6 +69,16 @@ _FIT_WORDS = {
     "possible": "Possible fit",
     "not-scored": "Not scored",
 }
+
+
+def _fit(db, user, *opps, word: str = "possible") -> None:
+    """Give each item a fit word for ``user`` (decision 41: tenders and funding
+    without one stay out of the feed). One "Feed" profile per user."""
+    prof = db.scalar(
+        sa.select(Profile).where(Profile.user_id == user.id, Profile.name == "Feed")
+    ) or f.profile(db, user, "Feed")
+    for o in opps:
+        f.score(db, user, o, prof, 50, fit_word=word)
 
 
 def _subtitle(item: dict) -> str:
@@ -374,6 +390,9 @@ def test_confirmed_funding_and_conflict_copy(db, ana, login):
     )
     f.link(db, closed_conflict, ncst, "https://umucyo.example/1", is_original=True)
     f.link(db, closed_conflict, board, "https://board.example/1")
+    # Saved, so both stay in the feed without a fit word (decision 41).
+    f.state(db, ana, call, "saved")
+    f.state(db, ana, closed_conflict, "saved")
     db.commit()
     by_id = {i["id"]: i for i in _items(login(ana.email))}
     assert by_id[str(call.id)]["fit"] == "not-scored"
@@ -391,6 +410,7 @@ def test_optional_fields_are_omitted_not_null(db, ana, login):
     src = f.source(db, "Src")
     opp = f.opportunity(db, "Bare", organisation=None)
     f.link(db, opp, src)
+    f.state(db, ana, opp, "saved")  # unscored: kept in the feed only when saved
     db.commit()
     [item] = _items(login(ana.email))
     assert item["organisation"] == ""
@@ -475,6 +495,7 @@ def test_provisional_follows_the_matched_profile(db, ana, login):
     # Not scored: never provisional.
     bare = f.opportunity(db, "Bare", deadline_at=kigali(2026, 12, 12))
     f.link(db, bare, src)
+    f.state(db, ana, bare, "saved")  # unscored: kept in the feed only when saved
     db.commit()
     assert {i["title"]: i for i in _items(c)}["Bare"]["provisional"] is False
 
@@ -486,6 +507,7 @@ def test_inactive_profile_scores_are_ignored(db, ana, login):
     opp = f.opportunity(db, "X")
     f.link(db, opp, src)
     f.score(db, ana, opp, p, 90, fit_word="strong")
+    f.state(db, ana, opp, "saved")  # unscored: kept in the feed only when saved
     db.commit()
     [item] = _items(login(ana.email))
     assert item["fit"] == "not-scored" and "profile" not in item["detail"]
@@ -501,6 +523,7 @@ def test_closing_soonest_first(db, ana, login):
     passed_today = f.opportunity(db, "Passed", deadline_at=NOW - timedelta(hours=1))
     for o in (later, undated, soon, event, expired, passed_today):
         f.link(db, o, src)
+    _fit(db, ana, later, undated, soon, expired, passed_today)
     db.commit()
     assert [i["title"] for i in _items(login(ana.email))] == [
         "Soon",
@@ -534,6 +557,9 @@ def test_feed_hides_testing_retired_and_other_users_private_items(db, ana, login
     mine = f.opportunity(
         db, "Ana's private", visibility="private", owner_user_id=ana.id
     )
+    everything = [shown, hidden_testing, hidden_retired, by_paused, theirs, mine]
+    _fit(db, ana, *everything)
+    _fit(db, admin, *everything)
     db.commit()
     assert sorted(i["title"] for i in _items(login(ana.email))) == [
         "Ana's private",
@@ -557,6 +583,7 @@ def test_no_route_touches_another_users_private_item(db, ana, login):
     testing = f.source(db, "Testing", status="testing")
     hidden = f.opportunity(db, "Testing only")
     f.link(db, hidden, testing)
+    _fit(db, other, theirs)
     db.commit()
     c = login(ana.email)
     for opp in (theirs, hidden):
@@ -584,6 +611,8 @@ def test_states_and_notes_are_per_user(db, ana, login):
     src = f.source(db, "Src")
     opp = f.opportunity(db, "Shared", deadline_at=kigali(2026, 12, 5))
     f.link(db, opp, src)
+    _fit(db, ana, opp)
+    _fit(db, ben, opp)
     db.commit()
     a, b = login(ana.email), login(ben.email)
     r = a.put(
@@ -740,6 +769,7 @@ def test_filters(db, ana, login):
     f.link(db, ev, two)
     undated = f.opportunity(db, "Undated")
     f.link(db, undated, two)
+    _fit(db, ana, t, fu, undated)
     db.commit()
     c = login(ana.email)
     assert _ids(c, stream="funding") == [str(fu.id)]
@@ -765,6 +795,7 @@ def test_items_only_from_muted_sources_leave_the_feed(db, ana, login):
     f.link(db, both, muted)
     f.link(db, both, other)
     db.add(UserSourceMute(user_id=ana.id, source_id=muted.id))
+    _fit(db, ana, only_muted, both)
     db.commit()
     c = login(ana.email)
     assert [i["title"] for i in _items(c)] == ["Both"]
@@ -876,9 +907,10 @@ def test_feed_items_carry_the_callers_state(db, ana, login):
     src = f.source(db, "Src")
     opp = f.opportunity(db, "X", deadline_at=kigali(2026, 12, 10))
     f.link(db, opp, src)
+    _fit(db, ana, opp)
+    _fit(db, make_user(db, "ben@example.com"), opp)
     db.commit()
     a = login(ana.email)
-    make_user(db, "ben@example.com")
     b = login("ben@example.com")
     assert [i["state"] for i in _items(a)] == ["unseen"]
     for state, in_shortlist in [
@@ -939,3 +971,100 @@ def test_rules_only_rows_show_only_their_rules_reasons(db, ana, login):
     items = {i["title"]: i for i in _items(c)}
     assert items["Cold chain tender"]["detail"]["reasons"] == detail["reasons"]
     assert "without the model" not in str(items)
+
+
+# --- decision 41: tenders and funding with no fit word ------------------------------------
+
+
+def test_tenders_and_funding_without_a_fit_word_leave_the_feed(db, ana, login):
+    src = f.source(db, "Src")
+    prof = f.profile(db, ana, "Ironji-Trade")
+    old = f.profile(db, ana, "Old")
+    old.active = False
+    items = {}
+    for title, stream, word in [
+        ("Tender possible", "tender", "possible"),
+        ("Tender below possible", "tender", None),
+        ("Tender not scored", "tender", "unscored"),
+        ("Funding good", "funding", "good"),
+        ("Funding below possible", "funding", None),
+        ("Funding not scored", "funding", "unscored"),
+        ("Tender inactive profile only", "tender", "inactive"),
+    ]:
+        o = f.opportunity(db, title, stream=stream, deadline_at=kigali(2026, 12, 10))
+        f.link(db, o, src)
+        if word == "inactive":
+            f.score(db, ana, o, old, 90, fit_word="strong")
+        elif word != "unscored":
+            f.score(db, ana, o, prof, 30, fit_word=word)
+        items[title] = o
+    ev = f.opportunity(db, "Event", stream="event", event_start=kigali(2026, 12, 3))
+    inv = f.opportunity(db, "Bond", stream="investment")
+    f.link(db, ev, src)
+    f.link(db, inv, src)
+    f.score(db, ana, ev, prof, 40, fit_word=None)
+    db.commit()
+    c = login(ana.email)
+    assert sorted(i["title"] for i in _items(c)) == [
+        "Bond",
+        "Event",
+        "Funding good",
+        "Tender possible",
+    ]
+    assert _items(c, stream="funding")[0]["title"] == "Funding good"
+    assert _items(c, state="unseen") == _items(c)
+    # The opportunity page still opens a hidden item.
+    r = c.get(f"/api/opportunities/{items['Tender below possible'].id}")
+    assert r.status_code == 200 and r.json()["fit"] is None
+
+
+@pytest.mark.parametrize("state", ["saved", "acting", "done"])
+def test_saved_acting_and_done_items_stay_without_a_fit_word(db, ana, login, state):
+    src = f.source(db, "Src")
+    prof = f.profile(db, ana, "P")
+    unscored = f.opportunity(db, "Unscored", deadline_at=kigali(2026, 12, 10))
+    low = f.opportunity(db, "Low", stream="funding", deadline_at=kigali(2026, 12, 11))
+    for o in (unscored, low):
+        f.link(db, o, src)
+        f.state(db, ana, o, state)
+    f.score(db, ana, low, prof, 20, fit_word=None)
+    db.commit()
+    c = login(ana.email)
+    by_title = {i["title"]: i for i in _items(c)}
+    assert set(by_title) == {"Unscored", "Low"}
+    assert by_title["Unscored"]["fit"] == "not-scored"
+    assert by_title["Low"]["fit"] is None
+    assert len(_items(c, state=state)) == 2
+    # The shortlist is unchanged: saved and acting items, scored or not.
+    shortlist = [i["title"] for i in c.get("/api/shortlist").json()]
+    assert sorted(shortlist) == ([] if state == "done" else ["Low", "Unscored"])
+
+
+def test_dismissed_and_unseen_items_without_a_fit_word_stay_hidden(db, ana, login):
+    src = f.source(db, "Src")
+    opp = f.opportunity(db, "X", deadline_at=kigali(2026, 12, 10))
+    f.link(db, opp, src)
+    f.state(db, ana, opp, "dismissed")
+    db.commit()
+    c = login(ana.email)
+    assert _items(c) == []
+    assert _items(c, state="dismissed") == []
+    c.put(f"/api/opportunities/{opp.id}/state", json={"state": "unseen"})
+    assert _items(c) == []
+    c.put(f"/api/opportunities/{opp.id}/state", json={"state": "saved"})
+    assert _ids(c) == [str(opp.id)]
+
+
+def test_profile_filter_uses_that_profiles_fit_word(db, ana, login):
+    src = f.source(db, "Src")
+    a = f.profile(db, ana, "A")
+    b = f.profile(db, ana, "B")
+    opp = f.opportunity(db, "X", deadline_at=kigali(2026, 12, 10))
+    f.link(db, opp, src)
+    f.score(db, ana, opp, a, 60, fit_word="good")
+    f.score(db, ana, opp, b, 20, fit_word=None)
+    db.commit()
+    c = login(ana.email)
+    assert _ids(c) == [str(opp.id)]
+    assert _ids(c, profile=str(a.id)) == [str(opp.id)]
+    assert _ids(c, profile=str(b.id)) == []

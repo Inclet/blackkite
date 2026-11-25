@@ -16,7 +16,9 @@ profiles. An item whose every row is filtered is left out of lists.
 
 A ``muted_source_only`` row on an item that is no longer carried only by sources
 the user mutes (an unmute the worker has not rescored yet) counts as not scored:
-not filtered, never the best row. So the item shows again at once, unscored.
+not filtered, never the best row. So the item is unscored at once: it opens
+and shows on the shortlist; a tender or funding item stays out of the feed until
+rescored (decision 41, member/feed.py).
 """
 
 from __future__ import annotations

@@ -979,9 +979,11 @@ def test_mute_and_unmute_queue_a_rescore_for_the_worker(member, db, Sessions):
     assert _filtered(db, member.user, opp) == ["muted_source_only"]
 
     assert member.delete(f"/api/sources/{src.id}/mute").status_code == 204
-    # Back at once, unscored until the worker runs; the row is kept, not deleted.
-    [item] = member.get("/api/feed").json()["items"]
-    assert item["id"] == str(opp.id) and item["fit"] == "not-scored"
+    # Unscored until the worker runs, so this tender stays out of the feed
+    # (decision 41) though it opens; the row is kept, not deleted.
+    assert member.get("/api/feed").json()["items"] == []
+    detail = member.get(f"/api/opportunities/{opp.id}").json()
+    assert detail["fit"] == "not-scored"
     assert _filtered(db, member.user, opp) == ["muted_source_only"]
     # Due at the next tick, without the debounce.
     assert len(_worker(Sessions, minutes=0)) == 1
