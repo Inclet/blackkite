@@ -38,6 +38,7 @@ from blackkite.db.models import (
     OpportunitySource,
     Source,
     SourceRun,
+    SourceStatusChange,
     SourceSuggestion,
     User,
     UserSourceMute,
@@ -101,7 +102,66 @@ def qualifying_runs(db: Session, source: Source) -> int:
     return db.scalar(q) or 0
 
 
-def change_status(db: Session, source: Source, new: str) -> Source:
+@dataclass(frozen=True)
+class PromotionGate:
+    """Progress toward promotion to active (spec 4.3 step 4)."""
+
+    good_runs: int  # qualifying runs since the last config change
+    needed: int
+    since: datetime | None  # config_changed_at; None = every run counts
+    met: bool
+
+
+def promotion_gate(db: Session, source: Source) -> PromotionGate:
+    n = qualifying_runs(db, source)
+    return PromotionGate(
+        good_runs=n,
+        needed=PROMOTE_MIN_RUNS,
+        since=source.config_changed_at,
+        met=n >= PROMOTE_MIN_RUNS,
+    )
+
+
+def record_status(
+    db: Session,
+    source: Source,
+    old: str | None,
+    by: User | None = None,
+    reason: str | None = None,
+) -> None:
+    """Append to the source's status history (admin source screen, spec 4.4)."""
+    db.add(
+        SourceStatusChange(
+            source_id=source.id,
+            old_status=old,
+            new_status=source.status,
+            changed_by=by.id if by is not None else None,
+            reason=reason,
+            at=now_utc(),  # clock time, so two changes in one transaction keep order
+        )
+    )
+
+
+def status_history(db: Session, source: Source) -> list[SourceStatusChange]:
+    """Newest first."""
+    return list(
+        db.scalars(
+            sa.select(SourceStatusChange)
+            .where(SourceStatusChange.source_id == source.id)
+            .order_by(SourceStatusChange.at.desc(), SourceStatusChange.id)
+        )
+    )
+
+
+def change_status(
+    db: Session,
+    source: Source,
+    new: str,
+    by: User | None = None,
+    reason: str | None = None,
+) -> Source:
+    """Move ``source`` to ``new`` and record it in the status history. ``by`` is
+    the admin who asked (None for system changes)."""
     old = source.status
     if new == old:
         return source
@@ -115,6 +175,7 @@ def change_status(db: Session, source: Source, new: str) -> Source:
                 f"config last changed; has {n}"
             )
     source.status = new
+    record_status(db, source, old, by, reason)
     db.flush()
     # Verification counts only member-visible sources (pipeline/visibility.py).
     refresh_verification_for_source(db, source.id)

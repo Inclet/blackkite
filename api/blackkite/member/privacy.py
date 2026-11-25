@@ -123,6 +123,7 @@ def export(db: Session, user: User) -> dict[str, Any]:
                 "role": user.role,
                 "status": user.status,
                 "createdAt": user.created_at,
+                "lastSignInAt": user.last_sign_in_at,
             },
             "profiles": [
                 {

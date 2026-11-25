@@ -128,17 +128,17 @@ def count(db, model) -> int:
 
 
 def test_admin_creates_source_as_testing(admin, db):
-    r = admin.post("/admin/sources", json=body(status="active"))
+    r = admin.post("/api/admin/sources", json=body(status="active"))
     assert r.status_code == 422  # status is not settable on create
-    r = admin.post("/admin/sources", json=body())
+    r = admin.post("/api/admin/sources", json=body())
     assert r.status_code == 201, r.text
     out = r.json()
     assert out["status"] == "testing"
-    assert out["added_by"] == str(admin.user.id)
-    assert out["health"] == "unknown" and out["promotion_runs"] == 0
-    assert out["effective_schedule"] == "0 4 * * *"
+    assert out["addedBy"] == str(admin.user.id)
+    assert out["health"] == "unknown" and out["promotionRuns"] == 0
+    assert out["effectiveSchedule"] == "0 4 * * *"
     assert out["config"]["selectors"]["title"] == {"css": "a"}
-    assert admin.post("/admin/sources", json=body()).status_code == 409
+    assert admin.post("/api/admin/sources", json=body()).status_code == 409
 
 
 @pytest.mark.parametrize(
@@ -168,13 +168,13 @@ def test_admin_creates_source_as_testing(admin, db):
     ],
 )
 def test_create_rejects_bad_input(admin, over):
-    r = admin.post("/admin/sources", json=body(**over))
+    r = admin.post("/api/admin/sources", json=body(**over))
     assert r.status_code == 422, r.text
 
 
 def test_unimplemented_type_config_stored_as_given(admin):
     r = admin.post(
-        "/admin/sources",
+        "/api/admin/sources",
         json=body(collector_type="rss", config={"feed_url": f"https://{H}/feed"}),
     )
     assert r.status_code == 201 and r.json()["config"] == {
@@ -183,43 +183,48 @@ def test_unimplemented_type_config_stored_as_given(admin):
 
 
 def test_edit_tracks_config_changes(admin, db):
-    sid = admin.post("/admin/sources", json=body()).json()["id"]
-    r = admin.patch(f"/admin/sources/{sid}", json={"access_note": "rechecked"})
-    assert r.status_code == 200 and r.json()["config_changed_at"] is None
-    r = admin.patch(f"/admin/sources/{sid}", json={"config": HTML_CONFIG})
-    assert r.json()["config_changed_at"] is None  # same config: not a change
+    sid = admin.post("/api/admin/sources", json=body()).json()["id"]
+    r = admin.patch(f"/api/admin/sources/{sid}", json={"access_note": "rechecked"})
+    assert r.status_code == 200 and r.json()["configChangedAt"] is None
+    r = admin.patch(f"/api/admin/sources/{sid}", json={"config": HTML_CONFIG})
+    assert r.json()["configChangedAt"] is None  # same config: not a change
     new_cfg = {**HTML_CONFIG, "max_pages": 2}
-    r = admin.patch(f"/admin/sources/{sid}", json={"config": new_cfg})
-    assert r.status_code == 200 and r.json()["config_changed_at"] is not None
+    r = admin.patch(f"/api/admin/sources/{sid}", json={"config": new_cfg})
+    assert r.status_code == 200 and r.json()["configChangedAt"] is not None
     assert (
-        admin.patch(f"/admin/sources/{sid}", json={"status": "active"}).status_code
+        admin.patch(f"/api/admin/sources/{sid}", json={"status": "active"}).status_code
         == 422
     )
     bad = admin.patch(
-        f"/admin/sources/{sid}", json={"config": {"list_url": "ftp://x/"}}
+        f"/api/admin/sources/{sid}", json={"config": {"list_url": "ftp://x/"}}
     )
     assert bad.status_code == 422
     # switching type re-validates the stored config against the new type
     assert (
         admin.patch(
-            f"/admin/sources/{sid}", json={"collector_type": "search_query"}
+            f"/api/admin/sources/{sid}", json={"collector_type": "search_query"}
         ).status_code
         == 422
     )
-    assert admin.patch(f"/admin/sources/{sid}", json={"name": None}).status_code == 422
+    assert (
+        admin.patch(f"/api/admin/sources/{sid}", json={"name": None}).status_code == 422
+    )
 
 
 def test_member_cannot_manage_sources(member, db):
     s = add_source(db)
-    assert member.post("/admin/sources", json=body()).status_code == 403
-    assert member.patch(f"/admin/sources/{s.id}", json={"name": "x"}).status_code == 403
+    assert member.post("/api/admin/sources", json=body()).status_code == 403
+    assert (
+        member.patch(f"/api/admin/sources/{s.id}", json={"name": "x"}).status_code
+        == 403
+    )
     assert (
         member.post(
-            f"/admin/sources/{s.id}/status", json={"status": "paused"}
+            f"/api/admin/sources/{s.id}/status", json={"status": "paused"}
         ).status_code
         == 403
     )
-    assert member.post(f"/admin/sources/{s.id}/test-run").status_code == 403
+    assert member.post(f"/api/admin/sources/{s.id}/test-run").status_code == 403
 
 
 # --- status graph and promotion -----------------------------------------------------------
@@ -260,7 +265,7 @@ def test_status_graph(db, old, new):
 def test_promotion_needs_two_successful_runs_with_items(admin, db):
     s = add_source(db)
     promote = lambda: admin.post(
-        f"/admin/sources/{s.id}/status", json={"status": "active"}
+        f"/api/admin/sources/{s.id}/status", json={"status": "active"}
     )
     r = promote()
     assert r.status_code == 409 and "has 0" in r.json()["detail"]
@@ -280,9 +285,9 @@ def test_promotion_counts_only_runs_after_config_change(admin, db):
     add_run(db, s, ago_hours=3)
     add_run(db, s, ago_hours=2)
     admin.patch(
-        f"/admin/sources/{s.id}", json={"config": {**HTML_CONFIG, "max_pages": 3}}
+        f"/api/admin/sources/{s.id}", json={"config": {**HTML_CONFIG, "max_pages": 3}}
     )
-    r = admin.post(f"/admin/sources/{s.id}/status", json={"status": "active"})
+    r = admin.post(f"/api/admin/sources/{s.id}/status", json={"status": "active"})
     assert r.status_code == 409
     db.expire_all()
     s = db.get(Source, s.id)
@@ -291,20 +296,22 @@ def test_promotion_counts_only_runs_after_config_change(admin, db):
     r2 = add_run(db, s, ago_hours=0)
     r2.started_at = s.config_changed_at + timedelta(seconds=2)
     db.commit()
-    r = admin.post(f"/admin/sources/{s.id}/status", json={"status": "active"})
+    r = admin.post(f"/api/admin/sources/{s.id}/status", json={"status": "active"})
     assert r.status_code == 200, r.text
 
 
 def test_pause_retire_and_invalid_transition(admin, db):
     s = add_source(db)
-    ok = admin.post(f"/admin/sources/{s.id}/status", json={"status": "paused"})
+    ok = admin.post(f"/api/admin/sources/{s.id}/status", json={"status": "paused"})
     assert ok.status_code == 200 and ok.json()["status"] == "paused"
-    ok = admin.post(f"/admin/sources/{s.id}/status", json={"status": "retired"})
+    ok = admin.post(f"/api/admin/sources/{s.id}/status", json={"status": "retired"})
     assert ok.status_code == 200
-    bad = admin.post(f"/admin/sources/{s.id}/status", json={"status": "paused"})
+    bad = admin.post(f"/api/admin/sources/{s.id}/status", json={"status": "paused"})
     assert bad.status_code == 409 and "retired to paused" in bad.json()["detail"]
     assert (
-        admin.post(f"/admin/sources/{s.id}/status", json={"status": "gone"}).status_code
+        admin.post(
+            f"/api/admin/sources/{s.id}/status", json={"status": "gone"}
+        ).status_code
         == 422
     )
 
@@ -375,9 +382,9 @@ def test_members_see_only_active_sources_with_stats(member, db):
     (row,) = r.json()
     assert row["name"] == "Alpha" and row["publisher"] == "Alpha Org"
     assert row["kind"] == "original" and row["streams"] == ["tender", "event"]
-    assert row["items_30d"] == 3
+    assert row["items30d"] == 3
     assert row["health"] == "degraded"
-    assert row["last_success_at"] is not None and row["muted"] is False
+    assert row["lastSuccessAt"] is not None and row["muted"] is False
     assert "config" not in row and "access_note" not in row
 
 
@@ -417,6 +424,22 @@ def test_suggestion_flow(app, admin, member, db, outbox):
     assert r.status_code == 201, r.text
     sid = r.json()["id"]
     assert r.json()["status"] == "suggested"
+    # The created suggestion comes back whole (the web form shows it at once).
+    created = r.json()
+    assert set(created) == {
+        "id",
+        "url",
+        "note",
+        "status",
+        "createdAt",
+        "reviewedAt",
+        "sourceId",
+    }
+    assert (created["url"], created["note"]) == (
+        "https://calls.example/rw",
+        "Monthly grant calls for Rwanda",
+    )
+    assert member.get("/api/source-suggestions").json() == [created]
     assert (
         member.post(
             "/api/source-suggestions", json={"url": "http://10.0.0.1/"}
@@ -432,28 +455,31 @@ def test_suggestion_flow(app, admin, member, db, outbox):
     other = sign_in(new_client(app), outbox, OTHER)
     assert other.get("/api/source-suggestions").json() == []
     assert [s["id"] for s in member.get("/api/source-suggestions").json()] == [sid]
-    assert member.get("/admin/source-suggestions").status_code == 403
+    assert member.get("/api/admin/source-suggestions").status_code == 403
 
-    queue = admin.get("/admin/source-suggestions").json()
-    assert [q["id"] for q in queue] == [sid] and queue[0]["user_id"] == str(
+    queue = admin.get("/api/admin/source-suggestions").json()
+    assert [q["id"] for q in queue] == [sid] and queue[0]["userId"] == str(
         member.user.id
     )
 
     # Creating from a suggestion that is not accepted yet is refused.
-    assert admin.post("/admin/sources", json=body(suggestion_id=sid)).status_code == 409
-    r = admin.post(f"/admin/source-suggestions/{sid}/accept")
+    assert (
+        admin.post("/api/admin/sources", json=body(suggestion_id=sid)).status_code
+        == 409
+    )
+    r = admin.post(f"/api/admin/source-suggestions/{sid}/accept")
     assert r.status_code == 200
     out = r.json()
-    assert out["status"] == "accepted" and out["reviewed_by"] == str(admin.user.id)
-    assert out["reviewed_at"] is not None
-    assert admin.post(f"/admin/source-suggestions/{sid}/reject").status_code == 409
-    assert admin.get("/admin/source-suggestions").json() == []
+    assert out["status"] == "accepted" and out["reviewedBy"] == str(admin.user.id)
+    assert out["reviewedAt"] is not None
+    assert admin.post(f"/api/admin/source-suggestions/{sid}/reject").status_code == 409
+    assert admin.get("/api/admin/source-suggestions").json() == []
 
-    created = admin.post("/admin/sources", json=body(suggestion_id=sid))
+    created = admin.post("/api/admin/sources", json=body(suggestion_id=sid))
     assert created.status_code == 201 and created.json()["status"] == "testing"
     db.expire_all()
     assert str(db.get(SourceSuggestion, sid).source_id) == created.json()["id"]
-    again = admin.post("/admin/sources", json=body(name="Other", suggestion_id=sid))
+    again = admin.post("/api/admin/sources", json=body(name="Other", suggestion_id=sid))
     assert again.status_code == 409
 
 
@@ -461,10 +487,11 @@ def test_reject_suggestion(admin, member):
     sid = member.post(
         "/api/source-suggestions", json={"url": "https://x.example/"}
     ).json()["id"]
-    r = admin.post(f"/admin/source-suggestions/{sid}/reject")
+    r = admin.post(f"/api/admin/source-suggestions/{sid}/reject")
     assert r.status_code == 200 and r.json()["status"] == "rejected"
     assert [
-        s["id"] for s in admin.get("/admin/source-suggestions?status=rejected").json()
+        s["id"]
+        for s in admin.get("/api/admin/source-suggestions?status=rejected").json()
     ] == [sid]
 
 
@@ -481,15 +508,15 @@ def test_saved_test_run_previews_and_writes_nothing(admin, db, web, monkeypatch)
     monkeypatch.setattr(ingest, "default_deps", forbidden)
     s = add_source(db, "Notices", "testing")
     before = (db.get(Source, s.id).updated_at, db.get(Source, s.id).status)
-    r = admin.post(f"/admin/sources/{s.id}/test-run")
+    r = admin.post(f"/api/admin/sources/{s.id}/test-run")
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["ok"] is True and out["error"] is None
-    assert [(i["title"], i["url"], i["listed_deadline"]) for i in out["items"]] == [
+    assert [(i["title"], i["url"], i["listedDeadline"]) for i in out["items"]] == [
         ("Invitation for Bids: cold rooms", f"https://{H}/n/1", "30 Nov 2026"),
         ("EOI: freight forwarding", f"https://{H}/n/2", None),
     ]
-    assert out["requests_made"] == 2  # robots.txt + list page
+    assert out["requestsMade"] == 2  # robots.txt + list page
     assert count(db, SourceRun) == 0
     assert count(db, Opportunity) == 0 and count(db, OpportunitySource) == 0
     assert count(db, HttpCache) == 0
@@ -499,7 +526,7 @@ def test_saved_test_run_previews_and_writes_nothing(admin, db, web, monkeypatch)
 
 def test_unsaved_test_run(admin, db, web):
     r = admin.post(
-        "/admin/sources/test-run",
+        "/api/admin/sources/test-run",
         json={"collector_type": "html_list", "config": HTML_CONFIG, "rate_limit": 2},
     )
     assert r.status_code == 200 and r.json()["ok"] and len(r.json()["items"]) == 2
@@ -508,13 +535,13 @@ def test_unsaved_test_run(admin, db, web):
 
 def test_test_run_failure_is_reported_not_raised(admin, db, web):
     seed = add_source(db, "Seed", config={"placeholder": True})
-    r = admin.post(f"/admin/sources/{seed.id}/test-run").json()
+    r = admin.post(f"/api/admin/sources/{seed.id}/test-run").json()
     assert r["ok"] is False and "placeholder" in r["error"]
     rss = add_source(db, "Feed", collector_type="rss", config={"feed_url": "x"})
-    r = admin.post(f"/admin/sources/{rss.id}/test-run").json()
+    r = admin.post(f"/api/admin/sources/{rss.id}/test-run").json()
     assert r["ok"] is False and "not implemented yet" in r["error"]
     r = admin.post(
-        "/admin/sources/test-run",
+        "/api/admin/sources/test-run",
         json={"collector_type": "search_query", "config": {"queries": ["x"]}},
     ).json()
     assert r["ok"] is False and r["error"] == "no search key configured"
@@ -529,14 +556,14 @@ def test_test_run_uses_the_url_guard(app, admin, db):
         lambda: make_client(w, resolver=lambda h, p: ["10.0.0.7"])
     )
     r = admin.post(
-        "/admin/sources/test-run",
+        "/api/admin/sources/test-run",
         json={"collector_type": "html_list", "config": HTML_CONFIG},
     )
     assert r.status_code == 200 and r.json()["ok"] is False
     assert "non-public" in r.json()["error"]
     assert w.requests == []
     r = admin.post(
-        "/admin/sources/test-run",
+        "/api/admin/sources/test-run",
         json={
             "collector_type": "html_list",
             "config": {**HTML_CONFIG, "list_url": "http://[::1]/"},
@@ -549,19 +576,97 @@ def test_run_history(admin, db):
     s = add_source(db)
     add_run(db, s, "failed", ago_hours=2)
     add_run(db, s, "succeeded", ago_hours=1, found=7, new=2)
-    runs = admin.get(f"/admin/sources/{s.id}/runs").json()
-    assert [(r["status"], r["items_found"], r["items_new"]) for r in runs] == [
+    page = admin.get(f"/api/admin/sources/{s.id}/runs").json()
+    assert page["total"] == 2
+    runs = page["items"]
+    assert [(r["status"], r["itemsFound"], r["itemsNew"]) for r in runs] == [
         ("succeeded", 7, 2),
         ("failed", 3, 0),
     ]
     assert runs[1]["error"] == "boom"
-    assert [r["items_failed"] for r in runs] == [0, 0]
-    assert admin.get(f"/admin/sources/{s.id}").json()["health"] == "degraded"
+    assert [r["itemsFailed"] for r in runs] == [0, 0]
+    assert admin.get(f"/api/admin/sources/{s.id}").json()["health"] == "degraded"
     partly = add_run(db, s, "succeeded", ago_hours=0.5, found=4, new=1)
     partly.items_failed = 2
     db.commit()
-    latest = admin.get(f"/admin/sources/{s.id}/runs").json()[0]
-    assert (latest["items_found"], latest["items_failed"]) == (4, 2)
+    latest = admin.get(f"/api/admin/sources/{s.id}/runs").json()["items"][0]
+    assert (latest["itemsFound"], latest["itemsFailed"]) == (4, 2)
+
+
+def test_runs_are_paginated_and_filter_the_error_log(admin, db):
+    s = add_source(db)
+    for h in range(5):
+        add_run(db, s, "failed" if h % 2 else "succeeded", ago_hours=h + 1)
+    url = f"/api/admin/sources/{s.id}/runs"
+    first = admin.get(url, params={"limit": 2}).json()
+    rest = admin.get(url, params={"limit": 2, "offset": 2}).json()
+    assert first["total"] == rest["total"] == 5
+    assert len(first["items"]) == 2 and len(rest["items"]) == 2
+    times = [r["startedAt"] for r in first["items"] + rest["items"]]
+    assert times == sorted(times, reverse=True) and len(set(times)) == 4
+    errors = admin.get(url, params={"status": "failed"}).json()
+    assert errors["total"] == 2
+    assert {r["error"] for r in errors["items"]} == {"boom"}
+    assert admin.get(url, params={"limit": 0}).status_code == 422
+    other = add_source(db, "Other")
+    assert admin.get(f"/api/admin/sources/{other.id}/runs").json() == {
+        "total": 0,
+        "items": [],
+    }
+
+
+def test_source_detail_has_gate_and_status_history(admin, db):
+    r = admin.post("/api/admin/sources", json=body())
+    assert r.status_code == 201, r.text
+    sid = r.json()["id"]
+    detail = admin.get(f"/api/admin/sources/{sid}").json()
+    assert detail["config"]["list_url"] == HTML_CONFIG["list_url"]
+    assert detail["accessNote"] == body()["access_note"]
+    assert detail["promotionGate"] == {
+        "goodRuns": 0,
+        "needed": 2,
+        "since": None,
+        "met": False,
+    }
+    assert [
+        (h["oldStatus"], h["newStatus"], h["reason"]) for h in detail["statusHistory"]
+    ] == [(None, "testing", "created")]
+    assert detail["statusHistory"][0]["changedBy"] == str(admin.user.id)
+
+    src = db.get(Source, sid)
+    add_run(db, src, "succeeded", found=2, ago_hours=0.2)
+    add_run(db, src, "succeeded", found=0, ago_hours=0.1)  # found nothing: no count
+    gate = admin.get(f"/api/admin/sources/{sid}").json()["promotionGate"]
+    assert (gate["goodRuns"], gate["met"]) == (1, False)
+    assert (
+        admin.post(
+            f"/api/admin/sources/{sid}/status", json={"status": "active"}
+        ).status_code
+        == 409
+    )
+    add_run(db, src, "succeeded", found=1, ago_hours=0.05)
+    r = admin.post(f"/api/admin/sources/{sid}/status", json={"status": "active"})
+    assert r.status_code == 200, r.text
+    assert r.json()["promotionGate"]["met"] is True
+
+    # A config change sends it back to testing (decision 27) and restarts the gate.
+    cfg = {**HTML_CONFIG, "max_pages": 2}
+    r = admin.patch(f"/api/admin/sources/{sid}", json={"config": cfg})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["status"] == "testing"
+    assert out["promotionGate"]["goodRuns"] == 0
+    assert out["promotionGate"]["since"] == out["configChangedAt"]
+    assert [
+        (h["oldStatus"], h["newStatus"], h["reason"]) for h in out["statusHistory"]
+    ] == [
+        ("active", "testing", "config changed"),
+        ("testing", "active", None),
+        (None, "testing", "created"),
+    ]
+    # A refused change records nothing.
+    admin.post(f"/api/admin/sources/{sid}/status", json={"status": "suggested"})
+    assert len(admin.get(f"/api/admin/sources/{sid}").json()["statusHistory"]) == 3
 
 
 # --- member visibility of catalogue items -----------------------------------------------------------
@@ -671,16 +776,16 @@ def test_original_search_query_is_refused_on_edit(admin, db):
         collector_type="search_query",
         config={"queries": ["tender Rwanda"]},
     )
-    r = admin.patch(f"/admin/sources/{s.id}", json={"kind": "original"})
+    r = admin.patch(f"/api/admin/sources/{s.id}", json={"kind": "original"})
     assert r.status_code == 422 and "search_query" in r.json()["detail"]
     o = add_source(db, "Orig", kind="original")
     r = admin.patch(
-        f"/admin/sources/{o.id}",
+        f"/api/admin/sources/{o.id}",
         json={"collector_type": "search_query", "config": {"queries": ["x"]}},
     )
     assert r.status_code == 422
     ok = admin.patch(
-        f"/admin/sources/{o.id}",
+        f"/api/admin/sources/{o.id}",
         json={
             "kind": "publisher",
             "collector_type": "search_query",
@@ -721,17 +826,17 @@ def test_verification_counts_only_member_visible_sources(admin, db):
     # Promotion through the API recomputes the source's items.
     add_run(db, orig, found=2, ago_hours=3)
     add_run(db, orig, found=2, ago_hours=2)
-    r = admin.post(f"/admin/sources/{orig.id}/status", json={"status": "active"})
+    r = admin.post(f"/api/admin/sources/{orig.id}/status", json={"status": "active"})
     assert r.status_code == 200, r.text
     db.expire_all()
     assert o.verification == "verified_original"
     assert o.evidence["_trust"] == "confirmed"
 
     # Paused stays visible (and confirmed); retired no longer counts.
-    admin.post(f"/admin/sources/{orig.id}/status", json={"status": "paused"})
+    admin.post(f"/api/admin/sources/{orig.id}/status", json={"status": "paused"})
     db.expire_all()
     assert o.verification == "verified_original"
-    admin.post(f"/admin/sources/{orig.id}/status", json={"status": "retired"})
+    admin.post(f"/api/admin/sources/{orig.id}/status", json={"status": "retired"})
     db.expire_all()
     assert o.verification == "aggregator_only"
     assert o.evidence["_trust"] == "unconfirmed"
@@ -744,7 +849,7 @@ def test_kind_change_recomputes_verification(admin, db):
     db.commit()
     db.refresh(o)
     assert o.verification == "verified_original"
-    r = admin.patch(f"/admin/sources/{src.id}", json={"kind": "publisher"})
+    r = admin.patch(f"/api/admin/sources/{src.id}", json={"kind": "publisher"})
     assert r.status_code == 200, r.text
     db.expire_all()
     assert o.verification == "unverified"
@@ -773,23 +878,23 @@ def test_config_edit_on_an_active_source_sends_it_back_to_testing(admin, member,
         {"access_note": "rechecked from the host"},
         {"config": HTML_CONFIG},  # same config: not a change
     ):
-        r = admin.patch(f"/admin/sources/{src.id}", json=change)
+        r = admin.patch(f"/api/admin/sources/{src.id}", json=change)
         assert r.status_code == 200, r.text
         assert r.json()["status"] == "active", change
 
     r = admin.patch(
-        f"/admin/sources/{src.id}", json={"config": {**HTML_CONFIG, "max_pages": 4}}
+        f"/api/admin/sources/{src.id}", json={"config": {**HTML_CONFIG, "max_pages": 4}}
     )
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "testing"
-    assert r.json()["promotion_runs"] == 0
+    assert r.json()["promotionRuns"] == 0
     db.expire_all()
     assert o.verification == "unverified"  # nothing member-visible carries it
     assert not member_sees()
 
     # Promotion needs two good runs since the config change again.
     assert (
-        admin.post(f"/admin/sources/{src.id}/status", json={"status": "active"})
+        admin.post(f"/api/admin/sources/{src.id}/status", json={"status": "active"})
     ).status_code == 409
 
 
@@ -803,7 +908,7 @@ def test_collector_type_edit_on_an_active_source_keeps_items_carried_elsewhere(
     db.commit()
     member_user = db.scalar(sa.select(User).where(User.role == "member"))
     r = admin.patch(
-        f"/admin/sources/{src.id}",
+        f"/api/admin/sources/{src.id}",
         json={
             "collector_type": "rss",
             "config": {"feed_url": "https://feed.example.org/rss"},
@@ -818,26 +923,27 @@ def test_collector_type_edit_on_an_active_source_keeps_items_carried_elsewhere(
 
     # A paused or testing source keeps its status on a config edit.
     r = admin.patch(
-        f"/admin/sources/{other.id}", json={"config": {**HTML_CONFIG, "max_pages": 5}}
+        f"/api/admin/sources/{other.id}",
+        json={"config": {**HTML_CONFIG, "max_pages": 5}},
     )
     assert r.json()["status"] == "paused"
 
 
 # --- role checks on every admin source and suggestion route ---------------------------------
 
-SOURCE_ADMIN_PREFIXES = ("/admin/sources", "/admin/source-suggestions")
+SOURCE_ADMIN_PREFIXES = ("/api/admin/sources", "/api/admin/source-suggestions")
 EXPECTED_SOURCE_ADMIN_ROUTES = {
-    ("GET", "/admin/sources"),
-    ("POST", "/admin/sources"),
-    ("GET", "/admin/sources/{source_id}"),
-    ("PATCH", "/admin/sources/{source_id}"),
-    ("POST", "/admin/sources/{source_id}/status"),
-    ("GET", "/admin/sources/{source_id}/runs"),
-    ("POST", "/admin/sources/test-run"),
-    ("POST", "/admin/sources/{source_id}/test-run"),
-    ("GET", "/admin/source-suggestions"),
-    ("POST", "/admin/source-suggestions/{suggestion_id}/accept"),
-    ("POST", "/admin/source-suggestions/{suggestion_id}/reject"),
+    ("GET", "/api/admin/sources"),
+    ("POST", "/api/admin/sources"),
+    ("GET", "/api/admin/sources/{source_id}"),
+    ("PATCH", "/api/admin/sources/{source_id}"),
+    ("POST", "/api/admin/sources/{source_id}/status"),
+    ("GET", "/api/admin/sources/{source_id}/runs"),
+    ("POST", "/api/admin/sources/test-run"),
+    ("POST", "/api/admin/sources/{source_id}/test-run"),
+    ("GET", "/api/admin/source-suggestions"),
+    ("POST", "/api/admin/source-suggestions/{suggestion_id}/accept"),
+    ("POST", "/api/admin/source-suggestions/{suggestion_id}/reject"),
 }
 
 
@@ -855,13 +961,13 @@ def _valid_request(method, path, source, suggestion):
     """A request that would succeed for an admin: real ids, valid bodies."""
     url = path.format(source_id=source.id, suggestion_id=suggestion.id)
     payload = None
-    if (method, path) == ("POST", "/admin/sources"):
+    if (method, path) == ("POST", "/api/admin/sources"):
         payload = body(name="Created by a non-admin")
     elif method == "PATCH":
         payload = {"name": "Renamed by a non-admin"}
     elif path.endswith("/status"):
         payload = {"status": "retired"}
-    elif path == "/admin/sources/test-run":
+    elif path == "/api/admin/sources/test-run":
         payload = {"collector_type": "html_list", "config": HTML_CONFIG}
     return method, url, payload
 
@@ -1132,3 +1238,30 @@ def test_mute_never_scores_in_the_request_and_queues_only_the_caller(
     assert db.get(Profile, theirs.id).backfill_requested_at is None
     assert member.delete(f"/api/sources/{a.id}/mute").status_code == 204
     assert count(db, UserSourceMute) == 0
+
+
+def test_source_json_is_camel_case_and_accepts_camel_case_bodies(admin, member):
+    """docs/api-contract.md section 2: all JSON in camelCase. The config object is
+    the collector's own data and keeps its keys."""
+    b = body()
+    camel = {
+        "name": b["name"],
+        "homeUrl": b["home_url"],
+        "streams": b["streams"],
+        "kind": b["kind"],
+        "collectorType": b["collector_type"],
+        "config": b["config"],
+        "rateLimit": 5,
+        "accessNote": "camel",
+    }
+    r = admin.post("/api/admin/sources", json=camel)
+    assert r.status_code == 201, r.text
+    out = r.json()
+    assert {"homeUrl", "collectorType", "promotionRuns", "items30d"} <= out.keys()
+    assert not {k for k in out if "_" in k}
+    assert out["config"]["list_url"] == HTML_CONFIG["list_url"]
+    assert out["accessNote"] == "camel"
+    row = member.get("/api/sources").json()
+    assert row == []  # testing sources are not shown to members
+    r = admin.post("/api/admin/sources", json={**camel, "name": "X", "bogus": 1})
+    assert r.status_code == 422

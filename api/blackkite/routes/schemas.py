@@ -2,8 +2,11 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+from blackkite.member.schemas import CamelIn, CamelModel
 
 
 class EmailIn(BaseModel):
@@ -23,6 +26,8 @@ class Message(BaseModel):
 
 
 class UserOut(BaseModel):
+    """``GET /me`` (kept as it was: snake_case keys, read by the web app)."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -33,7 +38,28 @@ class UserOut(BaseModel):
     created_at: datetime
 
 
-class InviteOut(BaseModel):
+class AdminUserOut(CamelModel):
+    """A user as the admin users screen shows them (camelCase, like the rest of
+    /api)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: str
+    name: str | None
+    role: str
+    status: str
+    created_at: datetime
+    last_sign_in_at: datetime | None  # None: never signed in
+
+
+class UserPatch(CamelIn):
+    """PATCH /api/admin/users/{id}."""
+
+    role: Literal["member", "admin"] | None = None
+
+
+class InviteOut(CamelModel):
     id: uuid.UUID
     email: str
     invited_by: uuid.UUID | None

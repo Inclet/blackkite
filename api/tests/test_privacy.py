@@ -74,6 +74,7 @@ def test_export_has_only_the_callers_data(db, client, pair):
     r = client.get("/api/me/export")
     assert r.status_code == 200
     body = r.json()
+    assert body["account"]["lastSignInAt"] is not None  # client is signed in
     assert body["account"]["email"] == "ana@example.com"
     assert [p["name"] for p in body["profiles"]] == ["Ironji-Trade"]
     assert body["profiles"][0]["data"]["minContractRwf"] == 5000000

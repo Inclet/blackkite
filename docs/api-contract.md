@@ -27,7 +27,7 @@ One `user_opportunity_score` row per (user, opportunity, profile). Columns: `sco
 
 ## 2. Member API (member-API track builds, web track consumes)
 
-All JSON in camelCase. **Every member route below lives under `/api`** (e.g. `GET /api/feed`), so no API path collides with a web page (`/shortlist`, `/profiles` are also screens). `/auth/*` and `GET /me` keep their paths. **M3: every admin route moves under `/api/admin`** (`/api/admin/sources*`, `/api/admin/source-suggestions*`, `/api/admin/users*`, `/api/admin/invites*`, `/api/admin/catalogue*`) because `/admin/...` becomes the admin screens; and the Phase 3 member source routes move too: `/api/sources`, `/api/sources/{id}/mute`, `/api/source-suggestions` (`/sources` is also a screen). Every route requires a session; every query filters by the caller (spec 6) and by `pipeline/visibility.py`.
+All JSON in camelCase (request bodies also accept snake_case keys; `GET /me` alone keeps its Phase 1 snake_case keys; a source's `config` object keeps its collector's own keys). **Every member route below lives under `/api`** (e.g. `GET /api/feed`), so no API path collides with a web page (`/shortlist`, `/profiles` are also screens). `/auth/*` and `GET /me` keep their paths. **M3: every admin route moves under `/api/admin`** (`/api/admin/sources*`, `/api/admin/source-suggestions*`, `/api/admin/users*`, `/api/admin/invites*`, `/api/admin/catalogue*`) because `/admin/...` becomes the admin screens; and the Phase 3 member source routes move too: `/api/sources`, `/api/sources/{id}/mute`, `/api/source-suggestions` (`/sources` is also a screen). Every route requires a session; every query filters by the caller (spec 6) and by `pipeline/visibility.py`.
 
 | Route | Returns |
 |---|---|
@@ -52,3 +52,35 @@ Field mapping for `FeedItem`: `provisional` = true when the matched profile is p
 Web screens (undesigned; existing components only; design review): `/sources` (members: active sources with publisher, kind, streams, last successful run, items in 30 days, health, mute; suggest-a-source form), `/admin/sources` (all sources by status), `/admin/sources/new` and `/admin/sources/{id}` (record and config editor per collector type, test-run preview that writes nothing, status changes with the promotion gate, run history and error log), `/admin/suggestions`, `/admin/review` (catalogue items with needs_review reasons; "Mark reviewed"), `/admin/users` (users, invite, deactivate). Admin links appear only for admins; the server enforces roles regardless.
 
 Collector types completed in M3 (spec 4.2): `rss`, `browser_list` (Playwright, same URL guard, robots, rate limit and size caps as `html_list`), `json_api`, `email_ingest` (a shared inbox over IMAP; sender address/pattern per source), `custom` (a named class from an allowlist in code; config never names arbitrary import paths). Each returns `RawItem` and raises `CollectorError` on failure.
+
+### 4.1 Routes (built 2026-11-25)
+
+Every route below needs a session; `/api/admin/*` also needs `role = admin` (401 signed out, 403 for members, checked on the server). No API route is served under `/admin/*` any more.
+
+| Route | Body / query | Returns |
+|---|---|---|
+| `GET /api/sources` | | active sources: `id, name, homeUrl, publisher, kind, streams, lastSuccessAt, items30d, health` (ok\|degraded\|failing\|unknown), `muted` (the caller's own mute) |
+| `POST`/`DELETE /api/sources/{id}/mute` | | 204 |
+| `POST /api/source-suggestions` | `{url, note?}` | 201, the created suggestion `{id, url, note, status, createdAt, reviewedAt, sourceId}` |
+| `GET /api/source-suggestions` | | the caller's suggestions, newest first |
+| `GET /api/admin/sources` | `?status=` | `SourceOut[]`: the full record (`config`, `accessNote`, `schedule`, `effectiveSchedule`, `rateLimit`, `status`, `addedBy`, `configChangedAt`, ...) plus `health, lastSuccessAt, lastRunAt, items30d, promotionRuns` |
+| `POST /api/admin/sources` | `SourceIn` (`name, homeUrl, publisher?, streams, kind, collectorType, config, schedule?, rateLimit?, accessNote?, suggestionId?`) | 201 `SourceDetailOut`; always created as `testing` |
+| `GET /api/admin/sources/{id}` | | `SourceDetailOut` = `SourceOut` + `promotionGate {goodRuns, needed: 2, since, met}` (runs that succeeded and found items since `since` = the last config change) + `statusHistory [{at, oldStatus, newStatus, changedBy, reason}]`, newest first (`oldStatus` null = created; `reason` "created" or "config changed"). History starts with migration 0012; older sources have none. |
+| `PATCH /api/admin/sources/{id}` | any `SourceIn` field except `suggestionId` | `SourceDetailOut`; a config or collector-type change on an active source sends it back to testing (decision 27) |
+| `POST /api/admin/sources/{id}/status` | `{status}` | `SourceDetailOut`; 409 with the reason when the graph or the promotion gate refuses |
+| `GET /api/admin/sources/{id}/runs` | `?status=running\|succeeded\|failed&limit=1..200 (50)&offset=` | `{total, items: [{id, startedAt, finishedAt, status, itemsFound, itemsNew, itemsFailed, error}]}`, newest first; the error log is `status=failed` |
+| `POST /api/admin/sources/test-run` | `{collectorType, config, homeUrl?, streams?, rateLimit?}` | `PreviewOut {ok, error, items, totalParsed, requestsMade, elapsedSeconds}`; writes nothing |
+| `POST /api/admin/sources/{id}/test-run` | | the same, with the saved config |
+| `GET /api/admin/collector-types` | | one entry per collector type, in spec order: `{type, implemented, schemaSource: "model"\|"declared", fields}`; each field `{name, kind, required, help, default, options, min, max, fields}`. `name` is the key in `config`. `kind`: string, url, integer, number, boolean, choice (`options`), string_list, selector (a CSS string or `{css, attr}`), object (nested `fields`), object_list (nested `fields`), map (string to string), json. Read from the collector's own Pydantic config model (`blackkite.collectors.<type>`: `CONFIG_MODEL`, else `parse_config`'s return type, else `<Type>Config`); help text from the field's `description`, else a table in `sources/collector_types.py`. |
+| `GET /api/admin/source-suggestions` | `?status=suggested (default)\|accepted\|rejected` | suggestions with `userId, reviewedBy` |
+| `POST /api/admin/source-suggestions/{id}/accept`, `/reject` | | the suggestion; then `POST /api/admin/sources` with `suggestionId` links the two |
+| `GET /api/admin/catalogue` | `?needsReview=true&stream=&limit=&offset=` | `{total, items}`; the review queue is `needsReview=true` (items carry `reviewReasons`) |
+| `POST /api/admin/catalogue/{id}/review` | | the item, `needsReview` cleared ("Mark reviewed") |
+| `GET /api/admin/users` | | `[{id, email, name, role, status, createdAt, lastSignInAt}]`, oldest first (`lastSignInAt` null = never signed in) |
+| `PATCH /api/admin/users/{id}` | `{role: "member"\|"admin"}` | the user. 400 on your own account; 409 if it would leave no active admin. Not in spec 3 (invite and deactivate only): needed so the first admin can add a second; **for the owner to confirm**. |
+| `POST /api/admin/users/{id}/deactivate` | | the user; 400 on yourself, 409 for the last active admin (decision 20) |
+| `GET /api/admin/invites` | `?status=pending\|expired\|accepted` | `[{id, email, invitedBy, createdAt, expiresAt, acceptedAt, status}]`, newest first |
+| `POST /api/admin/invites` | `{email}` | 201 the invite (mail goes to the dev transport); 409 for an existing account |
+| `DELETE /api/admin/invites/{id}` | | 204; 409 once accepted |
+
+Collector config forms when a type has no config model yet (`schemaSource: "declared"`, spec 4.2): `rss` `feed_url`; `browser_list` the `html_list` fields; `json_api` `endpoint`, `params` (map), `field_mapping` (map); `email_ingest` `sender`; `custom` `class_name`. When the collector lands with its own model, its fields replace these with no API change.
