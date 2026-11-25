@@ -35,3 +35,11 @@ Answers to the Phase 0 questions, 2026-11-24. Conflict numbers refer to `PLAN.md
 | 29 | Items with no original source | `aggregator_only` only when every carrying source is an aggregator; publisher/news-only items are `unverified`. Both display as "Not yet confirmed at the source". (Refines spec 5.6.) |
 | 30 | Voyage model | `voyage-3.5`, 1024 dimensions. |
 | 31 | Bot contact URL | Owner will provide it later; required before any real collection. Until then the worker logs a warning. |
+| 32 | Fit word rule (orchestrator, **owner to confirm**) | Strong: fit ≥ 0.7 and eligibility ≥ 0.7, flags allowed. Good: fit ≥ 0.6 and eligibility ≥ 0.5. Possible: fit ≥ 0.4. Otherwise no word. Thresholds in config (`BK_SCORE_FIT_WORD`). Matches the boards (WFP is Strong with a "To check" note). |
+| 33 | Row subtitle top flag (orchestrator) | The top flag replaces the organisation only on Good items (develoPPP on the boards); Strong items show the organisation. Refines 24. |
+| 34 | Urgent alert level (orchestrator, **owner to confirm**) | Chosen as a fit word ("Strong fits only" / "Strong and good fits"), compared against the best active profile's fit word, never the numeric score. Replaces spec 6 `alert_threshold` with `alert_min_fit`. Default: off until the owner chooses. Events and investments carry no fit word, so they never alert (open question). |
+| 35 | Feed order | Closing soonest first, score as tie-break (feed boards: "Closing soonest first"). Ranking by score applies to the digest. |
+| 36 | Re-scoring off the request path | Profile edits and mutes queue a backfill for the worker (debounced 60 s). Renames and pauses re-judge nothing; reactivating always catches up. |
+| 37 | NGO-only calls | A business profile with no organisation type is treated as not an NGO, so an explicit NGO-only call is filtered. |
+| 38 | Dismiss reasons | Optional, one of: not my sector, too small, can't meet the requirements, already knew about it, other. |
+| 39 | Member API paths | Phase 4 member routes and member source routes live under `/api`; `/auth/*`, `GET /me` and `/admin/sources*` stay. |

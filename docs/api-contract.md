@@ -35,7 +35,7 @@ All JSON in camelCase. **Every member route below lives under `/api`** (e.g. `GE
 | `GET /opportunities/{id}` | `FeedItem` plus `detail.fields` (extracted fields with their snippets), `detail.sources` (visible sources: name, url, isOriginal, firstSeen, lastSeen), `detail.documents` (names only, never content), `detail.changes`, `detail.note`. 404 for items the caller can't see, including other users' private items. |
 | `PUT /opportunities/{id}/state` | body `{state: "saved"\|"dismissed"\|"acting"\|"done"\|"unseen", dismissReason?}`; per (user, opportunity) (decision 19). |
 | `PUT /opportunities/{id}/note` | body `{note}` |
-| `GET/POST/PATCH/DELETE /profiles` | the caller's profiles; editing triggers a backfill (spec 5). |
+| `GET/POST/PATCH/DELETE /profiles` | the caller's profiles; scoring-relevant edits queue a backfill that the worker runs (spec 5, decision 36). |
 | `GET/PUT /digest-settings` | channel email, frequency weekly\|off, day mon, `alertMinFit`: "strong"\|"good"\|null (null = alerts off; compared against the best active profile's fit word, never the numeric score), streams (decision 18). |
 | `GET /shortlist` | saved/acting items, `FeedItem[]`, soonest first. |
 | `PATCH /me`, `GET /me/export`, `DELETE /me` | name for the greeting; data export; account deletion (spec 10). |
