@@ -21,8 +21,12 @@ class SlidingWindowLimiter:
     all expired is dropped when it is next looked at, and a full sweep at most once
     per window drops keys that are never looked at again."""
 
-    def __init__(self, limit: int, window: float = 3600.0,
-                 clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self,
+        limit: int,
+        window: float = 3600.0,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self.limit = limit
         self.window = window
         self.clock = clock

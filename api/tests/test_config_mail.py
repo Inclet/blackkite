@@ -1,7 +1,12 @@
 """Settings from env, mail transports."""
 
 from blackkite.config import EMBEDDING_DIM, Settings
-from blackkite.delivery.mail import ConsoleTransport, Mail, SmtpTransport, make_transport
+from blackkite.delivery.mail import (
+    ConsoleTransport,
+    Mail,
+    SmtpTransport,
+    make_transport,
+)
 
 
 def test_settings_read_bk_prefix_and_key_names(monkeypatch):
@@ -25,14 +30,18 @@ def test_defaults_match_spec():
 
 
 def test_transport_selection():
-    assert isinstance(make_transport(Settings(_env_file=None, mail_transport="console")),
-                      ConsoleTransport)
-    assert isinstance(make_transport(Settings(_env_file=None, mail_transport="smtp")),
-                      SmtpTransport)
+    assert isinstance(
+        make_transport(Settings(_env_file=None, mail_transport="console")),
+        ConsoleTransport,
+    )
+    assert isinstance(
+        make_transport(Settings(_env_file=None, mail_transport="smtp")), SmtpTransport
+    )
 
 
 def test_console_transport_prints(capsys):
     ConsoleTransport("Blackkite <no-reply@example.com>").send(
-        Mail(to="a@example.com", subject="Hi", text="body"))
+        Mail(to="a@example.com", subject="Hi", text="body")
+    )
     out = capsys.readouterr().out
     assert "To: a@example.com" in out and "Subject: Hi" in out and "body" in out

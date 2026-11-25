@@ -17,8 +17,13 @@ router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
 
 def _invite_out(i: Invite) -> InviteOut:
     return InviteOut(
-        id=i.id, email=i.email, invited_by=i.invited_by, created_at=i.created_at,
-        expires_at=i.expires_at, accepted_at=i.accepted_at, status=service.invite_status(i),
+        id=i.id,
+        email=i.email,
+        invited_by=i.invited_by,
+        created_at=i.created_at,
+        expires_at=i.expires_at,
+        accepted_at=i.accepted_at,
+        status=service.invite_status(i),
     )
 
 

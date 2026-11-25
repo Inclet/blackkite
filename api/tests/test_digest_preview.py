@@ -21,7 +21,9 @@ needs_web = pytest.mark.skipif(not DIGEST_DIR.exists(), reason="web/ not next to
 @needs_web
 def test_committed_preview_is_current():
     """web/public/digest/preview.html must equal a fresh `bk digest-preview` render."""
-    assert PREVIEW_HTML.read_bytes() == render_digest_preview(REFERENCE, logo_src=LOGO_SRC).encode("utf-8"), (
+    assert PREVIEW_HTML.read_bytes() == render_digest_preview(
+        REFERENCE, logo_src=LOGO_SRC
+    ).encode("utf-8"), (
         "regenerate: cd api && uv run bk digest-preview --fixture reference "
         "--out ../web/public/digest/preview.html --logo-src /digest/preview/kite.png "
         "--logo-out ../web/public/digest/preview/kite.png"
@@ -33,22 +35,38 @@ def test_committed_preview_is_current():
 
 def test_cli_writes_preview_and_logo(tmp_path):
     out = tmp_path / "p" / "index.html"
-    r = CliRunner().invoke(cli, ["digest-preview", "--fixture", "reference", "--out", str(out)])
+    r = CliRunner().invoke(
+        cli, ["digest-preview", "--fixture", "reference", "--out", str(out)]
+    )
     assert r.exit_code == 0, r.output
-    assert out.read_text("utf-8") == render_digest_preview(REFERENCE, logo_src="kite.png")
+    assert out.read_text("utf-8") == render_digest_preview(
+        REFERENCE, logo_src="kite.png"
+    )
     assert (out.parent / "kite.png").read_bytes() == kite_png()
 
 
 def test_cli_rejects_unknown_fixture(tmp_path):
-    r = CliRunner().invoke(cli, ["digest-preview", "--fixture", "nope", "--out", str(tmp_path / "x.html")])
+    r = CliRunner().invoke(
+        cli, ["digest-preview", "--fixture", "nope", "--out", str(tmp_path / "x.html")]
+    )
     assert r.exit_code == 1
 
 
 def test_cli_logo_options(tmp_path):
     out = tmp_path / "preview.html"
     logo = tmp_path / "preview" / "kite.png"
-    r = CliRunner().invoke(cli, ["digest-preview", "--out", str(out),
-                                 "--logo-src", LOGO_SRC, "--logo-out", str(logo)])
+    r = CliRunner().invoke(
+        cli,
+        [
+            "digest-preview",
+            "--out",
+            str(out),
+            "--logo-src",
+            LOGO_SRC,
+            "--logo-out",
+            str(logo),
+        ],
+    )
     assert r.exit_code == 0, r.output
     assert f'src="{LOGO_SRC}"' in out.read_text("utf-8")
     assert logo.read_bytes() == kite_png()

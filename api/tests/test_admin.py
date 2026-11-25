@@ -42,8 +42,10 @@ def _new_client(app):
 
 def test_admin_routes_exist(app):
     assert _admin_route_templates(app) == {
-        ("POST", "/admin/invites"), ("GET", "/admin/invites"),
-        ("DELETE", "/admin/invites/{invite_id}"), ("GET", "/admin/users"),
+        ("POST", "/admin/invites"),
+        ("GET", "/admin/invites"),
+        ("DELETE", "/admin/invites/{invite_id}"),
+        ("GET", "/admin/users"),
         ("POST", "/admin/users/{user_id}/deactivate"),
     }
 
@@ -101,18 +103,25 @@ def test_invite_holder_can_request_a_link(app, admin_client, db, outbox):
 def test_expired_invite_cannot_sign_in(app, admin_client, db, outbox):
     admin_client.post("/admin/invites", json={"email": "new@example.com"})
     token = token_from_mail(outbox.outbox[-1].text)
-    db.execute(sa.update(Invite).values(expires_at=datetime.now(UTC) - timedelta(seconds=1)))
+    db.execute(
+        sa.update(Invite).values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+    )
     db.commit()
     n = len(outbox.outbox)
     c = _new_client(app)
-    assert c.post("/auth/request-link", json={"email": "new@example.com"}).status_code == 202
+    assert (
+        c.post("/auth/request-link", json={"email": "new@example.com"}).status_code
+        == 202
+    )
     assert len(outbox.outbox) == n  # no link for an expired invite
     assert verify(c, token).status_code == 400
     assert admin_client.get("/admin/invites").json()[0]["status"] == "expired"
 
 
 def test_deleted_invite_link_stops_working(app, admin_client, db, outbox):
-    invite_id = admin_client.post("/admin/invites", json={"email": "new@example.com"}).json()["id"]
+    invite_id = admin_client.post(
+        "/admin/invites", json={"email": "new@example.com"}
+    ).json()["id"]
     token = token_from_mail(outbox.outbox[-1].text)
     assert admin_client.delete(f"/admin/invites/{invite_id}").status_code == 204
     assert admin_client.delete(f"/admin/invites/{invite_id}").status_code == 404
@@ -121,14 +130,19 @@ def test_deleted_invite_link_stops_working(app, admin_client, db, outbox):
 
 
 def test_cannot_delete_accepted_invite(app, admin_client, outbox):
-    invite_id = admin_client.post("/admin/invites", json={"email": "new@example.com"}).json()["id"]
+    invite_id = admin_client.post(
+        "/admin/invites", json={"email": "new@example.com"}
+    ).json()["id"]
     sign_in(_new_client(app), outbox, "new@example.com")
     assert admin_client.delete(f"/admin/invites/{invite_id}").status_code == 409
 
 
 def test_cannot_invite_existing_user(admin_client, db):
     make_user(db, MEMBER)
-    assert admin_client.post("/admin/invites", json={"email": MEMBER.upper()}).status_code == 409
+    assert (
+        admin_client.post("/admin/invites", json={"email": MEMBER.upper()}).status_code
+        == 409
+    )
 
 
 def test_reinvite_replaces_pending_invite(admin_client, db, outbox):
@@ -160,10 +174,22 @@ def test_deactivation_kills_sessions_and_links(app, admin_client, db, outbox):
 
     assert m1.get("/me").status_code == 401
     assert m2.get("/me").status_code == 401
-    assert db.scalar(sa.select(sa.func.count()).select_from(Session)
-                     .where(Session.user_id == member.id)) == 0
-    assert db.scalar(sa.select(sa.func.count()).select_from(LoginToken)
-                     .where(LoginToken.user_id == member.id, LoginToken.used_at.is_(None))) == 0
+    assert (
+        db.scalar(
+            sa.select(sa.func.count())
+            .select_from(Session)
+            .where(Session.user_id == member.id)
+        )
+        == 0
+    )
+    assert (
+        db.scalar(
+            sa.select(sa.func.count())
+            .select_from(LoginToken)
+            .where(LoginToken.user_id == member.id, LoginToken.used_at.is_(None))
+        )
+        == 0
+    )
     c = _new_client(app)
     assert verify(c, pending).status_code == 400
     n = len(outbox.outbox)
@@ -180,10 +206,14 @@ def test_admin_cannot_deactivate_self(admin_client, db):
 
 
 def test_deactivate_unknown_user_404(admin_client):
-    assert admin_client.post(f"/admin/users/{uuid.uuid4()}/deactivate").status_code == 404
+    assert (
+        admin_client.post(f"/admin/users/{uuid.uuid4()}/deactivate").status_code == 404
+    )
 
 
-def test_second_requested_link_after_acceptance_signs_in_same_member(app, admin_client, db, outbox):
+def test_second_requested_link_after_acceptance_signs_in_same_member(
+    app, admin_client, db, outbox
+):
     admin_client.post("/admin/invites", json={"email": "new@example.com"})
     c = _new_client(app)
     c.post("/auth/request-link", json={"email": "new@example.com"})

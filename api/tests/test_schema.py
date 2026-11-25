@@ -27,14 +27,19 @@ def test_every_per_user_table_has_non_null_indexed_user_id(engine):
         assert cols["user_id"]["nullable"] is False, table
         leading = [ix["column_names"][0] for ix in insp.get_indexes(table)]
         assert "user_id" in leading, f"{table}: no index starting with user_id"
-        fks = [fk for fk in insp.get_foreign_keys(table) if fk["constrained_columns"] == ["user_id"]]
+        fks = [
+            fk
+            for fk in insp.get_foreign_keys(table)
+            if fk["constrained_columns"] == ["user_id"]
+        ]
         assert fks and fks[0]["referred_table"] == "user", table
 
 
 def test_every_table_with_a_user_id_is_listed_as_per_user(engine):
     insp = sa.inspect(engine)
     with_user_id = {
-        t for t in insp.get_table_names()
+        t
+        for t in insp.get_table_names()
         if any(c["name"] == "user_id" for c in insp.get_columns(t))
     }
     # login_token.user_id is nullable on purpose: invite holders have no user yet.
@@ -43,10 +48,12 @@ def test_every_table_with_a_user_id_is_listed_as_per_user(engine):
 
 def test_embedding_is_pgvector_with_configured_dimension(engine):
     with engine.connect() as c:
-        typ = c.scalar(sa.text(
-            "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
-            "WHERE attrelid = 'opportunity'::regclass AND attname = 'embedding'"
-        ))
+        typ = c.scalar(
+            sa.text(
+                "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
+                "WHERE attrelid = 'opportunity'::regclass AND attname = 'embedding'"
+            )
+        )
     assert typ == f"vector({EMBEDDING_DIM})"
 
 
@@ -65,7 +72,10 @@ def test_user_opportunity_state_unique_per_user_and_opportunity(engine):
 
 def test_user_opportunity_score_unique_per_profile(engine):
     uniques = sa.inspect(engine).get_unique_constraints("user_opportunity_score")
-    assert any(u["column_names"] == ["user_id", "opportunity_id", "profile_id"] for u in uniques)
+    assert any(
+        u["column_names"] == ["user_id", "opportunity_id", "profile_id"]
+        for u in uniques
+    )
 
 
 def test_state_shared_across_profiles_scores_kept_per_profile(db):
@@ -75,35 +85,51 @@ def test_state_shared_across_profiles_scores_kept_per_profile(db):
     o = Opportunity(stream="tender", title="t")
     db.add_all([p1, p2, o])
     db.commit()
-    db.add_all([
-        UserOpportunityScore(user_id=alice.id, opportunity_id=o.id, profile_id=p1.id, score=80),
-        UserOpportunityScore(user_id=alice.id, opportunity_id=o.id, profile_id=p2.id, score=40),
-        UserOpportunity(user_id=alice.id, opportunity_id=o.id, state="dismissed"),
-    ])
+    db.add_all(
+        [
+            UserOpportunityScore(
+                user_id=alice.id, opportunity_id=o.id, profile_id=p1.id, score=80
+            ),
+            UserOpportunityScore(
+                user_id=alice.id, opportunity_id=o.id, profile_id=p2.id, score=40
+            ),
+            UserOpportunity(user_id=alice.id, opportunity_id=o.id, state="dismissed"),
+        ]
+    )
     db.commit()
     db.add(UserOpportunity(user_id=alice.id, opportunity_id=o.id, state="saved"))
     with pytest.raises(IntegrityError):
         db.commit()
     db.rollback()
-    db.add(UserOpportunityScore(user_id=alice.id, opportunity_id=o.id, profile_id=p1.id))
+    db.add(
+        UserOpportunityScore(user_id=alice.id, opportunity_id=o.id, profile_id=p1.id)
+    )
     with pytest.raises(IntegrityError):
         db.commit()
     db.rollback()
 
 
 def _source(**kw):
-    base = dict(name=f"s-{uuid.uuid4().hex[:6]}", home_url="https://example.com",
-                streams=["tender"], kind="original", collector_type="rss")
+    base = {
+        "name": f"s-{uuid.uuid4().hex[:6]}",
+        "home_url": "https://example.com",
+        "streams": ["tender"],
+        "kind": "original",
+        "collector_type": "rss",
+    }
     return Source(**(base | kw))
 
 
-@pytest.mark.parametrize("sql", [
-    "UPDATE source SET status = 'live'",
-    "UPDATE source SET kind = 'blog'",
-    "UPDATE source SET collector_type = 'ftp'",
-    "UPDATE source SET streams = ARRAY['jobs']::varchar[]",
-    "UPDATE source SET streams = ARRAY[]::varchar[]",
-])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "UPDATE source SET status = 'live'",
+        "UPDATE source SET kind = 'blog'",
+        "UPDATE source SET collector_type = 'ftp'",
+        "UPDATE source SET streams = ARRAY['jobs']::varchar[]",
+        "UPDATE source SET streams = ARRAY[]::varchar[]",
+    ],
+)
 def test_source_enumerations_are_enforced(db, sql):
     db.add(_source())
     db.commit()
@@ -113,9 +139,15 @@ def test_source_enumerations_are_enforced(db, sql):
     db.rollback()
 
 
-@pytest.mark.parametrize("column,value", [
-    ("status", "closed"), ("verification", "confirmed"), ("visibility", "team"), ("stream", "job"),
-])
+@pytest.mark.parametrize(
+    "column,value",
+    [
+        ("status", "closed"),
+        ("verification", "confirmed"),
+        ("visibility", "team"),
+        ("stream", "job"),
+    ],
+)
 def test_opportunity_enumerations_are_enforced(db, column, value):
     db.add(Opportunity(stream="tender", title="t"))
     db.commit()
@@ -165,16 +197,23 @@ def test_digest_defaults_to_weekly_monday(db):
 
 def test_digest_can_be_off(db):
     u = make_user(db, "d@example.com")
-    db.add(DigestSetting(user_id=u.id, channel="email", address="d@example.com", frequency="off"))
+    db.add(
+        DigestSetting(
+            user_id=u.id, channel="email", address="d@example.com", frequency="off"
+        )
+    )
     db.commit()
 
 
-@pytest.mark.parametrize("sql", [
-    "UPDATE digest_setting SET frequency = 'daily'",
-    "UPDATE digest_setting SET frequency = 'monthly'",
-    "UPDATE digest_setting SET day = 'tue'",
-    "UPDATE digest_setting SET day = NULL",
-])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "UPDATE digest_setting SET frequency = 'daily'",
+        "UPDATE digest_setting SET frequency = 'monthly'",
+        "UPDATE digest_setting SET day = 'tue'",
+        "UPDATE digest_setting SET day = NULL",
+    ],
+)
 def test_digest_schedule_limited_to_v1(db, sql):
     u = make_user(db, "d@example.com")
     db.add(DigestSetting(user_id=u.id, channel="email", address="d@example.com"))

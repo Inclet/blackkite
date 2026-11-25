@@ -37,7 +37,9 @@ def confirm_url(settings: Settings, token: str) -> str:
 
 
 def find_user_by_email(db: DB, email: str) -> User | None:
-    return db.scalar(sa.select(User).where(sa.func.lower(User.email) == normalise_email(email)))
+    return db.scalar(
+        sa.select(User).where(sa.func.lower(User.email) == normalise_email(email))
+    )
 
 
 def find_pending_invite(db: DB, email: str) -> Invite | None:
@@ -69,12 +71,20 @@ def issue_login_link(db: DB, settings: Settings, email: str) -> Mail | None:
     if user is not None:
         if user.status != "active":
             return None
-        db.add(LoginToken(token_hash=hash_token(token), user_id=user.id, expires_at=expires))
+        db.add(
+            LoginToken(
+                token_hash=hash_token(token), user_id=user.id, expires_at=expires
+            )
+        )
     else:
         invite = find_pending_invite(db, email)
         if invite is None:
             return None
-        db.add(LoginToken(token_hash=hash_token(token), invite_id=invite.id, expires_at=expires))
+        db.add(
+            LoginToken(
+                token_hash=hash_token(token), invite_id=invite.id, expires_at=expires
+            )
+        )
     db.flush()
     return Mail(
         to=email,
@@ -98,7 +108,10 @@ def _accept_invite(db: DB, invite_id: uuid.UUID, via_login_token: bool) -> User 
     if not via_login_token:
         conds.append(Invite.expires_at > now())
     email = db.scalar(
-        sa.update(Invite).where(*conds).values(accepted_at=now()).returning(Invite.email)
+        sa.update(Invite)
+        .where(*conds)
+        .values(accepted_at=now())
+        .returning(Invite.email)
     )
     if email is None:
         if not via_login_token:
@@ -116,7 +129,9 @@ def _accept_invite(db: DB, invite_id: uuid.UUID, via_login_token: bool) -> User 
         db.flush()
     elif user.status != "active":
         return None
-    db.execute(sa.update(Invite).where(Invite.id == invite_id).values(accepted_user_id=user.id))
+    db.execute(
+        sa.update(Invite).where(Invite.id == invite_id).values(accepted_user_id=user.id)
+    )
     return user
 
 
@@ -158,7 +173,9 @@ class AlreadyUser(Exception):
     pass
 
 
-def create_invite(db: DB, settings: Settings, email: str, invited_by: User) -> NewInvite:
+def create_invite(
+    db: DB, settings: Settings, email: str, invited_by: User
+) -> NewInvite:
     email = normalise_email(email)
     if find_user_by_email(db, email) is not None:
         raise AlreadyUser(email)
@@ -233,5 +250,7 @@ def deactivate_user(db: DB, user: User) -> None:
     user.status = "deactivated"
     db.execute(sa.delete(Session).where(Session.user_id == user.id))
     db.execute(
-        sa.delete(LoginToken).where(LoginToken.user_id == user.id, LoginToken.used_at.is_(None))
+        sa.delete(LoginToken).where(
+            LoginToken.user_id == user.id, LoginToken.used_at.is_(None)
+        )
     )

@@ -86,4 +86,3 @@ def test_forged_header_from_untrusted_peer_is_ignored():
 
 def test_header_from_trusted_proxy_is_used():
     assert _client_seen("127.0.0.1", "198.51.100.1") == "198.51.100.1"
-

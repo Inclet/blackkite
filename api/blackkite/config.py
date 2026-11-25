@@ -24,7 +24,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="BK_", env_file=".env", extra="ignore")
 
     # Database (SQLAlchemy URL, psycopg 3 driver)
-    database_url: str = "postgresql+psycopg://blackkite:blackkite@localhost:5432/blackkite"
+    database_url: str = (
+        "postgresql+psycopg://blackkite:blackkite@localhost:5432/blackkite"
+    )
 
     # Origin of the WEB app; emailed sign-in and invite links point at its
     # /auth/confirm page (a web route, not an API path). Set only by

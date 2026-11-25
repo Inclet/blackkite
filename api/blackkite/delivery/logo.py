@@ -71,10 +71,18 @@ def _flatten(d: str) -> list[list[Point]]:
             for s in range(1, CURVE_STEPS + 1):
                 t = s / CURVE_STEPS
                 u = 1 - t
-                polys[-1].append((
-                    u**3 * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t**3 * p3[0],
-                    u**3 * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t**3 * p3[1],
-                ))
+                polys[-1].append(
+                    (
+                        u**3 * p0[0]
+                        + 3 * u * u * t * p1[0]
+                        + 3 * u * t * t * p2[0]
+                        + t**3 * p3[0],
+                        u**3 * p0[1]
+                        + 3 * u * u * t * p1[1]
+                        + 3 * u * t * t * p2[1]
+                        + t**3 * p3[1],
+                    )
+                )
             cur = p3
             i += 7
         elif cmd in "Zz":
@@ -88,9 +96,16 @@ def _flatten(d: str) -> list[list[Point]]:
 
 def _png(width: int, height: int, rgba: bytes) -> bytes:
     def chunk(kind: bytes, data: bytes) -> bytes:
-        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+        return (
+            struct.pack(">I", len(data))
+            + kind
+            + data
+            + struct.pack(">I", zlib.crc32(kind + data))
+        )
 
-    rows = b"".join(b"\x00" + rgba[y * width * 4:(y + 1) * width * 4] for y in range(height))
+    rows = b"".join(
+        b"\x00" + rgba[y * width * 4 : (y + 1) * width * 4] for y in range(height)
+    )
     return (
         b"\x89PNG\r\n\x1a\n"
         + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
@@ -146,7 +161,7 @@ def render_kite_png(svg: str, scale: int = SCALE) -> bytes:
                     cover[row * w + px] += overlap / SUBSAMPLES
                 px += 1
 
-    r, g, b = (int(fill.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+    r, g, b = (int(fill.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4))
     out = bytearray()
     for c in cover:
         out += bytes((r, g, b, max(0, min(255, round(c * 255)))))

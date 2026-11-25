@@ -70,14 +70,17 @@ def test_render_returns_subject_html_text():
 def test_email_words_match_board_card_exactly():
     """Every word inside the board's card appears, in order, in the email."""
     board = BOARD.read_text("utf-8")
-    card = board[board.index('<div style="background: #FFFFFF'):]
+    card = board[board.index('<div style="background: #FFFFFF') :]
     _, html, _ = render_digest(REFERENCE)
     assert _parse(html).words() == _parse(card).words()
 
 
 @needs_design
 def test_preview_words_match_whole_board():
-    assert _parse(render_digest_preview(REFERENCE)).words() == _parse(BOARD.read_text("utf-8")).words()
+    assert (
+        _parse(render_digest_preview(REFERENCE)).words()
+        == _parse(BOARD.read_text("utf-8")).words()
+    )
 
 
 def test_full_issue_date():
@@ -87,25 +90,40 @@ def test_full_issue_date():
 
 def test_labels_and_trust_note():
     _, html, text = render_digest(REFERENCE)
-    for label in ("TENDER · FOR IRONJI-TRADE", "EVENT", "FUNDING", "FUNDING · FOR IRONJI-TRADE"):
+    for label in (
+        "TENDER · FOR IRONJI-TRADE",
+        "EVENT",
+        "FUNDING",
+        "FUNDING · FOR IRONJI-TRADE",
+    ):
         assert f">{label}<" in html
     assert "Closes Mon 30 Nov</strong> · not yet confirmed at the source" in html
     assert "Closes Mon 30 Nov · not yet confirmed at the source" in text
 
 
 def test_text_alternative_has_every_item_and_link():
-    view = REFERENCE.model_copy(update={
-        "items": [i.model_copy(update={"url": f"https://example.org/o/{n}"})
-                  for n, i in enumerate(REFERENCE.items)],
-        "cta_url": "https://example.org/feed",
-        "footer": REFERENCE.footer.model_copy(update={
-            "change_frequency_url": "https://example.org/settings",
-            "unsubscribe_url": "https://example.org/stop",
-        }),
-    })
+    view = REFERENCE.model_copy(
+        update={
+            "items": [
+                i.model_copy(update={"url": f"https://example.org/o/{n}"})
+                for n, i in enumerate(REFERENCE.items)
+            ],
+            "cta_url": "https://example.org/feed",
+            "footer": REFERENCE.footer.model_copy(
+                update={
+                    "change_frequency_url": "https://example.org/settings",
+                    "unsubscribe_url": "https://example.org/stop",
+                }
+            ),
+        }
+    )
     _, _, text = render_digest(view)
     for n, item in enumerate(view.items):
-        assert item.title in text and item.summary in text and f"https://example.org/o/{n}" in text
+        assert (
+            item.title in text
+            and item.summary in text
+            and f"https://example.org/o/{n}" in text
+        )
     assert "Open your feed: https://example.org/feed" in text
     assert "2 more are waiting there." in text
     assert "All 8 sources were checked this week." in text
@@ -116,8 +134,13 @@ def test_text_alternative_has_every_item_and_link():
 
 
 def test_user_text_is_escaped():
-    item = DigestItem(stream="tender", title="<script>x</script> & co", url="https://e.org/?a=1&b=2",
-                      summary="s", date_line="d")
+    item = DigestItem(
+        stream="tender",
+        title="<script>x</script> & co",
+        url="https://e.org/?a=1&b=2",
+        summary="s",
+        date_line="d",
+    )
     _, html, _ = render_digest(REFERENCE.model_copy(update={"items": [item]}))
     assert "<script>" not in html
     assert "&lt;script&gt;x&lt;/script&gt; &amp; co" in html
@@ -132,15 +155,24 @@ def test_more_line_singular_and_absent():
 
 
 def test_investment_stream_has_colours():
-    item = DigestItem(stream="investment", title="t", url="https://e.org/i", summary="s",
-                      date_line="d")
+    item = DigestItem(
+        stream="investment",
+        title="t",
+        url="https://e.org/i",
+        summary="s",
+        date_line="d",
+    )
     _, html, _ = render_digest(REFERENCE.model_copy(update={"items": [item]}))
     assert "#0E5F56" in html and "#1FA898" in html
 
 
 def test_single_source_wording():
-    f = DigestFooter(source_count=1, frequency="every Monday",
-                     change_frequency_url="https://e.org/s", unsubscribe_url="https://e.org/u")
+    f = DigestFooter(
+        source_count=1,
+        frequency="every Monday",
+        change_frequency_url="https://e.org/s",
+        unsubscribe_url="https://e.org/u",
+    )
     assert f.sources_line == "The 1 source was checked this week."
 
 
@@ -160,7 +192,9 @@ def test_email_html_is_email_safe():
     assert "<style" not in lower
     assert "<link" not in lower
     assert "<script" not in lower
-    assert "@font-face" not in lower and "@import" not in lower and "figtree" not in lower
+    assert (
+        "@font-face" not in lower and "@import" not in lower and "figtree" not in lower
+    )
     assert not re.search(r"display\s*:\s*(inline-)?flex", lower)
     assert not re.search(r"display\s*:\s*grid", lower)
     assert "gap:" not in lower.replace(" ", "")
@@ -195,9 +229,16 @@ def test_preview_is_chrome_plus_the_email_card():
     _, html, _ = render_digest(REFERENCE, logo_src="kite.png")
     preview = render_digest_preview(REFERENCE, logo_src="kite.png")
     card_start = '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560"'
-    email_card = html[html.index(card_start):html.index("\n</td>\n</tr>\n</table>\n</body>")]
-    preview_card = preview[preview.index(card_start):preview.index("\n</div>\n</div>\n</body>")]
-    assert preview_card.replace(" height: 100%;", "").replace("height: 100%; ", "") == email_card
+    email_card = html[
+        html.index(card_start) : html.index("\n</td>\n</tr>\n</table>\n</body>")
+    ]
+    preview_card = preview[
+        preview.index(card_start) : preview.index("\n</div>\n</div>\n</body>")
+    ]
+    assert (
+        preview_card.replace(" height: 100%;", "").replace("height: 100%; ", "")
+        == email_card
+    )
     assert "Subject:" in preview and "Subject:" not in html
 
 
@@ -237,9 +278,19 @@ def test_item_url_rejects_non_http(url):
 def test_cta_and_footer_urls_reject_non_http(url):
     good = "https://e.org/ok"
     with pytest.raises(ValidationError):
-        DigestFooter(source_count=1, frequency="f", change_frequency_url=url, unsubscribe_url=good)
+        DigestFooter(
+            source_count=1,
+            frequency="f",
+            change_frequency_url=url,
+            unsubscribe_url=good,
+        )
     with pytest.raises(ValidationError):
-        DigestFooter(source_count=1, frequency="f", change_frequency_url=good, unsubscribe_url=url)
+        DigestFooter(
+            source_count=1,
+            frequency="f",
+            change_frequency_url=good,
+            unsubscribe_url=url,
+        )
     data = REFERENCE.model_dump()
     data["cta_url"] = url
     data["items"] = [{**i, "url": good} for i in data["items"]]
@@ -248,8 +299,10 @@ def test_cta_and_footer_urls_reject_non_http(url):
         DigestView.model_validate(data)
 
 
-@pytest.mark.parametrize("url", ["https://e.org/o/1?x=1#frag", "http://localhost:5173/feed",
-                                 "HTTPS://E.ORG/"])
+@pytest.mark.parametrize(
+    "url",
+    ["https://e.org/o/1?x=1#frag", "http://localhost:5173/feed", "HTTPS://E.ORG/"],
+)
 def test_http_links_accepted(url):
     assert _item(url).url == url
 

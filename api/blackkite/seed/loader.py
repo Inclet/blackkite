@@ -17,7 +17,9 @@ PROFILE_COLUMNS = ("name", "type")
 
 
 def load_seed_profiles() -> dict[str, Any]:
-    return yaml.safe_load(files("blackkite.seed").joinpath("profiles.yaml").read_text("utf-8"))
+    return yaml.safe_load(
+        files("blackkite.seed").joinpath("profiles.yaml").read_text("utf-8")
+    )
 
 
 @dataclass
@@ -43,12 +45,16 @@ def bootstrap(db: DB, email: str | None) -> BootstrapResult:
     result = BootstrapResult(user=user, created_user=created)
 
     seed = load_seed_profiles()
-    existing = set(db.scalars(sa.select(Profile.name).where(Profile.user_id == user.id)))
+    existing = set(
+        db.scalars(sa.select(Profile.name).where(Profile.user_id == user.id))
+    )
     for entry in seed["profiles"]:
         if entry["name"] in existing:
             continue
         data = {k: v for k, v in entry.items() if k not in PROFILE_COLUMNS}
-        db.add(Profile(user_id=user.id, name=entry["name"], type=entry["type"], data=data))
+        db.add(
+            Profile(user_id=user.id, name=entry["name"], type=entry["type"], data=data)
+        )
         result.created_profiles.append(entry["name"])
 
     digest = seed["digest"]
@@ -75,7 +81,10 @@ def bootstrap(db: DB, email: str | None) -> BootstrapResult:
 def seed_sources(db: DB) -> list[str]:
     """Insert missing seed sources as `testing`. Existing rows (by name) are left as they are."""
     admin_id = db.scalar(
-        sa.select(User.id).where(User.role == "admin").order_by(User.created_at).limit(1)
+        sa.select(User.id)
+        .where(User.role == "admin")
+        .order_by(User.created_at)
+        .limit(1)
     )
     existing = set(db.scalars(sa.select(Source.name)))
     created = []

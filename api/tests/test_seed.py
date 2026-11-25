@@ -18,8 +18,8 @@ SPEC = Path(__file__).resolve().parents[2] / "CLAUDE.md"
 def spec_71_yaml() -> dict:
     """The YAML block in CLAUDE.md section 7.1, parsed."""
     text = SPEC.read_text("utf-8")
-    section = text[text.index("### 7.1"):]
-    block = re.search(r"```yaml\n(.*?)```", section, re.S).group(1)
+    section = text[text.index("### 7.1") :]
+    block = re.search(r"```yaml\n(.*?)```", section, re.DOTALL).group(1)
     return yaml.safe_load(block)
 
 
@@ -36,7 +36,10 @@ def test_bootstrap_creates_admin_profiles_and_digest(db):
     assert (user.email, user.role, user.status) == (FIRST_ADMIN, "admin", "active")
 
     seed = load_seed_profiles()
-    profiles = {p.name: p for p in db.scalars(sa.select(Profile).where(Profile.user_id == user.id))}
+    profiles = {
+        p.name: p
+        for p in db.scalars(sa.select(Profile).where(Profile.user_id == user.id))
+    }
     assert set(profiles) == {p["name"] for p in seed["profiles"]}
     for entry in seed["profiles"]:
         p = profiles[entry["name"]]
@@ -45,7 +48,10 @@ def test_bootstrap_creates_admin_profiles_and_digest(db):
         assert p.version == 1 and p.active is True
 
     ironji = profiles["Ironji-Trade"].data
-    assert ironji["capacity"]["owned_trucks"] is None and "owned_trucks" in ironji["capacity"]
+    assert (
+        ironji["capacity"]["owned_trucks"] is None
+        and "owned_trucks" in ironji["capacity"]
+    )
     assert ironji["capacity"]["tonnage"] is None
     assert ironji["min_contract_rwf"] == 5000000
     ai = profiles["AI lab"].data
@@ -55,7 +61,12 @@ def test_bootstrap_creates_admin_profiles_and_digest(db):
     assert profiles["Personal"].data["ticket_range_rwf"] is None
 
     d = db.scalar(sa.select(DigestSetting).where(DigestSetting.user_id == user.id))
-    assert (d.channel, d.frequency, d.day, d.address) == ("email", "weekly", "mon", FIRST_ADMIN)
+    assert (d.channel, d.frequency, d.day, d.address) == (
+        "email",
+        "weekly",
+        "mon",
+        FIRST_ADMIN,
+    )
 
 
 def test_bootstrap_is_idempotent(db):

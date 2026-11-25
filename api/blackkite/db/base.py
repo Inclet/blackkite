@@ -35,7 +35,9 @@ def enum(*values: str, name: str) -> sa.Enum:
     )
 
 
-def in_list_check(column: str, values: tuple[str, ...], name: str) -> sa.CheckConstraint:
+def in_list_check(
+    column: str, values: tuple[str, ...], name: str
+) -> sa.CheckConstraint:
     """CHECK that every element of a varchar[] column is one of `values`."""
     quoted = ", ".join(f"'{v}'" for v in values)
     return sa.CheckConstraint(f"{column} <@ ARRAY[{quoted}]::varchar[]", name=name)
@@ -43,12 +45,17 @@ def in_list_check(column: str, values: tuple[str, ...], name: str) -> sa.CheckCo
 
 def uuid_pk() -> Mapped[uuid.UUID]:
     return mapped_column(
-        sa.Uuid, primary_key=True, default=uuid.uuid4, server_default=sa.text("gen_random_uuid()")
+        sa.Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=sa.text("gen_random_uuid()"),
     )
 
 
 def created_at() -> Mapped[datetime]:
-    return mapped_column(sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now())
+    return mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
 
 
 def updated_at() -> Mapped[datetime]:

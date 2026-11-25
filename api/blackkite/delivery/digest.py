@@ -41,7 +41,9 @@ STREAM_COLOURS: dict[str, tuple[str, str]] = {
 # allow_placeholder_links() is active (the reference fixture, for the preview);
 # a real digest carries http(s) links only.
 PLACEHOLDER_LINK = "#"
-_allow_placeholder: ContextVar[bool] = ContextVar("bk_digest_allow_placeholder", default=False)
+_allow_placeholder: ContextVar[bool] = ContextVar(
+    "bk_digest_allow_placeholder", default=False
+)
 
 
 @contextmanager
@@ -58,8 +60,14 @@ def _check_link(value: str) -> str:
     """Absolute http/https URL with a host; rejects javascript:, data:, relative, etc."""
     if value == PLACEHOLDER_LINK and _allow_placeholder.get():
         return value
-    if not value or value != value.strip() or any(ord(c) < 0x21 or ord(c) == 0x7F for c in value):
-        raise ValueError("link must be an http(s) URL without spaces or control characters")
+    if (
+        not value
+        or value != value.strip()
+        or any(ord(c) < 0x21 or ord(c) == 0x7F for c in value)
+    ):
+        raise ValueError(
+            "link must be an http(s) URL without spaces or control characters"
+        )
     try:
         parts = urlsplit(value)
     except ValueError as exc:
@@ -166,15 +174,19 @@ def _env() -> Environment:
 
 
 def _html(view: DigestView, logo_src: str, preview: bool) -> str:
-    return _env().get_template("digest.html.j2").render(
-        v=view, logo_src=logo_src, preview=preview, cta_label=CTA_LABEL
+    return (
+        _env()
+        .get_template("digest.html.j2")
+        .render(v=view, logo_src=logo_src, preview=preview, cta_label=CTA_LABEL)
     )
 
 
 def _text(view: DigestView) -> str:
     lines = [view.heading, "", view.intro, ""]
     for item in view.items:
-        date_line = item.date_line + (f" · {item.trust_note}" if item.trust_note else "")
+        date_line = item.date_line + (
+            f" · {item.trust_note}" if item.trust_note else ""
+        )
         lines += [item.label, item.title, item.summary, date_line, item.url, ""]
     lines.append(f"{CTA_LABEL}: {view.cta_url}")
     if view.more_line:
@@ -192,7 +204,9 @@ def _text(view: DigestView) -> str:
     return "\n".join(lines)
 
 
-def render_digest(view: DigestView, logo_src: str = DEFAULT_LOGO_SRC) -> tuple[str, str, str]:
+def render_digest(
+    view: DigestView, logo_src: str = DEFAULT_LOGO_SRC
+) -> tuple[str, str, str]:
     """Return (subject, html, text) for one weekly digest email.
 
     logo_src: where the <img> finds the kite PNG (blackkite.delivery.logo.kite_png()).

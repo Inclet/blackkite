@@ -22,5 +22,3 @@ def test_packaged_logo_is_2x_png():
 @pytest.mark.skipif(not KITE_SVG.exists(), reason="design/ not next to api/")
 def test_packaged_logo_matches_design_svg():
     assert KITE_PNG.read_bytes() == render_kite_png(KITE_SVG.read_text("utf-8"))
-
-

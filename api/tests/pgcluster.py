@@ -30,7 +30,9 @@ def _pg_bin() -> Path:
     found = shutil.which("initdb")
     if found:
         return Path(found).parent
-    raise RuntimeError("PostgreSQL server binaries not found; set BK_PG_BIN or BK_TEST_DATABASE_URL")
+    raise RuntimeError(
+        "PostgreSQL server binaries not found; set BK_PG_BIN or BK_TEST_DATABASE_URL"
+    )
 
 
 def _free_port() -> int:
@@ -54,16 +56,35 @@ class ThrowawayCluster:
         cmd = list(args)
         if self.as_root:
             cmd = ["runuser", "-u", "postgres", "--", *cmd]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        subprocess.run(
+            cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+        )
 
     def start(self) -> ThrowawayCluster:
         self._run(
-            str(self.bin / "initdb"), "-D", str(self.data), "-U", self.user,
-            "--auth=trust", "--encoding=UTF8", "--no-sync",
+            str(self.bin / "initdb"),
+            "-D",
+            str(self.data),
+            "-U",
+            self.user,
+            "--auth=trust",
+            "--encoding=UTF8",
+            "--no-sync",
         )
-        opts = f"-p {self.port} -k {self.dir} -c listen_addresses=127.0.0.1 -c fsync=off"
-        self._run(str(self.bin / "pg_ctl"), "-D", str(self.data), "-o", opts,
-                  "-l", str(self.dir / "log"), "-w", "start")
+        opts = (
+            f"-p {self.port} -k {self.dir} -c listen_addresses=127.0.0.1 -c fsync=off"
+        )
+        self._run(
+            str(self.bin / "pg_ctl"),
+            "-D",
+            str(self.data),
+            "-o",
+            opts,
+            "-l",
+            str(self.dir / "log"),
+            "-w",
+            "start",
+        )
         return self
 
     def url(self, dbname: str = "postgres") -> str:
@@ -71,7 +92,14 @@ class ThrowawayCluster:
 
     def stop(self) -> None:
         try:
-            self._run(str(self.bin / "pg_ctl"), "-D", str(self.data), "-m", "immediate", "stop")
+            self._run(
+                str(self.bin / "pg_ctl"),
+                "-D",
+                str(self.data),
+                "-m",
+                "immediate",
+                "stop",
+            )
         finally:
             shutil.rmtree(self.dir, ignore_errors=True)
 

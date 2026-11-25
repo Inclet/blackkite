@@ -19,7 +19,11 @@ def _has_vector(url: str) -> bool:
     eng = sa.create_engine(url)
     try:
         with eng.connect() as c:
-            return bool(c.scalar(sa.text("SELECT count(*) FROM pg_extension WHERE extname='vector'")))
+            return bool(
+                c.scalar(
+                    sa.text("SELECT count(*) FROM pg_extension WHERE extname='vector'")
+                )
+            )
     finally:
         eng.dispose()
 
@@ -45,11 +49,24 @@ def test_round_trip_and_no_drift(make_database):
 
 def test_schema_has_every_spec_table():
     spec = {
-        "user", "invite", "profile", "digest_setting", "source", "source_run",
-        "source_suggestion", "user_source_mute", "opportunity", "opportunity_source",
-        "document", "change_event", "award", "user_opportunity", "digest_log",
+        "user",
+        "invite",
+        "profile",
+        "digest_setting",
+        "source",
+        "source_run",
+        "source_suggestion",
+        "user_source_mute",
+        "opportunity",
+        "opportunity_source",
+        "document",
+        "change_event",
+        "award",
+        "user_opportunity",
+        "digest_log",
         "user_opportunity_score",  # decision 19: scores per profile, state per user
-        "session", "login_token",
+        "session",
+        "login_token",
     }
     assert spec == set(Base.metadata.tables)
 
@@ -68,13 +85,23 @@ def test_0002_moves_digest_days_to_monday_and_downgrade_drops_off(make_database)
     url = make_database("bk_migr")
     cfg = alembic_config(url)
     command.upgrade(cfg, "0001")
-    _exec(url, "INSERT INTO \"user\" (email) VALUES ('a@example.com'), ('b@example.com')")
-    _exec(url, """INSERT INTO digest_setting (user_id, channel, address, frequency, day)
+    _exec(
+        url, "INSERT INTO \"user\" (email) VALUES ('a@example.com'), ('b@example.com')"
+    )
+    _exec(
+        url,
+        """INSERT INTO digest_setting (user_id, channel, address, frequency, day)
                   SELECT id, 'email', email, 'weekly', CASE WHEN email LIKE 'a%' THEN 'fri' END
-                  FROM "user" """)
+                  FROM "user" """,
+    )
     command.upgrade(cfg, "0002")
-    assert _exec(url, "SELECT DISTINCT frequency, day FROM digest_setting") == [("weekly", "mon")]
-    _exec(url, "UPDATE digest_setting SET frequency = 'off' WHERE address = 'b@example.com'")
+    assert _exec(url, "SELECT DISTINCT frequency, day FROM digest_setting") == [
+        ("weekly", "mon")
+    ]
+    _exec(
+        url,
+        "UPDATE digest_setting SET frequency = 'off' WHERE address = 'b@example.com'",
+    )
     command.downgrade(cfg, "0001")
     assert _exec(url, "SELECT address FROM digest_setting") == [("a@example.com",)]
 
@@ -84,32 +111,40 @@ def test_0003_splits_state_from_scores_and_back(make_database):
     cfg = alembic_config(url)
     command.upgrade(cfg, "0002")
     _exec(url, "INSERT INTO \"user\" (email) VALUES ('a@example.com')")
-    _exec(url, """INSERT INTO profile (user_id, name, type)
-                  SELECT id, n, 'business' FROM "user", unnest(ARRAY['p1', 'p2']) n""")
+    _exec(
+        url,
+        """INSERT INTO profile (user_id, name, type)
+                  SELECT id, n, 'business' FROM "user", unnest(ARRAY['p1', 'p2']) n""",
+    )
     _exec(url, "INSERT INTO opportunity (stream, title) VALUES ('tender', 't')")
     # Two profiles scored the same opportunity; the earlier row was saved, the later
     # dismissed. Saved is further along, so it wins over the more recent dismissal.
-    _exec(url, """INSERT INTO user_opportunity
+    _exec(
+        url,
+        """INSERT INTO user_opportunity
                     (user_id, opportunity_id, profile_id, score, state, note, updated_at)
                   SELECT u.id, o.id, p.id,
                          CASE p.name WHEN 'p1' THEN 80 ELSE 40 END,
                          CASE p.name WHEN 'p1' THEN 'saved' ELSE 'dismissed' END,
                          CASE p.name WHEN 'p1' THEN 'call them' ELSE 'too small' END,
                          CASE p.name WHEN 'p1' THEN now() - interval '1 day' ELSE now() END
-                  FROM "user" u, opportunity o, profile p""")
+                  FROM "user" u, opportunity o, profile p""",
+    )
     command.upgrade(cfg, "0003")
     assert _exec(url, "SELECT state, note FROM user_opportunity") == [
         ("saved", "call them\n\ntoo small")
     ]
-    assert _exec(url, """SELECT p.name, s.score FROM user_opportunity_score s
-                         JOIN profile p ON p.id = s.profile_id ORDER BY p.name""") == [
-        ("p1", 80), ("p2", 40)
-    ]
+    assert _exec(
+        url,
+        """SELECT p.name, s.score FROM user_opportunity_score s
+                         JOIN profile p ON p.id = s.profile_id ORDER BY p.name""",
+    ) == [("p1", 80), ("p2", 40)]
     command.downgrade(cfg, "0002")
-    assert _exec(url, """SELECT p.name, uo.score, uo.state FROM user_opportunity uo
-                         JOIN profile p ON p.id = uo.profile_id ORDER BY p.name""") == [
-        ("p1", 80, "saved"), ("p2", 40, "saved")
-    ]
+    assert _exec(
+        url,
+        """SELECT p.name, uo.score, uo.state FROM user_opportunity uo
+                         JOIN profile p ON p.id = uo.profile_id ORDER BY p.name""",
+    ) == [("p1", 80, "saved"), ("p2", 40, "saved")]
 
 
 def test_0003_keeps_most_progressed_state_and_orders_notes(make_database):
@@ -117,10 +152,16 @@ def test_0003_keeps_most_progressed_state_and_orders_notes(make_database):
     cfg = alembic_config(url)
     command.upgrade(cfg, "0002")
     _exec(url, "INSERT INTO \"user\" (email) VALUES ('a@example.com')")
-    _exec(url, """INSERT INTO profile (user_id, name, type)
+    _exec(
+        url,
+        """INSERT INTO profile (user_id, name, type)
                   SELECT id, n, 'business' FROM "user",
-                         unnest(ARRAY['p1', 'p2', 'p3', 'p4', 'p5', 'p6']) n""")
-    _exec(url, "INSERT INTO opportunity (stream, title) VALUES ('tender', 'a'), ('tender', 'b')")
+                         unnest(ARRAY['p1', 'p2', 'p3', 'p4', 'p5', 'p6']) n""",
+    )
+    _exec(
+        url,
+        "INSERT INTO opportunity (stream, title) VALUES ('tender', 'a'), ('tender', 'b')",
+    )
     # (opportunity, profile, state, dismiss_reason, note, age in days)
     rows = [
         # a: acting (old) beats saved, dismissed and a fresh unseen; the duplicate note
@@ -137,26 +178,40 @@ def test_0003_keeps_most_progressed_state_and_orders_notes(make_database):
         ("b", "p6", "unseen", None, None, 0),
     ]
     for opp, prof, state, reason, note, age in rows:
-        _exec(url, """INSERT INTO user_opportunity
+        _exec(
+            url,
+            """INSERT INTO user_opportunity
                         (user_id, opportunity_id, profile_id, state, dismiss_reason, note,
                          updated_at)
                       SELECT u.id, o.id, p.id, :state, :reason, :note,
                              now() - make_interval(days => :age)
                       FROM "user" u, opportunity o, profile p
                       WHERE o.title = :opp AND p.name = :prof""",
-              opp=opp, prof=prof, state=state, reason=reason, note=note, age=age)
+            opp=opp,
+            prof=prof,
+            state=state,
+            reason=reason,
+            note=note,
+            age=age,
+        )
     command.upgrade(cfg, "0003")
-    got = _exec(url, """SELECT o.title, uo.state, uo.dismiss_reason, uo.note
+    got = _exec(
+        url,
+        """SELECT o.title, uo.state, uo.dismiss_reason, uo.note
                         FROM user_opportunity uo JOIN opportunity o ON o.id = uo.opportunity_id
-                        ORDER BY o.title""")
+                        ORDER BY o.title""",
+    )
     assert got == [
         ("a", "acting", None, "zebra first\n\napple second"),
         ("b", "done", None, "older done\n\nnewer done"),
     ]
     # b's kept row is the newer of the two done rows (2 days old, not 4).
-    assert _exec(url, """SELECT round(extract(epoch FROM now() - uo.updated_at) / 86400)
+    assert _exec(
+        url,
+        """SELECT round(extract(epoch FROM now() - uo.updated_at) / 86400)
                          FROM user_opportunity uo JOIN opportunity o ON o.id = uo.opportunity_id
-                         WHERE o.title = 'b'""") == [(2,)]
+                         WHERE o.title = 'b'""",
+    ) == [(2,)]
     assert _exec(url, "SELECT count(*) FROM user_opportunity_score") == [(9,)]
     command.downgrade(cfg, "0002")
     command.upgrade(cfg, "head")

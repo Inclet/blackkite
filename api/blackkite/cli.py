@@ -22,7 +22,9 @@ def _alembic_config():
     from alembic.config import Config
 
     cfg = Config(str(API_DIR / "alembic.ini"))
-    cfg.set_main_option("script_location", str(Path(__file__).parent / "db" / "migrations"))
+    cfg.set_main_option(
+        "script_location", str(Path(__file__).parent / "db" / "migrations")
+    )
     return cfg
 
 
@@ -69,10 +71,14 @@ def seed_sources() -> None:
 
 @app.command("digest-preview")
 def digest_preview(
-    fixture: str = typer.Option("reference", help="Fixture name (see delivery/fixtures)."),
+    fixture: str = typer.Option(
+        "reference", help="Fixture name (see delivery/fixtures)."
+    ),
     out: Path = typer.Option(..., help="HTML file to write."),
     logo_src: str = typer.Option("kite.png", help="src of the logo <img> in the page."),
-    logo_out: Path | None = typer.Option(None, help="Where to write kite.png (default: beside --out)."),
+    logo_out: Path | None = typer.Option(
+        None, help="Where to write kite.png (default: beside --out)."
+    ),
 ) -> None:
     """Write the digest email inside its preview chrome, plus the logo PNG.
 
@@ -85,7 +91,10 @@ def digest_preview(
     from blackkite.delivery.logo import kite_png
 
     if fixture not in FIXTURES:
-        typer.echo(f"error: unknown fixture {fixture!r}; known: {', '.join(FIXTURES)}", err=True)
+        typer.echo(
+            f"error: unknown fixture {fixture!r}; known: {', '.join(FIXTURES)}",
+            err=True,
+        )
         raise typer.Exit(1)
     logo_path = logo_out or out.parent / "kite.png"
     out.parent.mkdir(parents=True, exist_ok=True)

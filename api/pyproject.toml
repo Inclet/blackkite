@@ -42,3 +42,7 @@ dev = [
     "httpx>=0.28.1",
     "pytest>=9.2.0",
 ]
+
+[tool.ruff.lint.flake8-bugbear]
+# Typer declares CLI options as argument defaults; that is its intended use.
+extend-immutable-calls = ["typer.Option", "typer.Argument"]

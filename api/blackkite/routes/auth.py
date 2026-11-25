@@ -2,7 +2,14 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+)
 from fastapi.responses import JSONResponse
 
 from blackkite.auth import service
@@ -42,7 +49,9 @@ def request_link(
 
 
 @router.post("/auth/verify", response_model=VerifyOut)
-def verify(body: TokenIn, request: Request, db: DbDep, settings: SettingsDep) -> Response:
+def verify(
+    body: TokenIn, request: Request, db: DbDep, settings: SettingsDep
+) -> Response:
     """Spend a sign-in or invite token and start a session (decision 17).
 
     Called by the web confirm page (/auth/confirm) when the person presses
@@ -56,8 +65,11 @@ def verify(body: TokenIn, request: Request, db: DbDep, settings: SettingsDep) ->
     user = service.consume_token(db, body.token)
     if user is None:
         db.commit()  # keep the token spent even if sign-in fails
-        return JSONResponse({"detail": INVALID_LINK}, status_code=400,
-                            headers={"Cache-Control": "no-store"})
+        return JSONResponse(
+            {"detail": INVALID_LINK},
+            status_code=400,
+            headers={"Cache-Control": "no-store"},
+        )
     raw = service.create_session(db, settings, user)
     db.commit()
     resp = JSONResponse({"redirect": settings.after_login_url})
@@ -82,8 +94,11 @@ def logout(request: Request, db: DbDep, settings: SettingsDep) -> Response:
         db.commit()
     resp = Response(status_code=204)
     resp.delete_cookie(
-        settings.session_cookie_name, path="/", httponly=True,
-        secure=settings.cookie_secure, samesite="lax",
+        settings.session_cookie_name,
+        path="/",
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
     )
     return resp
 

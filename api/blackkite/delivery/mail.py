@@ -57,7 +57,9 @@ class SmtpTransport:
             if self.s.smtp_starttls:
                 smtp.starttls()
             if self.s.smtp_username and self.s.smtp_password:
-                smtp.login(self.s.smtp_username, self.s.smtp_password.get_secret_value())
+                smtp.login(
+                    self.s.smtp_username, self.s.smtp_password.get_secret_value()
+                )
             smtp.send_message(msg)
 
 

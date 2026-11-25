@@ -57,7 +57,11 @@ def test_expired_token_rejected(client, db, outbox):
     make_user(db, "member@example.com")
     _request(client, "member@example.com")
     token = token_from_mail(outbox.outbox[0].text)
-    db.execute(sa.update(LoginToken).values(expires_at=datetime.now(UTC) - timedelta(seconds=1)))
+    db.execute(
+        sa.update(LoginToken).values(
+            expires_at=datetime.now(UTC) - timedelta(seconds=1)
+        )
+    )
     db.commit()
     r = _verify(client, token)
     assert r.status_code == 400
@@ -98,7 +102,11 @@ def test_session_cookie_flags(client, db, outbox, settings):
     raw = morsel.value
     s = db.scalar(sa.select(Session).where(Session.token_hash == hash_token(raw)))
     assert s is not None
-    assert timedelta(days=29, hours=23) < s.expires_at - s.created_at <= timedelta(days=30, seconds=5)
+    assert (
+        timedelta(days=29, hours=23)
+        < s.expires_at - s.created_at
+        <= timedelta(days=30, seconds=5)
+    )
 
 
 def test_secure_flag_can_be_turned_off_for_local_dev(app, settings, db, outbox):
@@ -115,7 +123,9 @@ def test_secure_flag_can_be_turned_off_for_local_dev(app, settings, db, outbox):
 def test_expired_session_is_rejected(client, db, outbox):
     make_user(db, "member@example.com")
     sign_in(client, outbox, "member@example.com")
-    db.execute(sa.update(Session).values(expires_at=datetime.now(UTC) - timedelta(seconds=1)))
+    db.execute(
+        sa.update(Session).values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+    )
     db.commit()
     assert client.get("/me").status_code == 401
 
@@ -141,15 +151,19 @@ def test_me_requires_sign_in(client):
 def test_rate_limit_per_email_same_for_known_and_unknown(client, db, settings):
     make_user(db, "member@example.com")
     for email in ("member@example.com", "nobody@example.com"):
-        codes = [_request(client, email).status_code
-                 for _ in range(settings.link_rate_per_email_per_hour + 1)]
+        codes = [
+            _request(client, email).status_code
+            for _ in range(settings.link_rate_per_email_per_hour + 1)
+        ]
         assert codes[:-1] == [202] * settings.link_rate_per_email_per_hour
         assert codes[-1] == 429
 
 
 def test_rate_limit_per_ip(client, settings):
-    codes = [_request(client, f"n{i}@example.com").status_code
-             for i in range(settings.link_rate_per_ip_per_hour + 1)]
+    codes = [
+        _request(client, f"n{i}@example.com").status_code
+        for i in range(settings.link_rate_per_ip_per_hour + 1)
+    ]
     assert codes[-1] == 429
     assert set(codes[:-1]) == {202}
 
@@ -218,8 +232,12 @@ def test_invite_link_points_at_confirm_page(app, db, outbox):
     from tests.conftest import make_user as mk
 
     mk(db, "admin@example.com", role="admin")
-    c = sign_in(TestClient(app, base_url="https://testserver"), outbox, "admin@example.com")
-    assert c.post("/admin/invites", json={"email": "new@example.com"}).status_code == 201
+    c = sign_in(
+        TestClient(app, base_url="https://testserver"), outbox, "admin@example.com"
+    )
+    assert (
+        c.post("/admin/invites", json={"email": "new@example.com"}).status_code == 201
+    )
     text = outbox.outbox[-1].text
     assert "https://testserver/auth/confirm#token=" in text
     token = token_from_mail(text)
@@ -241,7 +259,11 @@ def test_link_default_is_web_origin_with_fragment_token(monkeypatch):
     monkeypatch.delenv("BK_WEB_BASE_URL", raising=False)
     monkeypatch.delenv("BK_PUBLIC_BASE_URL", raising=False)
     url = urlparse(confirm_url(Settings(_env_file=None), "tok-123"))
-    assert (url.scheme, url.netloc, url.path) == ("http", "localhost:5173", "/auth/confirm")
+    assert (url.scheme, url.netloc, url.path) == (
+        "http",
+        "localhost:5173",
+        "/auth/confirm",
+    )
     assert url.query == ""  # never in the query: it would reach access logs and Referer
     assert url.fragment == "token=tok-123"
 

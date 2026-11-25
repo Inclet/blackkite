@@ -58,7 +58,11 @@ def make_database(pg_server_url: str):
         with admin.connect() as c:
             c.execute(sa.text(f'CREATE DATABASE "{name}"'))
         created.append(name)
-        return make_url(pg_server_url).set(database=name).render_as_string(hide_password=False)
+        return (
+            make_url(pg_server_url)
+            .set(database=name)
+            .render_as_string(hide_password=False)
+        )
 
     yield make
     with admin.connect() as c:
@@ -156,7 +160,9 @@ def token_from_mail(text: str) -> str:
     return parse_qs(urlparse(m.group(0)).fragment)["token"][0]
 
 
-def make_user(db: Session, email: str, role: str = "member", status: str = "active") -> User:
+def make_user(
+    db: Session, email: str, role: str = "member", status: str = "active"
+) -> User:
     u = User(email=email, role=role, status=status)
     db.add(u)
     db.commit()

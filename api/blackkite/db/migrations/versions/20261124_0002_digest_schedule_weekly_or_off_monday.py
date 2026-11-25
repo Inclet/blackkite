@@ -17,8 +17,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = '0002'
-down_revision: str | None = '0001'
+revision: str = "0002"
+down_revision: str | None = "0001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -26,30 +26,58 @@ OLD_DAYS = "'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'"
 
 
 def upgrade() -> None:
-    op.drop_constraint(op.f('ck_digest_setting_frequency'), 'digest_setting', type_='check')
-    op.create_check_constraint(
-        op.f('ck_digest_setting_frequency'), 'digest_setting', "frequency IN ('weekly', 'off')"
+    op.drop_constraint(
+        op.f("ck_digest_setting_frequency"), "digest_setting", type_="check"
     )
-    op.alter_column('digest_setting', 'frequency', existing_type=sa.VARCHAR(length=32),
-                    server_default='weekly')
+    op.create_check_constraint(
+        op.f("ck_digest_setting_frequency"),
+        "digest_setting",
+        "frequency IN ('weekly', 'off')",
+    )
+    op.alter_column(
+        "digest_setting",
+        "frequency",
+        existing_type=sa.VARCHAR(length=32),
+        server_default="weekly",
+    )
 
-    op.drop_constraint(op.f('ck_digest_setting_day'), 'digest_setting', type_='check')
+    op.drop_constraint(op.f("ck_digest_setting_day"), "digest_setting", type_="check")
     op.execute("UPDATE digest_setting SET day = 'mon' WHERE day IS DISTINCT FROM 'mon'")
-    op.create_check_constraint(op.f('ck_digest_setting_day'), 'digest_setting', "day IN ('mon')")
-    op.alter_column('digest_setting', 'day', existing_type=sa.VARCHAR(length=32),
-                    nullable=False, server_default='mon')
+    op.create_check_constraint(
+        op.f("ck_digest_setting_day"), "digest_setting", "day IN ('mon')"
+    )
+    op.alter_column(
+        "digest_setting",
+        "day",
+        existing_type=sa.VARCHAR(length=32),
+        nullable=False,
+        server_default="mon",
+    )
 
 
 def downgrade() -> None:
-    op.alter_column('digest_setting', 'day', existing_type=sa.VARCHAR(length=32),
-                    nullable=True, server_default=None)
-    op.drop_constraint(op.f('ck_digest_setting_day'), 'digest_setting', type_='check')
-    op.create_check_constraint(op.f('ck_digest_setting_day'), 'digest_setting', f"day IN ({OLD_DAYS})")
+    op.alter_column(
+        "digest_setting",
+        "day",
+        existing_type=sa.VARCHAR(length=32),
+        nullable=True,
+        server_default=None,
+    )
+    op.drop_constraint(op.f("ck_digest_setting_day"), "digest_setting", type_="check")
+    op.create_check_constraint(
+        op.f("ck_digest_setting_day"), "digest_setting", f"day IN ({OLD_DAYS})"
+    )
 
     op.execute("DELETE FROM digest_setting WHERE frequency = 'off'")
-    op.alter_column('digest_setting', 'frequency', existing_type=sa.VARCHAR(length=32),
-                    server_default=None)
-    op.drop_constraint(op.f('ck_digest_setting_frequency'), 'digest_setting', type_='check')
+    op.alter_column(
+        "digest_setting",
+        "frequency",
+        existing_type=sa.VARCHAR(length=32),
+        server_default=None,
+    )
+    op.drop_constraint(
+        op.f("ck_digest_setting_frequency"), "digest_setting", type_="check"
+    )
     op.create_check_constraint(
-        op.f('ck_digest_setting_frequency'), 'digest_setting', "frequency IN ('weekly')"
+        op.f("ck_digest_setting_frequency"), "digest_setting", "frequency IN ('weekly')"
     )

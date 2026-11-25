@@ -73,12 +73,16 @@ def _user_fk(ondelete: str = "CASCADE") -> Mapped[uuid.UUID]:
 
 class User(Base):
     __tablename__ = "user"
-    __table_args__ = (sa.Index("uq_user_email_lower", sa.text("lower(email)"), unique=True),)
+    __table_args__ = (
+        sa.Index("uq_user_email_lower", sa.text("lower(email)"), unique=True),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     email: Mapped[str] = mapped_column(sa.String(320), nullable=False)
     name: Mapped[str | None] = mapped_column(sa.String(200))
-    role: Mapped[str] = mapped_column(enum(*ROLES, name="role"), nullable=False, server_default="member")
+    role: Mapped[str] = mapped_column(
+        enum(*ROLES, name="role"), nullable=False, server_default="member"
+    )
     status: Mapped[str] = mapped_column(
         enum(*USER_STATUSES, name="status"), nullable=False, server_default="active"
     )
@@ -147,7 +151,6 @@ class Session(Base):
     expires_at: Mapped[datetime] = _ts(nullable=False)
 
 
-
 class Profile(Base):
     __tablename__ = "profile"
     __table_args__ = (
@@ -164,7 +167,9 @@ class Profile(Base):
         JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
     )
     version: Mapped[int] = mapped_column(sa.Integer, nullable=False, server_default="1")
-    active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, server_default=sa.true())
+    active: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.true()
+    )
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 
@@ -182,10 +187,14 @@ class DigestSetting(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     user_id: Mapped[uuid.UUID] = _user_fk()
-    channel: Mapped[str] = mapped_column(enum(*DIGEST_CHANNELS, name="channel"), nullable=False)
+    channel: Mapped[str] = mapped_column(
+        enum(*DIGEST_CHANNELS, name="channel"), nullable=False
+    )
     address: Mapped[str] = mapped_column(sa.String(320), nullable=False)
     frequency: Mapped[str] = mapped_column(
-        enum(*DIGEST_FREQUENCIES, name="frequency"), nullable=False, server_default="weekly"
+        enum(*DIGEST_FREQUENCIES, name="frequency"),
+        nullable=False,
+        server_default="weekly",
     )
     day: Mapped[str] = mapped_column(
         enum(*DIGEST_DAYS, name="day"), nullable=False, server_default="mon"
@@ -206,7 +215,9 @@ class Source(Base):
         sa.UniqueConstraint("name"),
         in_list_check("streams", STREAMS, "streams_valid"),
         sa.CheckConstraint("cardinality(streams) >= 1", name="streams_not_empty"),
-        sa.CheckConstraint("rate_limit IS NULL OR rate_limit > 0", name="rate_limit_positive"),
+        sa.CheckConstraint(
+            "rate_limit IS NULL OR rate_limit > 0", name="rate_limit_positive"
+        ),
         sa.Index("ix_source_status", "status"),
     )
 
@@ -239,7 +250,9 @@ class Source(Base):
 
 class SourceRun(Base):
     __tablename__ = "source_run"
-    __table_args__ = (sa.Index("ix_source_run_source_id_started_at", "source_id", "started_at"),)
+    __table_args__ = (
+        sa.Index("ix_source_run_source_id_started_at", "source_id", "started_at"),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     source_id: Mapped[uuid.UUID] = mapped_column(
@@ -248,10 +261,16 @@ class SourceRun(Base):
     started_at: Mapped[datetime] = created_at()
     finished_at: Mapped[datetime | None] = _ts()
     status: Mapped[str] = mapped_column(
-        enum(*SOURCE_RUN_STATUSES, name="status"), nullable=False, server_default="running"
+        enum(*SOURCE_RUN_STATUSES, name="status"),
+        nullable=False,
+        server_default="running",
     )
-    items_found: Mapped[int] = mapped_column(sa.Integer, nullable=False, server_default="0")
-    items_new: Mapped[int] = mapped_column(sa.Integer, nullable=False, server_default="0")
+    items_found: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, server_default="0"
+    )
+    items_new: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, server_default="0"
+    )
     error: Mapped[str | None] = mapped_column(sa.Text)
 
 
@@ -264,7 +283,9 @@ class SourceSuggestion(Base):
     url: Mapped[str] = mapped_column(sa.Text, nullable=False)
     note: Mapped[str | None] = mapped_column(sa.Text)
     status: Mapped[str] = mapped_column(
-        enum(*SUGGESTION_STATUSES, name="status"), nullable=False, server_default="suggested"
+        enum(*SUGGESTION_STATUSES, name="status"),
+        nullable=False,
+        server_default="suggested",
     )
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("user.id", ondelete="SET NULL"), index=True
@@ -296,17 +317,21 @@ class Opportunity(Base):
     __tablename__ = "opportunity"
     __table_args__ = (
         sa.CheckConstraint(
-            "visibility <> 'private' OR owner_user_id IS NOT NULL", name="private_has_owner"
+            "visibility <> 'private' OR owner_user_id IS NOT NULL",
+            name="private_has_owner",
         ),
         sa.CheckConstraint(
-            "value_currency IS NULL OR value_currency ~ '^[A-Z]{3}$'", name="value_currency_iso"
+            "value_currency IS NULL OR value_currency ~ '^[A-Z]{3}$'",
+            name="value_currency_iso",
         ),
         sa.Index("ix_opportunity_stream_status", "stream", "status"),
         sa.Index("ix_opportunity_deadline_at", "deadline_at"),
         sa.Index("ix_opportunity_event_start", "event_start"),
         sa.Index("ix_opportunity_tags", "tags", postgresql_using="gin"),
         sa.Index(
-            "ix_opportunity_needs_review", "needs_review", postgresql_where=sa.text("needs_review")
+            "ix_opportunity_needs_review",
+            "needs_review",
+            postgresql_where=sa.text("needs_review"),
         ),
     )
 
@@ -339,12 +364,18 @@ class Opportunity(Base):
         JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
     )
     status: Mapped[str] = mapped_column(
-        enum(*OPPORTUNITY_STATUSES, name="status"), nullable=False, server_default="open"
+        enum(*OPPORTUNITY_STATUSES, name="status"),
+        nullable=False,
+        server_default="open",
     )
     verification: Mapped[str] = mapped_column(
-        enum(*VERIFICATIONS, name="verification"), nullable=False, server_default="unverified"
+        enum(*VERIFICATIONS, name="verification"),
+        nullable=False,
+        server_default="unverified",
     )
-    needs_review: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, server_default=sa.false())
+    needs_review: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.false()
+    )
     visibility: Mapped[str] = mapped_column(
         enum(*VISIBILITIES, name="visibility"), nullable=False, server_default="public"
     )
@@ -376,7 +407,9 @@ class OpportunitySource(Base):
         sa.ForeignKey("source.id", ondelete="CASCADE"), nullable=False, index=True
     )
     url: Mapped[str] = mapped_column(sa.Text, nullable=False)
-    is_original: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, server_default=sa.false())
+    is_original: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.false()
+    )
     first_seen: Mapped[datetime] = created_at()
     last_seen: Mapped[datetime] = created_at()
 
@@ -396,7 +429,9 @@ class Document(Base):
 
 class ChangeEvent(Base):
     __tablename__ = "change_event"
-    __table_args__ = (sa.Index("ix_change_event_opportunity_id_at", "opportunity_id", "at"),)
+    __table_args__ = (
+        sa.Index("ix_change_event_opportunity_id_at", "opportunity_id", "at"),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     opportunity_id: Mapped[uuid.UUID] = mapped_column(
@@ -456,7 +491,9 @@ class UserOpportunity(Base):
         sa.ForeignKey("opportunity.id", ondelete="CASCADE"), nullable=False, index=True
     )
     state: Mapped[str] = mapped_column(
-        enum(*USER_OPPORTUNITY_STATES, name="state"), nullable=False, server_default="unseen"
+        enum(*USER_OPPORTUNITY_STATES, name="state"),
+        nullable=False,
+        server_default="unseen",
     )
     dismiss_reason: Mapped[str | None] = mapped_column(sa.Text)
     note: Mapped[str | None] = mapped_column(sa.Text)
@@ -477,7 +514,9 @@ class UserOpportunityScore(Base):
             name="fk_user_opportunity_score_profile_owner",
             ondelete="CASCADE",
         ),
-        sa.CheckConstraint("score IS NULL OR score BETWEEN 0 AND 100", name="score_range"),
+        sa.CheckConstraint(
+            "score IS NULL OR score BETWEEN 0 AND 100", name="score_range"
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
