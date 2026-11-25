@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { api, ApiError, request } from './client';
+import { api, ApiError, refusalOf, request } from './client';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -110,4 +110,30 @@ test('an aborted request rejects with the AbortError, not an ApiError', async ()
   const err = await api.feed({}, new AbortController().signal).catch((e: unknown) => e);
   expect(err).not.toBeInstanceOf(ApiError);
   expect((err as DOMException).name).toBe('AbortError');
+});
+
+test('a refusal keeps the whole answer: detail, field errors and any extra numbers', async () => {
+  stub(
+    reply(422, {
+      detail: 'Feed URL: address 127.0.0.1 is not public.',
+      errors: [{ field: 'config.feed_url', message: 'address 127.0.0.1 is not public' }, { field: null, message: 'x' }, { nope: 1 }],
+    }),
+    reply(409, { detail: 'Needs 2 good runs.', errors: [], goodRuns: 1, needed: 2 }),
+    reply(429, 'not json'),
+  );
+  const first = (await request('/api/admin/sources', { method: 'POST', body: {} }).catch((e: unknown) => e)) as ApiError;
+  expect(first.kind).toBe('invalid');
+  expect(refusalOf(first)).toEqual({
+    detail: 'Feed URL: address 127.0.0.1 is not public.',
+    errors: [
+      { field: 'config.feed_url', message: 'address 127.0.0.1 is not public' },
+      { field: null, message: 'x' },
+    ],
+  });
+  const second = (await request('/x', { method: 'POST' }).catch((e: unknown) => e)) as ApiError;
+  expect(second.kind).toBe('conflict');
+  expect(second.body).toEqual({ detail: 'Needs 2 good runs.', errors: [], goodRuns: 1, needed: 2 });
+  const third = (await request('/x', { method: 'POST' }).catch((e: unknown) => e)) as ApiError;
+  expect(third.kind).toBe('too-many');
+  expect(refusalOf(third)).toEqual({ detail: null, errors: [] });
 });

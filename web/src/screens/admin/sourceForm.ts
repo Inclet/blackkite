@@ -5,6 +5,7 @@
  * each a key inside its parent. Config keys the field list does not describe are
  * kept as they were.
  */
+import type { FieldError } from '../../api/client';
 import type { AdminSource, CollectorType, CollectorTypeInfo, ConfigField, SourceBody, SourceKind } from '../../api/sources';
 import type { Stream } from '../../lib/streams';
 
@@ -89,7 +90,10 @@ export interface SourceForm {
   accessNote: string;
 }
 
-export type FormErrors = Partial<Record<'name' | 'homeUrl' | 'streams' | 'kind' | 'collectorType' | 'schedule' | 'rateLimit', string>> & {
+export const RECORD_FIELDS = ['name', 'homeUrl', 'publisher', 'streams', 'kind', 'collectorType', 'schedule', 'rateLimit', 'accessNote'] as const;
+export type RecordField = (typeof RECORD_FIELDS)[number];
+
+export type FormErrors = Partial<Record<RecordField, string>> & {
   config?: Record<string, string>;
 };
 
@@ -363,4 +367,66 @@ export function detailText(detail: unknown): string | null {
     return parts.length ? parts.join('; ') : null;
   }
   return null;
+}
+
+/**
+ * A server field message ("address 127.0.0.1 is not public", "is required") as a
+ * sentence to show under its field: "Address 127.0.0.1 is not public.",
+ * "This is required."
+ */
+export function fieldMessage(message: string): string {
+  const t = message.trim().replace(/[.\s]+$/, '');
+  if (!t) return '';
+  if (/^(is|are|must|cannot|can't|has|have|needs|should|was)\b/i.test(t)) return `This ${t.charAt(0).toLowerCase()}${t.slice(1)}.`;
+  return `${t.charAt(0).toUpperCase()}${t.slice(1)}.`;
+}
+
+/** "config.selectors.item" -> "Selectors: item"; "suggestionId" -> "Suggestion id". */
+function pathLabel(path: string): string {
+  const inner = path.startsWith('config.') ? path.slice('config.'.length) : path;
+  const name = inner
+    .split('.')
+    .filter((p) => !/^\d+$/.test(p))
+    .map((p) => p.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase())
+    .join('.');
+  return fieldLabel({ name } as ConfigField);
+}
+
+/**
+ * Place the API's field errors (contract 4.1 RefusalOut.errors) on the form:
+ * record keys by name, `config.<path>` on the config input whose name is that
+ * path or its longest prefix ("config.queries.0" on "queries"), or on the JSON
+ * input when the type has no field list. The rest come back as sentences to
+ * list under the form.
+ */
+export function placeServerErrors(errors: FieldError[], fields: ConfigField[] | null): { placed: FormErrors; unplaced: string[] } {
+  const placed: FormErrors = {};
+  const unplaced: string[] = [];
+  const add = (current: string | undefined, text: string) => (current ? `${current} ${text}` : text);
+  for (const e of errors) {
+    const text = fieldMessage(e.message);
+    if (!text) continue;
+    const field = e.field;
+    if (field && (RECORD_FIELDS as readonly string[]).includes(field)) {
+      const key = field as RecordField;
+      placed[key] = add(placed[key], text);
+      continue;
+    }
+    if (field && (field === 'config' || field.startsWith('config.'))) {
+      const path = field.slice('config.'.length);
+      let target: string | null = null;
+      if (!fields) target = WHOLE_CONFIG;
+      else if (field !== 'config') {
+        for (const f of fields) if ((path === f.name || path.startsWith(`${f.name}.`)) && (!target || f.name.length > target.length)) target = f.name;
+      }
+      if (target) {
+        const config = (placed.config ??= {});
+        config[target] = add(config[target], text);
+        continue;
+      }
+    }
+    const bare = e.message.trim().replace(/[.\s]+$/, '');
+    unplaced.push(field ? `${pathLabel(field)}: ${bare}.` : text);
+  }
+  return { placed, unplaced };
 }

@@ -42,6 +42,22 @@ test('member: mute a source and suggest one', async ({ page }, testInfo) => {
   ]);
 });
 
+test('member: past the daily limit the suggestion form says so and stays filled', async ({ page }, testInfo) => {
+  await stubSession(page, testInfo.testId, { role: 'member', suggestionsPerDay: 1 });
+  await page.setViewportSize(DESKTOP);
+  await open(page, '/sources');
+  const form = page.getByRole('form', { name: 'Suggest a source' });
+  await form.getByLabel('Web address').fill('https://www.impacthub.rw/events');
+  await form.getByRole('button', { name: 'Send suggestion' }).click();
+  await expect(form.getByText('Thanks. An admin will look at it; you can follow it below.')).toBeVisible();
+  await form.getByLabel('Web address').fill('https://www.rdb.rw/');
+  await form.getByLabel('What it covers').fill('RDB calls');
+  await form.getByRole('button', { name: 'Send suggestion' }).click();
+  await expect(form.getByText('You can suggest up to 1 sources a day. Please try again tomorrow.')).toBeVisible();
+  await expect(form.getByLabel('Web address')).toHaveValue('https://www.rdb.rw/');
+  await expect(form.getByLabel('What it covers')).toHaveValue('RDB calls');
+});
+
 test('admin: create a source, test run preview (nothing saved), save as testing', async ({ page }, testInfo) => {
   const api = await stubSession(page, testInfo.testId);
   await page.setViewportSize(DESKTOP);
@@ -100,6 +116,49 @@ test('admin: create a source, test run preview (nothing saved), save as testing'
       },
     ],
   ]);
+});
+
+test('admin: a private address is refused, with the plain message under its field', async ({ page }, testInfo) => {
+  const api = await stubSession(page, testInfo.testId);
+  await page.setViewportSize(DESKTOP);
+  await open(page, '/admin/sources/new');
+  const form = page.getByRole('form', { name: 'New source' });
+  await form.getByLabel('Name', { exact: true }).fill('Intranet feed');
+  await form.getByLabel('Home page').fill('http://10.0.0.1/');
+  await form.getByRole('button', { name: 'Events' }).click();
+  await form.getByRole('button', { name: 'News' }).click();
+  await form.getByRole('button', { name: 'RSS feed' }).click();
+  const feed = form.getByLabel('Feed url');
+  await feed.fill('http://127.0.0.1/feed');
+
+  // Test run: refused before any fetch; the message sits under Feed url.
+  await page.getByRole('button', { name: 'Test run' }).click();
+  await expect(page.getByText('Blackkite did not run the test. Feed URL: address 127.0.0.1 is not public.')).toBeVisible();
+  await expect(feed).toHaveAttribute('aria-invalid', 'true');
+  await expect(feed).toHaveAccessibleDescription(/Address 127\.0\.0\.1 is not public\.$/);
+  await expect(form.getByText('Address 127.0.0.1 is not public.', { exact: true })).toBeVisible();
+
+  // Save: both private addresses, each under its own field, the detail as the summary; nothing created.
+  await form.getByRole('button', { name: 'Save as testing' }).click();
+  await expect(form.getByText('Blackkite did not accept this source. Home page: address 10.0.0.1 is not public. Feed URL: address 127.0.0.1 is not public.')).toBeVisible();
+  await expect(form.getByLabel('Home page')).toHaveAccessibleDescription('Address 10.0.0.1 is not public.');
+  await expect(feed).toHaveAccessibleDescription(/Address 127\.0\.0\.1 is not public\.$/);
+  await expect(page).toHaveURL(/\/admin\/sources\/new$/);
+  await expect(feed).toHaveValue('http://127.0.0.1/feed');
+  expect((await api.seen()).filter((r) => r.method === 'POST').map((r) => r.url)).toEqual(['/api/admin/sources/test-run', '/api/admin/sources']);
+});
+
+test('admin: a busy test run says so and keeps the form', async ({ page }, testInfo) => {
+  await stubSession(page, testInfo.testId, { testRunBusy: true });
+  await page.setViewportSize(DESKTOP);
+  await open(page, '/admin/sources/new');
+  const form = page.getByRole('form', { name: 'New source' });
+  await form.getByRole('button', { name: 'RSS feed' }).click();
+  await form.getByLabel('Feed url').fill('https://www.ktpress.rw/feed');
+  await page.getByRole('button', { name: 'Test run' }).click();
+  await expect(page.getByText('Another test run is in progress; try again in a minute.')).toBeVisible();
+  await expect(form.getByLabel('Feed url')).toHaveValue('https://www.ktpress.rw/feed');
+  await expect(page.getByRole('button', { name: 'Test run' })).toBeEnabled();
 });
 
 test('admin: promotion is refused with the gate explained; run history and error log', async ({ page }, testInfo) => {

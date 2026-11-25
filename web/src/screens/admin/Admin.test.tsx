@@ -87,11 +87,13 @@ test('new source: the config form is rendered from collector-types; a test run p
   });
   const router = renderAt('/admin/sources/new');
   const form = within(await screen.findByRole('form', { name: EDITOR_COPY.newTitle }));
+  // The form waits for collector-types, so the settings are the API's fields, never the JSON fallback.
+  expect(form.queryByLabelText(EDITOR_COPY.wholeConfig)).toBeNull();
   fireEvent.click(form.getByRole('button', { name: 'RSS feed' }));
-  expect(form.getByLabelText('Feed url')).toHaveAccessibleDescription('Address of the RSS or Atom feed.');
+  expect(await form.findByLabelText('Feed url')).toHaveAccessibleDescription('Address of the RSS or Atom feed.');
   fireEvent.click(form.getByRole('button', { name: 'Web page list' }));
+  expect(await form.findByLabelText('Selectors: item')).toBeInTheDocument();
   expect(form.queryByLabelText('Feed url')).toBeNull();
-  expect(form.getByLabelText('Selectors: item')).toBeInTheDocument();
   expect(form.getByLabelText('Max pages (optional)')).toBeInTheDocument();
 
   // A test run checks only the config.
@@ -140,6 +142,21 @@ test('new source: the config form is rendered from collector-types; a test run p
   expect(await screen.findByText(EDITOR_COPY.created)).toBeInTheDocument();
 });
 
+test('new source: the editor waits for collector-types (a slow answer never leaves the config as JSON)', async () => {
+  let answer: (v: unknown) => void = () => {};
+  const slow = new Promise((resolve) => (answer = resolve));
+  editorRoutes({ 'GET /api/admin/collector-types': () => slow });
+  renderAt('/admin/sources/new');
+  // Signed in, the page is drawn, but no form until the types arrive.
+  await waitFor(() => expect(screen.getByRole('heading', { name: EDITOR_COPY.newTitle })).toBeInTheDocument());
+  expect(screen.queryByRole('form', { name: EDITOR_COPY.newTitle })).toBeNull();
+  answer(COLLECTOR_TYPES);
+  const form = within(await screen.findByRole('form', { name: EDITOR_COPY.newTitle }));
+  fireEvent.click(form.getByRole('button', { name: 'RSS feed' }));
+  expect(await form.findByLabelText('Feed url')).toBeInTheDocument();
+  expect(form.queryByLabelText(EDITOR_COPY.wholeConfig)).toBeNull();
+});
+
 test('a failed test run shows its error; a refused one the API\'s reason', async () => {
   const api = editorRoutes({ 'POST /api/admin/sources/test-run': { ...PREVIEW, ok: false, error: 'HTTP 403 from www.umucyo.gov.rw', items: [], totalParsed: 0 } });
   renderAt('/admin/sources/src-1');
@@ -150,8 +167,93 @@ test('a failed test run shows its error; a refused one the API\'s reason', async
   expect(await screen.findByText(EDITOR_COPY.previewRefused('config: selector does not parse'))).toBeInTheDocument();
 });
 
+test('a refused save: each server message under its field, the detail as the summary, the rest listed under the form', async () => {
+  editorRoutes({
+    'PATCH /api/admin/sources/src-1': status(422, {
+      detail: 'Home page: address 10.0.0.1 is not public. List URL: address 127.0.0.1 is not public. Selectors: item: invalid CSS selector. Wat: is not a setting this accepts.',
+      errors: [
+        { field: 'homeUrl', message: 'address 10.0.0.1 is not public' },
+        { field: 'config.list_url', message: 'address 127.0.0.1 is not public' },
+        { field: 'config.selectors.item', message: 'invalid CSS selector' },
+        { field: 'config.wat', message: 'is not a setting this accepts' },
+      ],
+    }),
+  });
+  renderAt('/admin/sources/src-1');
+  const form = within(await screen.findByRole('form', { name: 'Umucyo e-procurement' }));
+  fireEvent.click(form.getByRole('button', { name: EDITOR_COPY.save }));
+  expect(
+    await screen.findByText(
+      EDITOR_COPY.refused('Home page: address 10.0.0.1 is not public. List URL: address 127.0.0.1 is not public. Selectors: item: invalid CSS selector. Wat: is not a setting this accepts.'),
+    ),
+  ).toBeInTheDocument();
+  expect(form.getByLabelText(EDITOR_COPY.homeUrl)).toHaveAccessibleDescription('Address 10.0.0.1 is not public.');
+  expect(form.getByLabelText(EDITOR_COPY.homeUrl)).toHaveAttribute('aria-invalid', 'true');
+  expect(form.getByLabelText('List url')).toHaveAccessibleDescription('Address of the listing page (page 1). Address 127.0.0.1 is not public.');
+  expect(form.getByLabelText('Selectors: item')).toHaveAccessibleDescription(expect.stringContaining('Invalid CSS selector.'));
+  expect(form.getByText(EDITOR_COPY.otherProblems)).toBeInTheDocument();
+  expect(form.getByText('Wat: is not a setting this accepts.')).toBeInTheDocument();
+  // The values stay as typed.
+  expect(form.getByLabelText('List url')).toHaveValue('https://www.umucyo.gov.rw/tenders');
+});
+
+test('a taken name (409 with the name field): said plainly, and under the name', async () => {
+  editorRoutes({
+    'PATCH /api/admin/sources/src-1': status(409, {
+      detail: 'Name: a source with that name already exists.',
+      errors: [{ field: 'name', message: 'a source with that name already exists' }],
+    }),
+  });
+  renderAt('/admin/sources/src-1');
+  const form = within(await screen.findByRole('form', { name: 'Umucyo e-procurement' }));
+  fireEvent.click(form.getByRole('button', { name: EDITOR_COPY.save }));
+  expect(await screen.findByText(EDITOR_COPY.nameTaken)).toBeInTheDocument();
+  expect(form.getByLabelText(EDITOR_COPY.name)).toHaveAccessibleDescription('A source with that name already exists.');
+});
+
+test('test runs: a refused config puts the messages on its fields; a preview with errors too; a busy server says so and keeps the form', async () => {
+  const api = editorRoutes({
+    'POST /api/admin/sources/test-run': status(422, {
+      detail: 'List URL: address 127.0.0.1 is not public.',
+      errors: [{ field: 'config.list_url', message: 'address 127.0.0.1 is not public' }],
+    }),
+  });
+  renderAt('/admin/sources/src-1');
+  const form = within(await screen.findByRole('form', { name: 'Umucyo e-procurement' }));
+  fireEvent.change(form.getByLabelText('List url'), { target: { value: 'http://127.0.0.1/' } });
+  fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.testRun }));
+  expect(await screen.findByText(EDITOR_COPY.previewRefused('List URL: address 127.0.0.1 is not public.'))).toBeInTheDocument();
+  expect(form.getByLabelText('List url')).toHaveAccessibleDescription(expect.stringContaining('Address 127.0.0.1 is not public.'));
+
+  api.on('POST /api/admin/sources/test-run', {
+    ...PREVIEW,
+    ok: false,
+    error: 'Selectors: item: invalid CSS selector.',
+    errors: [{ field: 'config.selectors.item', message: 'invalid CSS selector' }],
+    items: [],
+    totalParsed: 0,
+    requestsMade: 0,
+  });
+  fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.testRun }));
+  expect(await screen.findByText(EDITOR_COPY.previewFailed('Selectors: item: invalid CSS selector.'))).toBeInTheDocument();
+  expect(form.getByLabelText('Selectors: item')).toHaveAccessibleDescription(expect.stringContaining('Invalid CSS selector.'));
+
+  api.on('POST /api/admin/sources/test-run', status(429, { detail: 'Another test run is in progress; try again in a minute.' }));
+  fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.testRun }));
+  expect(await screen.findByText('Another test run is in progress; try again in a minute.')).toBeInTheDocument();
+  expect(form.getByLabelText('List url')).toHaveValue('http://127.0.0.1/');
+  expect(screen.getByRole('button', { name: EDITOR_COPY.testRun })).toBeEnabled();
+});
+
 test('existing source: record and config filled in; status with the promotion gate; a refused promotion explains the gate', async () => {
-  const api = editorRoutes({ 'POST /api/admin/sources/src-1/status': status(409, { detail: 'needs 2 successful runs that found items since its config last changed; has 1' }) });
+  const api = editorRoutes({
+    'POST /api/admin/sources/src-1/status': status(409, {
+      detail: 'This source needs 2 successful runs that found items since its config last changed before it can be made active; it has 0.',
+      errors: [],
+      goodRuns: 0,
+      needed: 2,
+    }),
+  });
   renderAt('/admin/sources/src-1');
   const form = within(await screen.findByRole('form', { name: 'Umucyo e-procurement' }));
   expect(form.getByLabelText(EDITOR_COPY.name)).toHaveValue('Umucyo e-procurement');
@@ -163,8 +265,41 @@ test('existing source: record and config filled in; status with the promotion ga
   expect(card.getByText(/Needs 2 good runs since the last config change: 1 so far\./)).toBeInTheDocument();
   expect(card.getAllByRole('button').map((b) => b.textContent)).toEqual(['Make active', 'Pause', 'Retire']);
   fireEvent.click(card.getByRole('button', { name: 'Make active' }));
-  expect(await card.findByText('Not changed: it stays testing. Needs 2 good runs since the last config change: 1 so far.')).toBeInTheDocument();
+  // The server's numbers (0), not the loaded page's (1).
+  expect(await card.findByText('Not changed: it stays testing. Needs 2 good runs since the last config change: 0 so far.')).toBeInTheDocument();
+  expect(card.getByText(/^Needs 2 good runs since the last config change: 0 so far\. A good run/)).toBeInTheDocument();
   expect(api.calls.find((c) => c.key === 'POST /api/admin/sources/src-1/status')!.body).toEqual({ status: 'active' });
+
+  // A status-graph refusal: the server's sentence.
+  api.on('POST /api/admin/sources/src-1/status', status(409, { detail: 'cannot move a source from testing to paused' }));
+  fireEvent.click(card.getByRole('button', { name: 'Pause' }));
+  expect(await card.findByText('Not changed. Cannot move a source from testing to paused.')).toBeInTheDocument();
+});
+
+test('a new action clears the last status line: "Saved as testing…" does not stay next to a refused promotion or a test run', async () => {
+  const api = editorRoutes({
+    'POST /api/admin/sources': (body: Record<string, unknown>) => adminSource({ ...body, id: 'src-9', status: 'testing', promotionRuns: 0 }),
+    'GET /api/admin/sources/src-9': adminSource({ id: 'src-9', name: 'NCST calls', status: 'testing', promotionRuns: 0 }),
+    'GET /api/admin/sources/src-9/runs': { total: 0, items: [] },
+    'POST /api/admin/sources/src-9/status': status(409, { detail: 'Needs runs.', errors: [], goodRuns: 0, needed: 2 }),
+    'POST /api/admin/sources/test-run': PREVIEW,
+  });
+  renderAt('/admin/sources/new');
+  const form = within(await screen.findByRole('form', { name: EDITOR_COPY.newTitle }));
+  fireEvent.change(form.getByLabelText(EDITOR_COPY.name), { target: { value: 'NCST calls' } });
+  fireEvent.change(form.getByLabelText(EDITOR_COPY.homeUrl), { target: { value: 'https://www.ncst.gov.rw/' } });
+  fireEvent.click(form.getByRole('button', { name: 'Funding' }));
+  fireEvent.click(form.getByRole('button', { name: 'The issuer itself' }));
+  fireEvent.click(form.getByRole('button', { name: 'RSS feed' }));
+  fireEvent.change(await form.findByLabelText('Feed url'), { target: { value: 'https://www.ncst.gov.rw/feed' } });
+  fireEvent.click(form.getByRole('button', { name: EDITOR_COPY.create }));
+  expect(await screen.findByText(EDITOR_COPY.created)).toBeInTheDocument();
+
+  const card = within(screen.getByRole('region', { name: EDITOR_COPY.statusRegion }));
+  fireEvent.click(card.getByRole('button', { name: 'Make active' }));
+  expect(await card.findByText(/^Not changed: it stays testing\./)).toBeInTheDocument();
+  expect(screen.queryByText(EDITOR_COPY.created)).toBeNull();
+  expect(api.calls.filter((c) => c.key === 'POST /api/admin/sources/src-9/status')).toHaveLength(1);
 });
 
 test('status change: pause, and the buttons follow the new status', async () => {

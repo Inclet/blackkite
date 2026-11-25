@@ -10,8 +10,10 @@ import {
   fieldKind,
   fieldLabel,
   fieldsFor,
+  fieldMessage,
   flattenFields,
   FORM_COPY,
+  placeServerErrors,
   toForm,
   validate,
   WHOLE_CONFIG,
@@ -148,4 +150,43 @@ test('detailText: a string, or FastAPI\'s list of errors', () => {
     'config: selector does not parse; homeUrl: internal address',
   );
   expect(detailText(undefined)).toBeNull();
+});
+
+test('server field messages read as sentences', () => {
+  expect(fieldMessage('address 127.0.0.1 is not public')).toBe('Address 127.0.0.1 is not public.');
+  expect(fieldMessage('is required')).toBe('This is required.');
+  expect(fieldMessage('must be at least 1.')).toBe('This must be at least 1.');
+  expect(fieldMessage('  ')).toBe('');
+});
+
+test('server field errors land on their inputs; config paths on the field or its longest prefix; the rest are listed', () => {
+  const SEARCH = fieldsFor(TYPES, 'search_query')!;
+  expect(SEARCH.some((f) => f.name === 'queries')).toBe(true);
+  const { placed, unplaced } = placeServerErrors(
+    [
+      { field: 'homeUrl', message: 'address 10.0.0.1 is not public' },
+      { field: 'name', message: 'a source with that name already exists' },
+      { field: 'config.queries.0', message: 'must not be empty' },
+      { field: 'config.wat', message: 'is not a setting this accepts' },
+      { field: 'suggestionId', message: 'not found' },
+      { field: null, message: 'Too many problems' },
+    ],
+    SEARCH,
+  );
+  expect(placed).toEqual({
+    homeUrl: 'Address 10.0.0.1 is not public.',
+    name: 'A source with that name already exists.',
+    config: { queries: 'This must not be empty.' },
+  });
+  expect(unplaced).toEqual(['Wat: is not a setting this accepts.', 'Suggestion id: not found.', 'Too many problems.']);
+
+  const nested = placeServerErrors(
+    [
+      { field: 'config.selectors.item', message: "invalid CSS selector 'li['" },
+      { field: 'config.selectors.item', message: 'second' },
+    ],
+    HTML,
+  );
+  expect(nested.placed.config).toEqual({ 'selectors.item': "Invalid CSS selector 'li['. Second." });
+  expect(placeServerErrors([{ field: 'config.feed_url', message: 'is required' }], null).placed.config).toEqual({ [WHOLE_CONFIG]: 'This is required.' });
 });

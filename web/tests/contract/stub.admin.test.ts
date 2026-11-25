@@ -103,10 +103,43 @@ test('admin source routes, with the bodies the editor builds', async () => {
   expect(failed.items.map((r) => r.status)).toEqual(['failed']);
 });
 
-test('the promotion gate refuses; old /admin API paths are gone', async () => {
+test('the promotion gate refuses with its numbers; old /admin API paths are gone', async () => {
   const refused = await call('c3', 'POST', '/api/admin/sources/src-umucyo/status', { status: 'active' });
   expect(refused.status).toBe(409);
+  expect(refused.json).toEqual({ detail: expect.stringMatching(/^This source needs 2 .* it has 1\.$/), errors: [], goodRuns: 1, needed: 2 });
   expect((await call('c3', 'GET', '/admin/sources')).status).toBe(404);
+});
+
+test('refusals answer {detail, errors} like RefusalOut: private addresses, a taken name, missing fields; 429s carry a detail', async () => {
+  const field = { field: 'config.feed_url', message: 'address 127.0.0.1 is not public' };
+  const ran = await call('c5', 'POST', '/api/admin/sources/test-run', { collectorType: 'rss', config: { feed_url: 'http://127.0.0.1/feed' }, homeUrl: null, streams: ['tender'], rateLimit: null });
+  expect(ran).toEqual({ status: 422, json: { detail: 'Feed URL: address 127.0.0.1 is not public.', errors: [field] } });
+  const body = { name: 'X', homeUrl: 'http://10.0.0.1/', streams: ['event'], kind: 'news', collectorType: 'rss', config: { feed_url: 'http://127.0.0.1/feed' } };
+  expect((await call('c5', 'POST', '/api/admin/sources', body)).json).toEqual({
+    detail: 'Home page: address 10.0.0.1 is not public. Feed URL: address 127.0.0.1 is not public.',
+    errors: [{ field: 'homeUrl', message: 'address 10.0.0.1 is not public' }, field],
+  });
+  const missing = await call('c5', 'POST', '/api/admin/sources', { name: 'Y' });
+  expect(missing.status).toBe(422);
+  expect((missing.json as { errors: { field: string }[] }).errors.map((e) => e.field)).toEqual(['homeUrl', 'streams', 'kind', 'collectorType']);
+  const taken = await call('c5', 'PATCH', '/api/admin/sources/src-umucyo', { name: 'RSE bond market' });
+  expect(taken).toEqual({ status: 409, json: { detail: 'Name: a source with that name already exists.', errors: [{ field: 'name', message: 'a source with that name already exists' }] } });
+
+  // A stored config the API refuses: PreviewOut with errors.
+  const sources = (await call('c5', 'GET', '/api/admin/sources')).json as Record<string, unknown>[];
+  const umucyo = sources.find((x) => x.id === 'src-umucyo')!;
+  await fetch(`${base}/__stub/sessions/c7`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sources: [{ ...umucyo, config: { list_url: 'http://127.0.0.1/', selectors: { item: 'tr', title: 'a' } } }] }),
+  });
+  const saved = await call('c7', 'POST', '/api/admin/sources/src-umucyo/test-run');
+  expect(fits(saved.json, 'PreviewOut')).toEqual([]);
+  expect(saved.json).toMatchObject({ ok: false, error: 'List URL: address 127.0.0.1 is not public.', errors: [{ field: 'config.list_url', message: 'address 127.0.0.1 is not public' }] });
+
+  await fetch(`${base}/__stub/sessions/c6`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ testRunBusy: true, suggestionsPerDay: 0 }) });
+  expect(await call('c6', 'POST', '/api/admin/sources/src-umucyo/test-run')).toEqual({ status: 429, json: { detail: 'Another test run is in progress; try again in a minute.' } });
+  expect((await call('c6', 'POST', '/api/source-suggestions', { url: 'https://www.rdb.rw/' })).status).toBe(429);
 });
 
 test('suggestions, review, users and invites', async () => {

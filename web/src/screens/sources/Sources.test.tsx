@@ -130,6 +130,23 @@ test('a refused suggestion and an unreachable server say so', async () => {
   expect(await screen.findByText(/Your suggestion was not sent/)).toBeInTheDocument();
 });
 
+test('over the daily limit (429): the API\'s sentence, and the form stays filled', async () => {
+  const limit = 'You can suggest up to 10 sources a day. Please try again tomorrow.';
+  const api = routes({ 'POST /api/source-suggestions': status(429, { detail: limit }) });
+  renderAt('/sources');
+  const form = within(await screen.findByRole('form', { name: SOURCES_COPY.suggestLabel }));
+  fireEvent.change(form.getByLabelText(SOURCES_COPY.url), { target: { value: 'https://www.rdb.rw/' } });
+  fireEvent.change(form.getByLabelText(SOURCES_COPY.covers), { target: { value: 'RDB calls' } });
+  fireEvent.click(form.getByRole('button', { name: SOURCES_COPY.send }));
+  expect(await form.findByText(limit)).toBeInTheDocument();
+  expect(form.getByLabelText(SOURCES_COPY.url)).toHaveValue('https://www.rdb.rw/');
+  expect(form.getByLabelText(SOURCES_COPY.covers)).toHaveValue('RDB calls');
+  expect(form.getByRole('button', { name: SOURCES_COPY.send })).toBeEnabled();
+  api.on('POST /api/source-suggestions', status(429));
+  fireEvent.click(form.getByRole('button', { name: SOURCES_COPY.send }));
+  expect(await form.findByText(SOURCES_COPY.tooMany)).toBeInTheDocument();
+});
+
 test('your earlier suggestions show their status in words', async () => {
   routes({
     'GET /api/source-suggestions': [
