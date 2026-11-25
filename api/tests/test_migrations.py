@@ -69,6 +69,7 @@ def test_schema_has_every_spec_table():
         "session",
         "login_token",
         "http_cache",  # conditional GET cache for collectors (not per user)
+        "alert_log",  # urgent alerts sent, one per (user, opportunity)
     }
     assert spec == set(Base.metadata.tables)
 
@@ -243,3 +244,28 @@ def test_0005_raises_sub_second_rate_limits_to_one(make_database):
     assert rows == [("fast", 1.0), ("one", 1.0), ("slow", 7.5), ("unset", None)]
     _exec(url, "UPDATE source SET rate_limit = 0.5 WHERE name = 'slow'")
     command.upgrade(cfg, "head")
+
+
+def test_0007_digest_date_from_sent_at_and_unique(make_database):
+    url = make_database("bk_migr")
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0006")
+    _exec(url, "INSERT INTO \"user\" (email) VALUES ('a@example.com')")
+    # 23:30 UTC on 29 Nov is 01:30 on Monday 30 Nov in Kigali.
+    _exec(
+        url,
+        """INSERT INTO digest_log (user_id, sent_at)
+           SELECT id, '2026-11-29 23:30:00+00' FROM "user" """,
+    )
+    command.upgrade(cfg, "0007")
+    assert _exec(url, "SELECT digest_date::text, details::text FROM digest_log") == [
+        ("2026-11-30", "{}")
+    ]
+    with pytest.raises(sa.exc.IntegrityError):
+        _exec(
+            url,
+            """INSERT INTO digest_log (user_id, digest_date)
+               SELECT id, '2026-11-30' FROM "user" """,
+        )
+    command.downgrade(cfg, "0006")
+    assert _exec(url, "SELECT count(*) FROM digest_log") == [(1,)]

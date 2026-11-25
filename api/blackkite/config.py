@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     smtp_password: SecretStr | None = None
     smtp_starttls: bool = False
 
+    # Weekly digest: Mondays at this hour, Africa/Kigali (decision 18).
+    digest_hour: int = Field(default=7, ge=0, le=23)
+
     # Bootstrap
     first_admin_email: str | None = None
 

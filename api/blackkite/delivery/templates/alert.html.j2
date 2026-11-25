@@ -1,0 +1,71 @@
+{#
+  Urgent alert email (spec 8): items above the user's alert level that close
+  within 5 days, sent the day they are found. Not on any board: built from the
+  digest's header, item list, button and footer (listed for design review).
+#}
+{% from "_components.html.j2" import font, table, item_list %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>{{ v.subject }}</title>
+</head>
+<body style="margin: 0; padding: 0; background: #F6F5F2">
+<table {{ table|safe }} width="100%" style="width: 100%; border-collapse: collapse; background: #F6F5F2">
+<tr>
+<td align="center" style="padding: 28px 40px">
+<table {{ table|safe }} width="560" style="width: 560px; border-collapse: separate; background: #FFFFFF; border: 1px solid #E7E5E0; border-radius: 12px; color: #2B2A28; {{ font }}">
+<tr>
+<td style="padding: 24px 30px 0 30px">
+<table {{ table|safe }} width="100%" style="width: 100%; border-collapse: collapse">
+<tr>
+<td style="padding: 0 0 16px 0; border-bottom: 1px solid #E7E5E0">
+<table {{ table|safe }} width="100%" style="width: 100%; border-collapse: collapse">
+<tr>
+<td width="42" style="width: 42px; vertical-align: middle"><img src="{{ logo_src }}" width="42" height="28" alt="Blackkite" style="display: block; width: 42px; height: 28px; border: 0"></td>
+<td style="padding: 0 0 0 8px; vertical-align: middle; {{ font }}; font-size: 20px; font-weight: bold; letter-spacing: -0.02em; color: #2B2A28">blackkite</td>
+<td align="right" style="vertical-align: middle; {{ font }}; font-size: 13px; color: #5F5D59; text-align: right">{{ v.issue_date_text }}</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding: 18px 30px 0 30px; {{ font }}; font-size: 22px; line-height: 28px; font-weight: bold; color: #2B2A28">{{ v.heading }}</td>
+</tr>
+<tr>
+<td style="padding: 6px 30px 0 30px; {{ font }}; font-size: 15px; line-height: 23px; color: #5F5D59">{{ v.intro }}</td>
+</tr>
+<tr>
+<td style="padding: 18px 30px 0 30px">
+{{ item_list(v.items) -}}
+</td>
+</tr>
+<tr>
+<td style="padding: 18px 30px 0 30px">
+<table {{ table|safe }} style="border-collapse: separate">
+<tr>
+<td style="border-radius: 8px; background: #2B2A28"><a href="{{ v.cta_url }}" style="display: block; padding: 14px 22px; border-radius: 8px; background: #2B2A28; {{ font }}; font-size: 15px; font-weight: bold; color: #FFFFFF; text-decoration: none">{{ cta_label }}</a></td>
+</tr>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding: 18px 30px 24px 30px">
+<table {{ table|safe }} width="100%" style="width: 100%; border-collapse: collapse">
+<tr>
+<td style="padding: 16px 0 0 0; border-top: 1px solid #E7E5E0; {{ font }}; font-size: 12px; line-height: 19px; color: #5F5D59">{{ v.footer_line }} <a href="{{ v.settings_url }}" style="color: #5F5D59">Change alert settings</a>.</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>

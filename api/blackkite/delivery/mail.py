@@ -3,6 +3,17 @@
 `console` prints messages to stdout (dev); `smtp` sends through an SMTP server
 (dev target: Mailpit on port 1025). The production provider is chosen later
 (decision 13); it only has to implement `MailTransport.send`.
+
+A `Mail` is plain text, optionally with an HTML alternative and inline images
+the HTML refers to as ``cid:<content id>`` (the digest's kite logo is
+``cid:kite-logo``). `build_message` turns it into the MIME structure every
+transport sends::
+
+    multipart/alternative
+      text/plain
+      multipart/related
+        text/html
+        image/png  (Content-ID: <kite-logo>, inline)
 """
 
 from __future__ import annotations
@@ -18,10 +29,43 @@ from blackkite.config import Settings, get_settings
 
 
 @dataclass(frozen=True)
+class InlineImage:
+    """An image the HTML part shows through ``cid:{cid}``."""
+
+    cid: str
+    data: bytes
+    filename: str
+    subtype: str = "png"
+
+
+@dataclass(frozen=True)
 class Mail:
     to: str
     subject: str
     text: str
+    html: str | None = None
+    inline: tuple[InlineImage, ...] = ()
+
+
+def build_message(mail: Mail, sender: str) -> EmailMessage:
+    msg = EmailMessage()
+    msg["From"] = sender
+    msg["To"] = mail.to
+    msg["Subject"] = mail.subject
+    msg.set_content(mail.text)
+    if mail.html is not None:
+        msg.add_alternative(mail.html, subtype="html")
+        html_part = msg.get_payload()[1]
+        for img in mail.inline:
+            html_part.add_related(
+                img.data,
+                maintype="image",
+                subtype=img.subtype,
+                cid=f"<{img.cid}>",
+                filename=img.filename,
+                disposition="inline",
+            )
+    return msg
 
 
 class MailTransport(Protocol):
@@ -35,12 +79,30 @@ class ConsoleTransport:
 
     def send(self, mail: Mail) -> None:
         with self._lock:
-            print(
-                f"--- mail (console transport) ---\nFrom: {self.sender}\nTo: {mail.to}\n"
-                f"Subject: {mail.subject}\n\n{mail.text}\n--- end mail ---",
-                file=sys.stdout,
-                flush=True,
-            )
+            print(format_console(mail, self.sender), file=sys.stdout, flush=True)
+
+
+def format_console(mail: Mail, sender: str) -> str:
+    """Both parts as text: the plain part, then the HTML source, then a line per
+    inline image (not its bytes)."""
+    out = [
+        "--- mail (console transport) ---",
+        f"From: {sender}",
+        f"To: {mail.to}",
+        f"Subject: {mail.subject}",
+        "",
+    ]
+    if mail.html is None:
+        out += [mail.text, "--- end mail ---"]
+        return "\n".join(out)
+    out += ["--- text/plain ---", mail.text, "--- text/html ---", mail.html]
+    for img in mail.inline:
+        out.append(
+            f"--- inline image/{img.subtype}: cid:{img.cid} "
+            f"({img.filename}, {len(img.data)} bytes) ---"
+        )
+    out.append("--- end mail ---")
+    return "\n".join(out)
 
 
 class SmtpTransport:
@@ -48,11 +110,7 @@ class SmtpTransport:
         self.s = settings
 
     def send(self, mail: Mail) -> None:
-        msg = EmailMessage()
-        msg["From"] = self.s.mail_from
-        msg["To"] = mail.to
-        msg["Subject"] = mail.subject
-        msg.set_content(mail.text)
+        msg = build_message(mail, self.s.mail_from)
         with smtplib.SMTP(self.s.smtp_host, self.s.smtp_port, timeout=10) as smtp:
             if self.s.smtp_starttls:
                 smtp.starttls()

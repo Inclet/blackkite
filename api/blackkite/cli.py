@@ -104,6 +104,68 @@ def digest_preview(
     typer.echo(f"wrote {out} and {logo_path}")
 
 
+@app.command("digest")
+def digest_cmd(
+    user: str = typer.Option(..., "--user", help="Email of the account."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Print the rendered digest; send and log nothing."
+    ),
+    at: str | None = typer.Option(
+        None, hidden=True, help="ISO time to build the digest for (tests)."
+    ),
+) -> None:
+    """Build one user's weekly digest now. With --dry-run, print both parts
+    (plain text and HTML) without sending or logging. Without it, send through
+    the configured transport (console or Mailpit in dev) and log it; a digest
+    already sent today (Kigali) is not sent again.
+
+    Exit codes: 0 sent or printed, 1 no such user, 2 nothing to send."""
+    from datetime import UTC, datetime
+
+    from blackkite.auth.service import find_user_by_email
+    from blackkite.db.session import get_sessionmaker
+    from blackkite.delivery.build import (
+        build_digest,
+        digest_mail,
+        email_setting,
+        send_digest,
+    )
+    from blackkite.delivery.mail import format_console, make_transport
+
+    settings = get_settings()
+    now = datetime.fromisoformat(at) if at else datetime.now(UTC)
+    with get_sessionmaker()() as db:
+        account = find_user_by_email(db, user)
+        if account is None:
+            typer.echo("error: no account with that email", err=True)
+            raise typer.Exit(1)
+        if dry_run:
+            built = build_digest(db, account, settings, now)
+            db.rollback()
+            if built.view is None:
+                typer.echo("nothing to send: no items and no saved items closing")
+                raise typer.Exit(2)
+            setting = email_setting(db, account)
+            to = setting.address if setting else account.email
+            typer.echo(format_console(digest_mail(built.view, to), "dry run"))
+            return
+        out = send_digest(
+            db,
+            account,
+            settings,
+            make_transport(settings),
+            now,
+            respect_frequency=False,
+        )
+    if out.status == "empty":
+        typer.echo("nothing to send: no items and no saved items closing")
+        raise typer.Exit(2)
+    if out.status != "sent":
+        typer.echo(f"not sent: {out.status.replace('_', ' ')}")
+        raise typer.Exit(2)
+    typer.echo("digest sent")
+
+
 # --- sources and worker -------------------------------------------------------------
 
 

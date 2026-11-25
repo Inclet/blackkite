@@ -1,0 +1,162 @@
+"""Urgent alerts (spec 8): above threshold, deadline under 5 days, found today,
+once per item."""
+
+from __future__ import annotations
+
+from datetime import timedelta
+
+import pytest
+import sqlalchemy as sa
+
+from blackkite.db.models import AlertLog, DigestSetting
+from blackkite.delivery.alert import AlertView, render_alert
+from blackkite.delivery.alerts import send_alerts, users_with_alerts
+from blackkite.delivery.mail import MemoryTransport
+from tests import factories as f
+from tests.conftest import make_user
+from tests.factories import NOW, kigali
+
+TODAY_9AM = kigali(2026, 11, 24, 9)
+YESTERDAY = NOW - timedelta(days=1)
+
+
+@pytest.fixture
+def ana(db):
+    u = make_user(db, "ana@example.com")
+    db.add(
+        DigestSetting(
+            user_id=u.id, channel="email", address="ana@example.com", alert_threshold=70
+        )
+    )
+    db.commit()
+    return u
+
+
+@pytest.fixture
+def w(db, ana):
+    ns = type("NS", (), {})()
+    ns.src = f.source(db, "Src", publisher="Job in Rwanda")
+    ns.prof = f.profile(db, ana, "Ironji-Trade")
+    db.commit()
+    return ns
+
+
+def urgent(db, user, w, title, value=80, *, created=TODAY_9AM, scored=None, **kw):
+    kw.setdefault("deadline_at", NOW + timedelta(days=3))
+    o = f.opportunity(db, title, created_at=created, **kw)
+    f.link(db, o, w.src, f"https://example.org/{title.replace(' ', '-')}")
+    s = f.score(db, user, o, w.prof, value, reason="It asks for cold chain transport")
+    s.created_at = scored or created
+    db.flush()
+    return o
+
+
+def test_sends_once_for_new_urgent_items(db, ana, w, settings):
+    a = urgent(db, ana, w, "Cold chain tender", 90, deadline_at=NOW + timedelta(days=2))
+    b = urgent(db, ana, w, "Dry freight tender", 75)
+    db.commit()
+    out = MemoryTransport()
+    assert send_alerts(db, ana, settings, out, NOW) == 2
+    [mail] = out.outbox
+    assert mail.subject == "Two items close within 5 days"
+    assert mail.to == "ana@example.com"
+    assert 'src="cid:kite-logo"' in mail.html and mail.inline[0].cid == "kite-logo"
+    assert mail.text.index("Cold chain tender") < mail.text.index("Dry freight tender")
+    assert "Closing within 5 days" in mail.text
+    assert "Closes Thursday 26 November 2026, 2pm" in mail.text
+    assert {x.opportunity_id for x in db.scalars(sa.select(AlertLog))} == {a.id, b.id}
+    # Later the same day (another ingest cycle): nothing new, nothing sent.
+    assert send_alerts(db, ana, settings, out, NOW + timedelta(hours=2)) == 0
+    assert len(out.outbox) == 1
+
+
+def test_only_qualifying_items(db, ana, w, settings):
+    ben = make_user(db, "ben@example.com")
+    urgent(db, ana, w, "At threshold", 70)  # not above
+    urgent(db, ana, w, "Six days", 90, deadline_at=NOW + timedelta(days=6))
+    urgent(db, ana, w, "Passed", 90, deadline_at=NOW - timedelta(hours=1))
+    urgent(db, ana, w, "Found yesterday", 90, created=YESTERDAY)
+    rescored = urgent(
+        db, ana, w, "Old item, scored today", 90, created=YESTERDAY, scored=TODAY_9AM
+    )
+    dismissed = urgent(db, ana, w, "Dismissed", 90)
+    f.state(db, ana, dismissed, "dismissed")
+    testing = f.source(db, "Testing", status="testing")
+    hidden = f.opportunity(
+        db, "Testing only", deadline_at=NOW + timedelta(days=2), created_at=TODAY_9AM
+    )
+    f.link(db, hidden, testing)
+    f.score(db, ana, hidden, w.prof, 99)
+    filtered = urgent(db, ana, w, "Filtered", 90)
+    db.execute(
+        sa.text(
+            "UPDATE user_opportunity_score SET score_breakdown = "
+            "jsonb_set(score_breakdown, '{hard_filtered}', '\"ineligible\"') "
+            "WHERE opportunity_id = :o"
+        ),
+        {"o": filtered.id},
+    )
+    f.opportunity(
+        db,
+        "Ben's private",
+        visibility="private",
+        owner_user_id=ben.id,
+        deadline_at=NOW + timedelta(days=1),
+        created_at=TODAY_9AM,
+    )
+    db.commit()
+    out = MemoryTransport()
+    assert send_alerts(db, ana, settings, out, NOW) == 1
+    assert out.outbox[0].subject == (
+        "Closes Friday 27 November 2026: Old item, scored today"
+    )
+    assert [x.opportunity_id for x in db.scalars(sa.select(AlertLog))] == [rescored.id]
+
+
+def test_null_threshold_means_no_alerts(db, ana, w, settings):
+    urgent(db, ana, w, "Urgent", 99)
+    db.execute(sa.update(DigestSetting).values(alert_threshold=None))
+    db.commit()
+    assert users_with_alerts(db) == []
+    assert send_alerts(db, ana, settings, MemoryTransport(), NOW) == 0
+
+
+def test_failed_send_is_retried_later(db, ana, w, settings):
+    urgent(db, ana, w, "Urgent", 99)
+    db.commit()
+
+    class Broken:
+        def send(self, mail):
+            raise OSError("down")
+
+    with pytest.raises(OSError):
+        send_alerts(db, ana, settings, Broken(), NOW)
+    assert db.scalar(sa.select(sa.func.count()).select_from(AlertLog)) == 0
+    out = MemoryTransport()
+    assert send_alerts(db, ana, settings, out, NOW) == 1
+
+
+def test_alert_html_is_email_safe():
+    from blackkite.delivery.digest import DigestItem
+
+    view = AlertView(
+        subject="s",
+        issue_date=NOW.date(),
+        heading="Closing within 5 days",
+        intro="Found today.",
+        items=[
+            DigestItem(
+                stream="tender",
+                title="<b>T</b>",
+                url="https://example.org/x",
+                summary="Org.",
+                date_line="Closes Thursday 26 November 2026",
+            )
+        ],
+        cta_url="https://testserver/",
+        settings_url="https://testserver/profiles",
+    )
+    _, html, _ = render_alert(view)
+    assert "<b>T</b>" not in html and "&lt;b&gt;T&lt;/b&gt;" in html
+    for bad in ("<svg", "<style", "class=", "display: flex"):
+        assert bad not in html

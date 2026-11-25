@@ -1,0 +1,193 @@
+"""Feed, shortlist and state changes for one caller (docs/api-contract.md section 2)."""
+
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+
+import sqlalchemy as sa
+from sqlalchemy.orm import Session
+
+from blackkite.db.models import (
+    DigestSetting,
+    Opportunity,
+    OpportunitySource,
+    Source,
+    User,
+    UserOpportunity,
+)
+from blackkite.member import schemas as S
+from blackkite.member.view import (
+    CLOSED_STATUSES,
+    SHORTLIST_STATES,
+    Row,
+    closing_soonest,
+    feed_item,
+    first_name,
+    get_visible,
+    is_closed,
+    kigali_today,
+    load_rows,
+    member_visible,
+    not_only_muted,
+    sort_date,
+    sources_checked,
+)
+from blackkite.pipeline.visibility import visible_source_link
+
+# Upper bound on one feed response (v1 volume is far below it).
+FEED_LIMIT = 500
+
+
+@dataclass(frozen=True, slots=True)
+class FeedFilters:
+    stream: str | None = None
+    profile_id: uuid.UUID | None = None
+    # Deadline window: items whose deadline (events: first day) is within this
+    # many days from today, Kigali calendar. Undated items are left out.
+    window: int | None = None
+    verification: str | None = None
+    source_id: uuid.UUID | None = None
+    # One state; when unset, dismissed items are left out.
+    state: str | None = None
+
+
+def _state_clause(user_id: uuid.UUID, state: str | None) -> sa.ColumnElement[bool]:
+    mine = sa.select(UserOpportunity.opportunity_id).where(
+        UserOpportunity.user_id == user_id
+    )
+    if state is None:
+        return Opportunity.id.not_in(mine.where(UserOpportunity.state == "dismissed"))
+    if state == "unseen":
+        return Opportunity.id.not_in(mine.where(UserOpportunity.state != "unseen"))
+    return Opportunity.id.in_(mine.where(UserOpportunity.state == state))
+
+
+def feed_rows(db: Session, user: User, f: FeedFilters, now: datetime) -> list[Row]:
+    q = sa.select(Opportunity).where(
+        member_visible(user.id),
+        not_only_muted(user.id),
+        _state_clause(user.id, f.state),
+    )
+    if f.state is None:
+        # Closed items are hard-filtered ("deadline passed", spec 7); an explicit
+        # state filter (for example done) still shows them.
+        q = q.where(Opportunity.status.not_in(CLOSED_STATUSES))
+    if f.stream:
+        q = q.where(Opportunity.stream == f.stream)
+    if f.verification:
+        q = q.where(Opportunity.verification == f.verification)
+    if f.source_id:
+        q = q.where(
+            Opportunity.id.in_(
+                sa.select(OpportunitySource.opportunity_id)
+                .join(Source, Source.id == OpportunitySource.source_id)
+                .where(
+                    OpportunitySource.source_id == f.source_id, visible_source_link()
+                )
+            )
+        )
+    opps = db.scalars(q).all()
+    if f.state is None:
+        opps = [o for o in opps if not is_closed(o, now)]
+    if f.window is not None:
+        today = kigali_today(now)
+        last = today + timedelta(days=f.window)
+        opps = [
+            o for o in opps if (d := sort_date(o)) is not None and today <= d <= last
+        ]
+    rows = load_rows(db, user, opps, profile_id=f.profile_id)
+    return closing_soonest(rows, now)[:FEED_LIMIT]
+
+
+def feed_content(
+    db: Session, user: User, f: FeedFilters, now: datetime
+) -> S.FeedContent:
+    channel = db.scalar(
+        sa.select(DigestSetting.channel)
+        .where(DigestSetting.user_id == user.id)
+        .order_by(DigestSetting.created_at)
+        .limit(1)
+    )
+    return S.FeedContent(
+        user=S.FeedUser(name=first_name(user)),
+        sources=sources_checked(db, now),
+        digest=S.FeedDigest(channel=channel or "email"),
+        items=[feed_item(r, now) for r in feed_rows(db, user, f, now)],
+    )
+
+
+def shortlist(db: Session, user: User, now: datetime) -> list[S.FeedItem]:
+    """Saved and acting items, soonest first (closed ones last)."""
+    opps = db.scalars(
+        sa.select(Opportunity).where(
+            member_visible(user.id),
+            Opportunity.id.in_(
+                sa.select(UserOpportunity.opportunity_id).where(
+                    UserOpportunity.user_id == user.id,
+                    UserOpportunity.state.in_(SHORTLIST_STATES),
+                )
+            ),
+        )
+    ).all()
+    rows = load_rows(db, user, opps, keep_filtered=True)
+    return [feed_item(r, now) for r in closing_soonest(rows, now)]
+
+
+def one_row(db: Session, user: User, opportunity_id: uuid.UUID) -> Row | None:
+    opp = get_visible(db, user, opportunity_id)
+    if opp is None:
+        return None
+    return load_rows(db, user, [opp], keep_filtered=True)[0]
+
+
+def _user_opportunity(db: Session, user: User, opp: Opportunity) -> UserOpportunity:
+    uo = db.scalar(
+        sa.select(UserOpportunity).where(
+            UserOpportunity.user_id == user.id,
+            UserOpportunity.opportunity_id == opp.id,
+        )
+    )
+    if uo is None:
+        uo = UserOpportunity(user_id=user.id, opportunity_id=opp.id, state="unseen")
+        db.add(uo)
+    return uo
+
+
+def set_state(
+    db: Session, user: User, opportunity_id: uuid.UUID, body: S.StateIn
+) -> UserOpportunity | None:
+    """Per (user, opportunity), across profiles (decision 19). None if the caller
+    cannot see the item: never write state onto someone else's private item."""
+    opp = get_visible(db, user, opportunity_id)
+    if opp is None:
+        return None
+    uo = _user_opportunity(db, user, opp)
+    uo.state = body.state
+    reason = (body.dismiss_reason or "").strip() or None
+    uo.dismiss_reason = reason if body.state == "dismissed" else None
+    db.flush()
+    return uo
+
+
+def set_note(
+    db: Session, user: User, opportunity_id: uuid.UUID, body: S.NoteIn
+) -> UserOpportunity | None:
+    opp = get_visible(db, user, opportunity_id)
+    if opp is None:
+        return None
+    uo = _user_opportunity(db, user, opp)
+    uo.note = (body.note or "").strip() or None
+    db.flush()
+    return uo
+
+
+def state_out(uo: UserOpportunity) -> S.UserStateOut:
+    return S.UserStateOut(
+        opportunity_id=str(uo.opportunity_id),
+        state=uo.state,
+        dismiss_reason=uo.dismiss_reason,
+        note=uo.note,
+        updated_at=uo.updated_at,
+    )

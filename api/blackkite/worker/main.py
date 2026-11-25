@@ -13,12 +13,19 @@ holding the source's lock, they are marked failed with "worker stopped".
 
 A second job runs once a day (and once at start-up) to move catalogue statuses on
 as deadlines pass (open -> closing_soon -> expired), under its own advisory lock.
+
+Delivery (delivery/jobs.py): the weekly digest runs on Mondays at
+``BK_DIGEST_HOUR`` Africa/Kigali (and at start-up, where it does nothing unless it
+is Monday after that hour and a user's digest has not gone yet); urgent alerts run
+at the end of every tick in which a source run succeeded, after ingest (and
+scoring). Both take their own advisory lock and are idempotent per user per day.
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -27,6 +34,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from blackkite.collectors.http import DbHttpCache, FetchClient, make_fetch_client
 from blackkite.config import Settings
+from blackkite.delivery.jobs import alerts_job, weekly_digest_job
+from blackkite.delivery.mail import MailTransport, make_transport
 from blackkite.worker.runner import (
     fail_stale_runs,
     refresh_statuses_locked,
@@ -44,8 +53,14 @@ def close_stale_runs(sessions: sessionmaker[Session], settings: Settings) -> int
     return fail_stale_runs(sessions, timedelta(minutes=settings.stale_run_minutes))
 
 
+KIGALI_TZ = ZoneInfo("Africa/Kigali")
+
+
 def tick(
-    sessions: sessionmaker[Session], client: FetchClient, settings: Settings
+    sessions: sessionmaker[Session],
+    client: FetchClient,
+    settings: Settings,
+    transport: MailTransport | None = None,
 ) -> None:
     try:
         close_stale_runs(sessions, settings)
@@ -67,6 +82,33 @@ def tick(
             o.items_failed,
             f" error: {o.error}" if o.error else "",
         )
+    if any(o.status == "succeeded" for o in outcomes):
+        alerts(sessions, settings, transport or make_transport(settings))
+
+
+def alerts(
+    sessions: sessionmaker[Session], settings: Settings, transport: MailTransport
+) -> None:
+    """Urgent alerts after an ingest cycle. Never lets a failure stop the tick."""
+    try:
+        sent = alerts_job(sessions, settings, transport)
+    except Exception:
+        log.exception("urgent alerts failed")
+        return
+    if sent is None:
+        log.info("alerts: another worker holds the lock; skipped")
+    elif sent:
+        log.info("alerts: %d item(s) sent", sent)
+
+
+def digest_job(
+    sessions: sessionmaker[Session], settings: Settings, transport: MailTransport
+) -> None:
+    counts = weekly_digest_job(sessions, settings, transport)
+    if counts is None:
+        log.info("weekly digest: another worker holds the lock; skipped")
+    elif counts:
+        log.info("weekly digest: %s", dict(counts))
 
 
 def refresh_job(sessions: sessionmaker[Session]) -> None:
@@ -81,13 +123,15 @@ def build_scheduler(
     sessions: sessionmaker[Session],
     settings: Settings,
     client: FetchClient | None = None,
+    transport: MailTransport | None = None,
 ) -> BlockingScheduler:
     client = client or make_fetch_client(settings, cache=DbHttpCache(sessions))
+    transport = transport or make_transport(settings)
     sched = BlockingScheduler(timezone=UTC)
     sched.add_job(
         tick,
         IntervalTrigger(seconds=TICK_SECONDS, timezone=UTC),
-        args=(sessions, client, settings),
+        args=(sessions, client, settings, transport),
         id="run-due-sources",
         max_instances=1,
         coalesce=True,
@@ -101,6 +145,18 @@ def build_scheduler(
         max_instances=1,
         coalesce=True,
         next_run_time=datetime.now(UTC),
+    )
+    sched.add_job(
+        digest_job,
+        CronTrigger(
+            day_of_week="mon", hour=settings.digest_hour, minute=0, timezone=KIGALI_TZ
+        ),
+        args=(sessions, settings, transport),
+        id="weekly-digest",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=6 * 3600,
+        next_run_time=datetime.now(UTC),  # catch up after a restart on Monday
     )
     return sched
 

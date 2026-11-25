@@ -4,7 +4,7 @@ Per-user tables carry a non-null, indexed `user_id`; see PER_USER_TABLES.
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -54,6 +54,7 @@ PER_USER_TABLES = (
     "user_opportunity",
     "user_opportunity_score",
     "digest_log",
+    "alert_log",
     "session",
 )
 
@@ -555,12 +556,45 @@ class UserOpportunityScore(Base):
 
 
 class DigestLog(Base):
+    """One weekly digest per user per Kigali day (``digest_date``; the unique key
+    makes the job idempotent). ``details`` keeps what each item looked like when it
+    went out, so the next digest can skip items that have not changed:
+    ``{"items": [{"id", "profile_id", "deadline_at", "value_amount",
+    "value_currency"}], "closing": [ids], "more_count": n}``."""
+
     __tablename__ = "digest_log"
-    __table_args__ = (sa.Index("ix_digest_log_user_id_sent_at", "user_id", "sent_at"),)
+    __table_args__ = (
+        sa.Index("ix_digest_log_user_id_sent_at", "user_id", "sent_at"),
+        sa.UniqueConstraint("user_id", "digest_date"),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     user_id: Mapped[uuid.UUID] = _user_fk()
     sent_at: Mapped[datetime] = created_at()
+    digest_date: Mapped[date] = mapped_column(
+        sa.Date,
+        nullable=False,
+        server_default=sa.text("((now() AT TIME ZONE 'Africa/Kigali')::date)"),
+    )
     opportunity_ids: Mapped[list[uuid.UUID]] = mapped_column(
         ARRAY(sa.Uuid), nullable=False, server_default=sa.text("'{}'::uuid[]")
     )
+    details: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    )
+
+
+class AlertLog(Base):
+    """Urgent alerts sent (spec 8): at most one per (user, opportunity), ever."""
+
+    __tablename__ = "alert_log"
+    __table_args__ = (sa.UniqueConstraint("user_id", "opportunity_id"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = _user_fk()
+    opportunity_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("opportunity.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # The profile it matched; kept as a plain id (the profile may be deleted later).
+    profile_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid)
+    sent_at: Mapped[datetime] = created_at()
