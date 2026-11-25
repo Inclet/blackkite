@@ -5,7 +5,7 @@ are backfilled one at a time, each under a Postgres advisory lock per profile
 (two workers never score the same profile at once). The request is cleared only
 if no newer one arrived during the run; otherwise the profile runs again once
 the newer request is old enough. An inactive profile's request is just cleared
-(activation asks again if needed).
+(activation always asks again).
 
 A failure never stops the other profiles. It leaves the request in place with
 ``backfill_attempts`` counted up and the next try pushed back by a growing delay

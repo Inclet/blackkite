@@ -7,8 +7,9 @@ What asks for a backfill (member/profiles.py):
 
 * a new active profile;
 * a change to its type or data (streams included) while active;
-* activation, only when the profile was never fully scored at its current
-  version (``scored_version``);
+* activation, always (decision 36): items may have arrived while the profile
+  was off and the worker skips inactive profiles; judgement reuse keeps the
+  catch-up cheap;
 * a mute or unmute: every active profile of that user (``muted_source_only``).
 
 A rename or a deactivation asks for nothing. Each request stamps
