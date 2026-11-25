@@ -2071,6 +2071,46 @@
       "title": "ProfileOut",
       "type": "object"
     },
+    "StateIn": {
+      "additionalProperties": false,
+      "properties": {
+        "dismissReason": {
+          "anyOf": [
+            {
+              "enum": [
+                "not_my_sector",
+                "too_small",
+                "cant_meet_requirements",
+                "already_knew",
+                "other"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dismissreason"
+        },
+        "state": {
+          "enum": [
+            "unseen",
+            "saved",
+            "dismissed",
+            "acting",
+            "done"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "StateIn",
+      "type": "object"
+    },
     "UserOut": {
       "properties": {
         "created_at": {
