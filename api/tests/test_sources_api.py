@@ -20,6 +20,7 @@ from blackkite.db.models import (
     SourceSuggestion,
     UserSourceMute,
 )
+from blackkite.pipeline.visibility import visible_source_link, visible_to
 from blackkite.routes.sources import get_preview_client_factory
 from blackkite.sources import service
 from tests.conftest import make_user, sign_in
@@ -553,11 +554,56 @@ def test_run_history(admin, db):
 # --- member visibility of catalogue items -----------------------------------------------------------
 
 
-def test_member_visibility_hides_testing_only_items(db):
+# One rule (pipeline/visibility.py): a member sees a public item only while a
+# source carrying it is active or paused. Retired is pending the owner's
+# confirmation (one-line change to MEMBER_VISIBLE_SOURCE_STATUSES).
+MEMBER_SEES = {
+    "suggested": False,
+    "testing": False,
+    "active": True,
+    "paused": True,
+    "retired": False,
+}
+
+
+def test_visibility_rule_covers_every_source_status():
+    assert set(MEMBER_SEES) == set(SOURCE_STATUSES)
+
+
+@pytest.mark.parametrize("status", sorted(MEMBER_SEES))
+def test_member_visibility_by_carrying_source_status(db, status):
+    member = make_user(db, MEMBER)
+    admin = make_user(db, ADMIN, role="admin")
+    src = add_source(db, f"Only {status}", status)
+    o = Opportunity(stream="tender", title=f"from {status}")
+    db.add(o)
+    db.flush()
+    db.add(OpportunitySource(opportunity_id=o.id, source_id=src.id, url="https://x/1"))
+    db.commit()
+
+    def titles(user, is_admin):
+        q = sa.select(Opportunity.title).where(visible_to(user.id, is_admin=is_admin))
+        return set(db.scalars(q))
+
+    assert titles(member, False) == (
+        {f"from {status}"} if MEMBER_SEES[status] else set()
+    )
+    assert titles(admin, True) == {f"from {status}"}  # admins see every public item
+    links = db.scalars(
+        sa.select(Source.name)
+        .join(OpportunitySource, OpportunitySource.source_id == Source.id)
+        .where(visible_source_link())
+    ).all()
+    assert links == ([src.name] if MEMBER_SEES[status] else [])
+
+
+def test_member_visibility_mixed_sources_and_private_items(db):
     owner = make_user(db, MEMBER)
     other = make_user(db, OTHER)
+    admin = make_user(db, ADMIN, role="admin")
     active = add_source(db, "Active", "active")
     testing = add_source(db, "Testing", "testing")
+    retired = add_source(db, "Retired", "retired")
 
     def opp(title, sources, **kw):
         o = Opportunity(stream="tender", title=title, **kw)
@@ -573,20 +619,21 @@ def test_member_visibility_hides_testing_only_items(db):
 
     opp("from active", [active])
     opp("from testing only", [testing])
-    opp("from both", [active, testing])
+    opp("from active and testing", [active, testing])
+    opp("from testing and retired", [testing, retired])
     opp("no source", [])
     opp("private mine", [], visibility="private", owner_user_id=owner.id)
     opp("private theirs", [], visibility="private", owner_user_id=other.id)
     db.commit()
 
-    titles = set(
-        db.scalars(
-            sa.select(Opportunity.title).where(
-                service.member_visible_opportunity(owner.id)
-            )
-        )
-    )
-    assert titles == {"from active", "from both", "no source", "private mine"}
+    def titles(user, is_admin=False):
+        q = sa.select(Opportunity.title).where(visible_to(user.id, is_admin=is_admin))
+        return set(db.scalars(q))
+
+    assert titles(owner) == {"from active", "from active and testing", "private mine"}
+    assert titles(other) == {"from active", "from active and testing", "private theirs"}
+    assert "private mine" not in titles(admin, True)
+    assert titles(admin, True) >= {"from testing only", "no source"}
 
     links = (
         db.execute(
@@ -594,7 +641,7 @@ def test_member_visibility_hides_testing_only_items(db):
             .join(OpportunitySource, OpportunitySource.source_id == Source.id)
             .join(Opportunity, Opportunity.id == OpportunitySource.opportunity_id)
             .where(
-                Opportunity.title == "from both", service.member_visible_source_link()
+                Opportunity.title == "from active and testing", visible_source_link()
             )
         )
         .scalars()

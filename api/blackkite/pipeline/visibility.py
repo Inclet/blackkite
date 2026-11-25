@@ -14,8 +14,13 @@ members"):
 * An **admin** sees every public opportunity, including testing-only ones, plus
   their own private items; never other users' private items (spec 10).
 
-When listing the sources that carried an item (spec 4.4) to a member, show only
-those with status in ``MEMBER_VISIBLE_SOURCE_STATUSES``.
+A public item with no source row at all is hidden from members too (nothing
+carries it). When listing the sources that carried an item (spec 4.4) to a member,
+show only those passing ``visible_source_link()``.
+
+This is the single visibility rule; ``MEMBER_VISIBLE_SOURCE_STATUSES`` is the one
+line to change if the owner decides retired sources should keep their items
+visible (open question).
 """
 
 from __future__ import annotations
@@ -40,6 +45,12 @@ def carried_by_visible_source() -> ColumnElement[bool]:
             Source.status.in_(MEMBER_VISIBLE_SOURCE_STATUSES),
         )
     )
+
+
+def visible_source_link() -> ColumnElement[bool]:
+    """WHERE clause on ``Source`` (joined to opportunity_source): the carrying sources
+    a member may see listed on an opportunity."""
+    return Source.status.in_(MEMBER_VISIBLE_SOURCE_STATUSES)
 
 
 def own_private(user_id: uuid.UUID) -> ColumnElement[bool]:

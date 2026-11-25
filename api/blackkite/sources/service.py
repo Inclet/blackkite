@@ -32,7 +32,6 @@ from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
 
 from blackkite.db.models import (
-    Opportunity,
     OpportunitySource,
     Source,
     SourceRun,
@@ -53,8 +52,8 @@ HEALTH_WINDOW = 3
 ITEMS_WINDOW_DAYS = 30
 # Statuses the scheduler runs (spec 5 stage 1).
 SCHEDULED_STATUSES = ("active", "testing")
-# Items carried only by sources in these statuses are hidden from members (4.3 step 3).
-HIDDEN_FROM_MEMBERS = ("suggested", "testing")
+# Which catalogue items members see (4.3 step 3) is decided in one place:
+# blackkite.pipeline.visibility.
 
 
 class TransitionError(Exception):
@@ -237,34 +236,6 @@ def unmute(db: Session, user: User, source_id: uuid.UUID) -> None:
             UserSourceMute.user_id == user.id, UserSourceMute.source_id == source_id
         )
     )
-
-
-def member_visible_opportunity(user_id: uuid.UUID) -> sa.ColumnElement[bool]:
-    """WHERE clause for opportunities a member may see.
-
-    Public items, unless every source that carries them is still `testing` or
-    `suggested` (spec 4.3 step 3); public items with no source row (e.g. a manual
-    item promoted with consent) stay visible. Private items: owner only.
-    """
-    visible_source = sa.exists().where(
-        OpportunitySource.opportunity_id == Opportunity.id,
-        OpportunitySource.source_id == Source.id,
-        Source.status.not_in(HIDDEN_FROM_MEMBERS),
-    )
-    any_source = sa.exists().where(OpportunitySource.opportunity_id == Opportunity.id)
-    return sa.or_(
-        sa.and_(
-            Opportunity.visibility == "public", sa.or_(visible_source, ~any_source)
-        ),
-        sa.and_(
-            Opportunity.visibility == "private", Opportunity.owner_user_id == user_id
-        ),
-    )
-
-
-def member_visible_source_link() -> sa.ColumnElement[bool]:
-    """WHERE clause on opportunity_source joined to source: links members may see."""
-    return Source.status.not_in(HIDDEN_FROM_MEMBERS)
 
 
 # --- suggestions ---------------------------------------------------------------------
