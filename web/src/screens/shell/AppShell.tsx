@@ -55,7 +55,6 @@ export function AppShell({ path, title, summary, children }: AppShellProps) {
   const link = useAppLink();
   const navigate = useNavigate();
   const me = useResource('me', (s) => api.me(s));
-  const name = me.data?.name ?? me.data?.email ?? '';
 
   if (desktop) {
     const current = currentFor(path, SHELL_NAV);
@@ -95,7 +94,7 @@ export function AppShell({ path, title, summary, children }: AppShellProps) {
           <Kite label="Blackkite" width={39} height={26} rotate={-16} />
           <Wordmark size={20} />
         </div>
-        <AccountButton name={name} onClick={() => navigate('/account')} />
+        <AccountButton name={me.data?.name ?? ''} email={me.data?.email} onClick={() => navigate('/account')} />
       </header>
       <main className={styles.phoneMain}>
         <div className={styles.phoneGreet}>

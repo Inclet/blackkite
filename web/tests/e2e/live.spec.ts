@@ -134,3 +134,13 @@ test('nothing new: an empty feed', async ({ page }, testInfo) => {
   await expect(page.getByText('Nothing new since yesterday')).toBeVisible();
   await expect(page.getByText('All 3 sources were checked this morning. Your shortlist has nothing closing this month.')).toBeVisible();
 });
+
+test('no name: "Good afternoon" alone, and the phone account button shows the email\'s letter', async ({ page }, testInfo) => {
+  await stubSession(page, testInfo.testId, { userName: '' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, '/');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Good afternoon');
+  await expect(page.getByRole('button', { name: 'Your account' })).toHaveText('C');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Good afternoon');
+});

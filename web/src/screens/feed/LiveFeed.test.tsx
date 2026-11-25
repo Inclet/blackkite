@@ -302,3 +302,31 @@ describe('a provisional profile', () => {
     expect(screen.queryByText(DETAIL_COPY.provisional)).toBeNull();
   });
 });
+
+describe('no name on the account', () => {
+  const nameless = () => ({ ...feed(), user: { name: '' } });
+
+  test('desktop: "Good afternoon" with no name', async () => {
+    liveApi({ 'GET /api/feed': nameless(), 'GET /me': { id: 'u', email: 'clet@x.rw', name: null, role: 'admin' } });
+    renderAt('/');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Good afternoon' })).toBeInTheDocument();
+  });
+
+  test('phone: the account button shows the email\'s first letter, from GET /me', async () => {
+    setViewport('phone');
+    const api = liveApi({ 'GET /api/feed': nameless(), 'GET /me': { id: 'u', email: 'amina@x.rw', name: null, role: 'admin' } });
+    renderAt('/');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Good afternoon' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Your account' })).toHaveTextContent(/^A$/));
+    expect(screen.getByRole('button', { name: 'Your account' })).not.toHaveTextContent('T');
+    expect(api.calls.map((c) => c.key)).toContain('GET /me');
+  });
+
+  test('phone with a name: the name\'s letter', async () => {
+    setViewport('phone');
+    liveApi({ 'GET /me': { id: 'u', email: 'zed@x.rw', name: 'Clet', role: 'admin' } });
+    renderAt('/');
+    await screen.findByRole('heading', { level: 1, name: 'Good afternoon, Clet' });
+    expect(screen.getByRole('button', { name: 'Your account' })).toHaveTextContent(/^C$/);
+  });
+});

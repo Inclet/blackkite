@@ -19,6 +19,11 @@ test('closed items go last', () => {
   expect(sorted.at(-2)!.id).toBe('horizon-tyres-undated');
 });
 
+test('no name: the greeting has none, and no stand-in word', () => {
+  expect(greeting('')).toBe('Good afternoon');
+  expect(greeting('  ')).toBe('Good afternoon');
+});
+
 test('the greeting line reads as the boards', () => {
   expect(greeting('Clet')).toBe('Good afternoon, Clet');
   expect(feedSummary(items)).toBe('Six things worth a look. One closes in 6 days.');

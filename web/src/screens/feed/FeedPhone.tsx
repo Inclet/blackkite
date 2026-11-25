@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router';
+import { api } from '../../api/client';
+import { useResource } from '../../api/useResource';
 import { AccountButton } from '../../components/AccountButton/AccountButton';
 import { Card } from '../../components/Card/Card';
 import { FeedRow } from '../../components/FeedRow/FeedRow';
@@ -36,6 +38,8 @@ export function FeedPhone({ model }: { model: FeedModel }) {
   const location = useLocation();
   const navigate = useNavigate();
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // No name on the feed: the account button shows the email's first letter (GET /me). Fixtures carry a name, so never fetch.
+  const me = useResource(feed.user.name.trim() ? null : 'me', (s) => api.me(s));
   // "Not for me" on the opportunity page passes the row to focus (or HEADING) in the navigation state.
   const focusTarget = (location.state as { focusRow?: string } | null)?.focusRow;
 
@@ -96,7 +100,7 @@ export function FeedPhone({ model }: { model: FeedModel }) {
           <Kite label="Blackkite" width={39} height={26} rotate={-16} />
           <Wordmark size={20} />
         </div>
-        <AccountButton name={feed.user.name} onClick={() => navigate(`/account${location.search}`)} />
+        <AccountButton name={feed.user.name} email={me.data?.email} onClick={() => navigate(`/account${location.search}`)} />
       </header>
 
       <main className={styles.main}>
