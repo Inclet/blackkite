@@ -11,6 +11,8 @@ const ROUTES = [
   '/?fixture=reference&state=first-visit',
   '/?fixture=reference&state=source-down',
   '/auth/confirm#token=abc',
+  '/unsubscribe#token=digest-abc',
+  '/unsubscribe',
   // Live screens, against the stub API (a session per test).
   '/',
   '/o/wfp-logistics',
@@ -25,8 +27,8 @@ const ROUTES = [
   '/sign-in',
 ];
 
-/** Fewest interactive elements each page must have (the sign-in pages have one or two controls). */
-const minBoxes = (route: string) => (route.startsWith('/auth/confirm') ? 1 : route === '/sign-in' ? 2 : 4);
+/** Fewest interactive elements each page must have (the sign-in and unsubscribe pages have one or two controls). */
+const minBoxes = (route: string) => (route.startsWith('/auth/confirm') || route.startsWith('/unsubscribe') ? 1 : route === '/sign-in' ? 2 : 4);
 
 for (const width of WIDTHS) {
   for (const route of ROUTES) {
