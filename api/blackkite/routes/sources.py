@@ -1,5 +1,6 @@
-"""Source routes. Members: sources page, mute, suggest (spec 3, 4.4). Admins: the
-registry, status changes, run history, test runs, suggestion review (spec 4.3)."""
+"""Source routes. Members (mounted under /api): sources page, mute, suggest (spec 3,
+4.4). Admins (/admin): the registry, status changes, run history, test runs,
+suggestion review (spec 4.3)."""
 
 from __future__ import annotations
 

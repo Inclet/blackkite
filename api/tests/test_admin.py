@@ -253,7 +253,8 @@ def test_admin_can_deactivate_another_admin(app, admin_client, db, outbox):
 
 def test_member_routes_live_under_api(app):
     """docs/api-contract.md section 2: Phase 4 member routes are under /api; /auth/*,
-    GET /me, /sources* and the earlier /admin/* keep their paths."""
+    GET /me and the earlier /admin/* keep their paths; member source routes are
+    under /api too."""
     paths = {(m.upper(), p) for p, ops in app.openapi()["paths"].items() for m in ops}
     for route in [
         ("GET", "/api/feed"),
@@ -273,10 +274,24 @@ def test_member_routes_live_under_api(app):
         ("GET", "/api/me/export"),
         ("GET", "/me"),
         ("POST", "/auth/request-link"),
-        ("GET", "/sources"),
+        ("GET", "/api/sources"),
+        ("POST", "/api/sources/{source_id}/mute"),
+        ("DELETE", "/api/sources/{source_id}/mute"),
+        ("GET", "/api/source-suggestions"),
+        ("POST", "/api/source-suggestions"),
+        ("GET", "/admin/sources"),
+        ("GET", "/admin/source-suggestions"),
     ]:
         assert route in paths, route
-    old = {"/feed", "/shortlist", "/profiles", "/digest-settings", "/me/export"}
+    old = {
+        "/feed",
+        "/shortlist",
+        "/profiles",
+        "/digest-settings",
+        "/me/export",
+        "/sources",
+        "/source-suggestions",
+    }
     assert not old & {p for _, p in paths}
     assert ("PATCH", "/me") not in paths and ("DELETE", "/me") not in paths
     assert not any(

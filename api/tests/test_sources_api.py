@@ -370,7 +370,7 @@ def test_members_see_only_active_sources_with_stats(member, db):
     add_run(db, a, "failed", found=0, ago_hours=2)
     _carry(db, a, 3, ago_days=2)
     _carry(db, a, 2, ago_days=45)  # outside the 30-day window
-    r = member.get("/sources")
+    r = member.get("/api/sources")
     assert r.status_code == 200
     (row,) = r.json()
     assert row["name"] == "Alpha" and row["publisher"] == "Alpha Org"
@@ -382,24 +382,24 @@ def test_members_see_only_active_sources_with_stats(member, db):
 
 
 def test_sources_page_needs_sign_in(app):
-    assert new_client(app).get("/sources").status_code == 401
+    assert new_client(app).get("/api/sources").status_code == 401
 
 
 def test_mute_is_per_user(app, member, db, outbox):
     a = add_source(db, "Alpha", "active")
     t = add_source(db, "Hidden", "testing")
-    assert member.post(f"/sources/{a.id}/mute").status_code == 204
-    assert member.post(f"/sources/{a.id}/mute").status_code == 204  # idempotent
-    assert member.post(f"/sources/{t.id}/mute").status_code == 404
-    assert member.get("/sources").json()[0]["muted"] is True
+    assert member.post(f"/api/sources/{a.id}/mute").status_code == 204
+    assert member.post(f"/api/sources/{a.id}/mute").status_code == 204  # idempotent
+    assert member.post(f"/api/sources/{t.id}/mute").status_code == 404
+    assert member.get("/api/sources").json()[0]["muted"] is True
 
     make_user(db, OTHER)
     other = sign_in(new_client(app), outbox, OTHER)
-    assert other.get("/sources").json()[0]["muted"] is False
+    assert other.get("/api/sources").json()[0]["muted"] is False
 
     a.status = "paused"
     db.commit()
-    assert member.delete(f"/sources/{a.id}/mute").status_code == 204
+    assert member.delete(f"/api/sources/{a.id}/mute").status_code == 204
     assert count(db, UserSourceMute) == 0
 
 
@@ -408,7 +408,7 @@ def test_mute_is_per_user(app, member, db, outbox):
 
 def test_suggestion_flow(app, admin, member, db, outbox):
     r = member.post(
-        "/source-suggestions",
+        "/api/source-suggestions",
         json={
             "url": "https://calls.example/rw",
             "note": "Monthly grant calls for Rwanda",
@@ -418,17 +418,20 @@ def test_suggestion_flow(app, admin, member, db, outbox):
     sid = r.json()["id"]
     assert r.json()["status"] == "suggested"
     assert (
-        member.post("/source-suggestions", json={"url": "http://10.0.0.1/"}).status_code
+        member.post(
+            "/api/source-suggestions", json={"url": "http://10.0.0.1/"}
+        ).status_code
         == 422
     )
     assert (
-        member.post("/source-suggestions", json={"url": "notaurl"}).status_code == 422
+        member.post("/api/source-suggestions", json={"url": "notaurl"}).status_code
+        == 422
     )
 
     make_user(db, OTHER)
     other = sign_in(new_client(app), outbox, OTHER)
-    assert other.get("/source-suggestions").json() == []
-    assert [s["id"] for s in member.get("/source-suggestions").json()] == [sid]
+    assert other.get("/api/source-suggestions").json() == []
+    assert [s["id"] for s in member.get("/api/source-suggestions").json()] == [sid]
     assert member.get("/admin/source-suggestions").status_code == 403
 
     queue = admin.get("/admin/source-suggestions").json()
@@ -455,9 +458,9 @@ def test_suggestion_flow(app, admin, member, db, outbox):
 
 
 def test_reject_suggestion(admin, member):
-    sid = member.post("/source-suggestions", json={"url": "https://x.example/"}).json()[
-        "id"
-    ]
+    sid = member.post(
+        "/api/source-suggestions", json={"url": "https://x.example/"}
+    ).json()["id"]
     r = admin.post(f"/admin/source-suggestions/{sid}/reject")
     assert r.status_code == 200 and r.json()["status"] == "rejected"
     assert [
@@ -960,11 +963,11 @@ def test_mute_and_unmute_rescore_the_caller(member, db):
     db.commit()
     assert _filtered(db, member.user, opp) == [None]
 
-    assert member.post(f"/sources/{src.id}/mute").status_code == 204
+    assert member.post(f"/api/sources/{src.id}/mute").status_code == 204
     assert _filtered(db, member.user, opp) == ["muted_source_only"]
     assert member.get("/api/feed").json()["items"] == []
 
-    assert member.delete(f"/sources/{src.id}/mute").status_code == 204
+    assert member.delete(f"/api/sources/{src.id}/mute").status_code == 204
     assert _filtered(db, member.user, opp) == [None]
     assert [i["id"] for i in member.get("/api/feed").json()["items"]] == [str(opp.id)]
 
@@ -975,8 +978,8 @@ def test_mute_rescores_only_the_caller(app, member, db, outbox, monkeypatch):
     calls = []
     monkeypatch.setattr(scoring, "score_user", lambda s, uid: calls.append(uid))
     a = add_source(db, "Alpha", "active")
-    member.post(f"/sources/{a.id}/mute")
-    member.delete(f"/sources/{a.id}/mute")
+    member.post(f"/api/sources/{a.id}/mute")
+    member.delete(f"/api/sources/{a.id}/mute")
     assert calls == [member.user.id, member.user.id]
 
 
@@ -990,9 +993,9 @@ def test_rescoring_failure_keeps_the_mute(member, db, monkeypatch, caplog):
     monkeypatch.setattr(scoring, "score_user", broken)
     a = add_source(db, "Alpha", "active")
     with caplog.at_level("ERROR", logger="blackkite.sources"):
-        assert member.post(f"/sources/{a.id}/mute").status_code == 204
+        assert member.post(f"/api/sources/{a.id}/mute").status_code == 204
     assert count(db, UserSourceMute) == 1
     assert "re-scoring after a mute change failed" in caplog.text
     with caplog.at_level("ERROR", logger="blackkite.sources"):
-        assert member.delete(f"/sources/{a.id}/mute").status_code == 204
+        assert member.delete(f"/api/sources/{a.id}/mute").status_code == 204
     assert count(db, UserSourceMute) == 0
