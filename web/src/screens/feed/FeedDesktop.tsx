@@ -16,7 +16,7 @@ import { rowSubtitle } from '../../lib/subtitle';
 import { httpUrl } from '../../lib/externalUrl';
 import { useAppLink } from '../../lib/useAppLink';
 import type { FeedModel } from './model';
-import { DetailTop, FilterChips, FitSection, hasFitSection, LiveRegion } from './parts';
+import { DetailTop, FilterChips, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus } from './parts';
 import { HEADING, rowId } from './focus';
 import { useLiveList, useLiveSelection } from './liveList';
 import { useFeedKeys } from './useFeedKeys';
@@ -38,7 +38,7 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
   const navigate = useNavigate();
   const location = useLocation();
   const { search } = location;
-  const { feed } = model.fixture;
+  const { feed } = model;
   const items = model.items;
 
   // The open item; a filtered-out or dismissed one falls back to the first in the list.
@@ -159,6 +159,7 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
 
         <div className={styles.grid}>
           <div className={styles.column}>
+            <LiveStatus model={model} />
             {stateCard && (
               <Card gap={12} aria-label="Feed status">
                 <StateCard {...stateCard} />
@@ -237,6 +238,7 @@ function DetailPane({ item, model, onDismiss }: { item: FeedItem; model: FeedMod
           </TextLink>
         )}
       </div>
+      {model.live && <LiveDetail key={item.id} model={model} item={item} />}
     </Card>
   );
 }

@@ -4,14 +4,25 @@ import type { FeedItem } from '../../fixtures/types';
 /**
  * The list as the keys last left it. A dismissal only reaches the rendered list
  * after React re-renders, so a second key in the same tick would still see the
- * removed row. `dismiss` records the id here synchronously; dismissals are
- * permanent, so the set never needs clearing.
+ * removed row. `dismiss` records the id here synchronously. Once a render has
+ * left the row out, a later render that shows it again (a dismissal undone
+ * because the server could not be reached) brings it back for the keys too.
  */
 export function useLiveList(rendered: FeedItem[]) {
   const latest = useRef(rendered);
   const gone = useRef(new Set<string>());
+  /** Gone ids that a committed render has already left out. */
+  const confirmed = useRef(new Set<string>());
   useLayoutEffect(() => {
     latest.current = rendered;
+    const shown = new Set(rendered.map((i) => i.id));
+    for (const id of gone.current) {
+      if (!shown.has(id)) confirmed.current.add(id);
+      else if (confirmed.current.has(id)) {
+        gone.current.delete(id);
+        confirmed.current.delete(id);
+      }
+    }
   });
   return {
     current: () => latest.current.filter((i) => !gone.current.has(i.id)),

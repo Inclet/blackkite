@@ -9,7 +9,7 @@ import { httpUrl } from '../../lib/externalUrl';
 import { useAppLink } from '../../lib/useAppLink';
 import type { FeedModel } from './model';
 import { HEADING } from './focus';
-import { DetailTop, FitSection, hasFitSection, LiveRegion } from './parts';
+import { DetailTop, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus } from './parts';
 import styles from './OpportunityPhone.module.css';
 
 /** opportunity-phone.html: one opportunity, with a sticky action bar. Below 792 px. */
@@ -44,6 +44,7 @@ export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }
       </header>
 
       <main className={styles.content}>
+        {model.live?.failed && <LiveStatus model={{ ...model, live: { ...model.live, status: {} } }} />}
         <DetailTop item={item} tagGap={6} />
         <div className={styles.titleBlock}>
           <h1 className={styles.h1}>{item.title}</h1>
@@ -62,6 +63,7 @@ export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }
             Read the original notice
           </TextLink>
         )}
+        {model.live && <LiveDetail key={item.id} model={model} item={item} />}
       </main>
 
       <div className={styles.actions} role="group" aria-label="Actions">

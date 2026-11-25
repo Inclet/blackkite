@@ -12,7 +12,7 @@ import { FilterChip } from '../components/FilterChip/FilterChip';
 import { FitLine, FitReason } from '../components/FitLine/FitLine';
 import { Flag } from '../components/Flag/Flag';
 import { StateCard, type StateKind } from '../components/StateCard/StateCard';
-import { Switch } from '../components/Switch/Switch';
+import { SwitchRow } from '../components/SwitchRow/SwitchRow';
 import { Tag } from '../components/Tag/Tag';
 import { TextButton, TextLink } from '../components/TextLink/TextLink';
 import { reference } from '../fixtures/reference';
@@ -70,13 +70,7 @@ export function StyleguideComponents() {
             <Field id="bk-f1" label={amount.label} defaultValue={amount.value} />
             <Field id="bk-f2" label={trucks.label} defaultValue={trucks.value} error={trucks.error} />
           </div>
-          <div className={styles.switchRow}>
-            <div className={styles.switchText}>
-              <div className={styles.switchLabel}>{alertsField.label}</div>
-              <div className={styles.slate13}>{alertsField.description}</div>
-            </div>
-            <Switch checked={alerts} onChange={setAlerts} label={alertsField.label} />
-          </div>
+          <SwitchRow label={alertsField.label} description={alertsField.description} checked={alerts} onChange={setAlerts} />
         </Card>
       </div>
 

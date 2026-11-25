@@ -1,0 +1,24 @@
+/* The Components board's "Urgent alerts" row (components.html, Fields card). */
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.description {
+  font-size: 13px;
+  color: var(--bk-slate);
+}

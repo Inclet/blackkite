@@ -247,3 +247,18 @@ test('an https original notice is linked, in a new tab without a referrer', () =
   expect(a).toHaveAttribute('href', 'https://www.jobinrwanda.com/jobs/tender');
   expect(a).toHaveAttribute('rel', 'noopener noreferrer');
 });
+
+test('a state card link navigates in the app, without a page load', () => {
+  const router = renderAt('/?fixture=reference&state=source-down');
+  const link = screen.getByRole('link', { name: 'See all sources' });
+  // fireEvent returns false when the handler prevented the browser's own navigation.
+  expect(fireEvent.click(link)).toBe(false);
+  expect(router.state.location.pathname).toBe('/sources');
+  expect(router.state.location.search).toBe('?fixture=reference&state=source-down');
+});
+
+test('a modified click on a state card link is left to the browser', () => {
+  const router = renderAt('/?fixture=reference&state=source-down');
+  expect(fireEvent.click(screen.getByRole('link', { name: 'See all sources' }), { ctrlKey: true })).toBe(true);
+  expect(router.state.location.pathname).toBe('/');
+});
