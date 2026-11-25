@@ -10,7 +10,9 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY . .
 RUN uv sync --frozen --no-dev
 
-RUN useradd --system --uid 10001 bk
+# /app/data is the mount point for the bk-data volume (BK_DATA_DIR); a fresh named
+# volume takes this directory's ownership, so the bk user can write documents to it.
+RUN useradd --system --uid 10001 bk && mkdir -p /app/data && chown bk /app/data
 USER bk
 EXPOSE 8000
 # Applies migrations, then serves. --proxy-headers so rate limits see the client IP

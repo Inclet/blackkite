@@ -32,6 +32,9 @@ services:
         required: false
     environment:
       BK_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-blackkite}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-blackkite}
+      BK_DATA_DIR: /app/data
+    volumes:
+      - bk-data:/app/data   # downloaded documents (never served to members)
     depends_on:
       db:
         condition: service_healthy
@@ -55,6 +58,9 @@ services:
         required: false
     environment:
       BK_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-blackkite}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-blackkite}
+      BK_DATA_DIR: /app/data
+    volumes:
+      - bk-data:/app/data   # the worker's enrich stage writes documents here
     depends_on:
       db:
         condition: service_healthy
@@ -70,3 +76,4 @@ services:
 
 volumes:
   db-data:
+  bk-data:

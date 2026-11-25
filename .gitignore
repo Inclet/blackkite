@@ -10,3 +10,4 @@ web/tests/reports/*
 test-results/
 playwright-report/
 .worktrees/
+/api/data/
