@@ -48,7 +48,7 @@ from __future__ import annotations
 import copy
 import logging
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from decimal import Decimal
 from typing import Any
 
@@ -66,6 +66,7 @@ from blackkite.db.models import (
 from blackkite.llm.client import LLMClient, LLMError
 from blackkite.llm.embeddings import Embedder, EmbeddingError
 from blackkite.pipeline.dates import (
+    KIGALI,
     kigali_date,
     parse_date,
     parse_extracted_date,
@@ -466,6 +467,11 @@ def _suspect_reason(opp: Opportunity, listed: DateCheck, now: datetime) -> str |
     return None
 
 
+def _date_only(value: datetime) -> bool:
+    """True for a deadline parsed from a date with no time (end of the Kigali day)."""
+    return value.astimezone(KIGALI).time() == time(23, 59, 59)
+
+
 def _record_listed_deadline(
     session: Session,
     opp: Opportunity,
@@ -479,11 +485,16 @@ def _record_listed_deadline(
 
     * A sighting whose listed deadline has no usable value (no year, unparsed, out
       of window, absent) never replaces a dated value seen earlier.
-    * A changed value that is before ``now`` or before the item's ``published_at``
+    * Listed deadlines are compared by Kigali calendar day. The same day with a time
+      added or changed is a refinement, taken silently: the more precise value is
+      kept (a timed value is never replaced by a date-only one), a date-only
+      extracted value of that day is superseded by a timed listing, and no flag or
+      ``source_deadline`` change_event is written.
+    * A different day that is before ``now`` or before the item's ``published_at``
       is suspect: the source keeps its current deadline, the suspicious value goes
       to ``deadline_history`` (kind ``listed_suspect``) and the item is flagged
       ``deadline_changed_suspect``. Nothing about the deadline changes.
-    * Any other changed value becomes that source's deadline: an older extracted
+    * Any other different day becomes that source's deadline: an older extracted
       value is superseded (moved to ``deadline_history``), a ``change_event`` with
       field ``source_deadline`` is written and the item is flagged
       ``deadline_changed``. ``_finalise`` then resolves the deadline across sources
@@ -517,6 +528,28 @@ def _record_listed_deadline(
             f"listed deadline moved to {suspect} at {source.name}: "
             f"{old_day} -> {new_day}{shown}; kept {old_day}",
         )
+        return
+
+    if kigali_date(previous) == kigali_date(listed.value):
+        # A time added or changed on the same day: refine silently.
+        if _date_only(listed.value) and not _date_only(previous):
+            return  # the earlier listing was more precise
+        extracted = _date_value(entry.get("deadline_extracted"))
+        if (
+            extracted is not None
+            and kigali_date(extracted) == kigali_date(listed.value)
+            and _date_only(extracted)
+            and not _date_only(listed.value)
+        ):
+            history.append(
+                {
+                    **entry.pop("deadline_extracted"),
+                    "kind": "extracted",
+                    "until": now.isoformat(),
+                }
+            )
+            del history[:-20]
+        entry["deadline_listed"] = _date_entry(listed)
         return
 
     history.append(
