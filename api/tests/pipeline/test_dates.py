@@ -67,3 +67,21 @@ def test_extracted_date_needs_the_year_in_its_snippet():
     assert wrong.status == "no_year"
     # Two-digit numeric years are stated years.
     assert parse_extracted_date("2026-12-01", "closing 01/12/26").ok
+
+
+def test_extracted_date_must_match_day_and_month_of_the_snippet():
+    # Reviewer's example: the year is right but day and month are not.
+    bad = parse_extracted_date("2026-12-30", "Bids close on 30 November 2026.", "end")
+    assert bad.status == "mismatch" and bad.value is None
+    assert bad.raw == "Bids close on 30 November 2026."
+    assert parse_extracted_date("2026-11-03", "30/11/2026").status == "mismatch"
+    assert parse_extracted_date("2026-11-30", "Closing 30/11/2026").ok
+    assert parse_extracted_date("2026-11-30", "November 30th, 2026").ok
+    assert parse_extracted_date("2026-11-30T10:00", "2026-11-30 at 10:00").ok
+    # One stated year serving a range.
+    assert parse_extracted_date("2026-11-30", "30 November to 2 December 2026").ok
+    assert parse_extracted_date("2026-12-02", "30 November to 2 December 2026").ok
+    # Day and month right, no year anywhere: still a guessed year.
+    assert parse_extracted_date("2026-11-30", "Closes 30 Nov").status == "no_year"
+    # No date at all in the snippet.
+    assert parse_extracted_date("2026-11-30", "Deadline below").status == "mismatch"

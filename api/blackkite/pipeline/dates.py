@@ -19,7 +19,7 @@ from typing import Literal
 
 KIGALI = timezone(timedelta(hours=2), "CAT")
 
-DateStatus = Literal["ok", "no_year", "unparsed", "empty"]
+DateStatus = Literal["ok", "no_year", "unparsed", "empty", "mismatch"]
 DayEdge = Literal["start", "end"]
 
 MONTHS = {
@@ -173,33 +173,63 @@ def parse_date(text: str | None, edge: DayEdge = "start") -> ParsedDate:
     return ParsedDate("ok", _combine(d, _time_of(rest), edge), raw)
 
 
+def _dates_in(text: str) -> list[tuple[int, int, int | None]]:
+    """Every (day, month, year or None) the text states, in any supported form."""
+    found: list[tuple[int, int, int | None]] = []
+    for kind, regex in (
+        ("iso", _ISO_RE),
+        ("num", _NUM_RE),
+        ("dmy", _DMY_RE),
+        ("mdy", _MDY_RE),
+    ):
+        for m in regex.finditer(text):
+            month = (
+                MONTHS[m["month"].lower()]
+                if kind in ("dmy", "mdy")
+                else int(m["month"])
+            )
+            year = int(m["year"]) if m["year"] else None
+            if year is not None and year < 100:
+                year += 2000
+            found.append((int(m["day"]), month, year))
+    return found
+
+
 def parse_extracted_date(
     value: str | None, snippet: str | None, edge: DayEdge = "start"
 ) -> ParsedDate:
     """Check a date the LLM returned (ISO 8601) against the snippet it quoted.
 
-    The year must be stated in the snippet; if the snippet has no year the model
-    supplied one itself, and that is a guess we do not accept.
+    The snippet must state the same day, month and year as the value (Kigali
+    calendar date). The year may stand once for several dates ("30 November to
+    2 December 2026"). Results:
+
+    * ``ok``: the snippet states that date with its year;
+    * ``no_year``: the snippet states the day and month but no year: the model
+      supplied the year itself, and that is a guess we do not accept;
+    * ``mismatch``: the snippet does not state that day and month at all.
     """
     if not value:
         return ParsedDate("empty", raw=snippet)
     parsed = parse_date(value, edge)
     if not parsed.ok or parsed.value is None:
         return ParsedDate("unparsed", raw=snippet or value)
-    if not snippet or not _YEAR_RE.search(snippet):
-        from_snippet = parse_date(snippet, edge) if snippet else None
-        if from_snippet is None or not from_snippet.ok:
-            return ParsedDate("no_year", raw=snippet or value)
-    local_year = parsed.value.astimezone(KIGALI).year
-    if snippet and str(local_year) not in snippet:
-        from_snippet = parse_date(snippet, edge)
-        if not (
-            from_snippet.ok
-            and from_snippet.value is not None
-            and from_snippet.value.astimezone(KIGALI).year == local_year
-        ):
-            return ParsedDate("no_year", raw=snippet)
-    return ParsedDate("ok", parsed.value, snippet or value)
+    raw = snippet or value
+    if not snippet:
+        return ParsedDate("no_year", raw=raw)
+    local = parsed.value.astimezone(KIGALI).date()
+    same_day = [
+        y for d, m, y in _dates_in(snippet) if (d, m) == (local.day, local.month)
+    ]
+    if not same_day:
+        return ParsedDate("mismatch", raw=raw)
+    if local.year in same_day:
+        return ParsedDate("ok", parsed.value, raw)
+    if None in same_day and any(
+        int(y.group(0)) == local.year for y in _YEAR_RE.finditer(snippet)
+    ):
+        return ParsedDate("ok", parsed.value, raw)
+    return ParsedDate("no_year", raw=raw)
 
 
 def kigali_date(value: datetime) -> date:

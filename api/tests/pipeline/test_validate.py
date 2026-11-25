@@ -98,3 +98,16 @@ def test_verification_and_trust_states():
     assert trust_state("unverified", {"_deadline_conflict": False}) == "unconfirmed"
     assert trust_state("verified_original", {"_deadline_conflict": True}) == "conflict"
     assert trust_state("aggregator_only", {"_deadline_conflict": True}) == "conflict"
+
+
+def test_mismatch_is_reviewable():
+    from blackkite.pipeline.dates import parse_extracted_date
+    from blackkite.pipeline.validate import check_date, review_reason
+
+    check = check_date(
+        "deadline_at",
+        parse_extracted_date("2026-12-30", "Bids close on 30 November 2026."),
+        NOW,
+    )
+    assert check.reviewable and check.value is None
+    assert "not stated in its snippet" in review_reason("deadline_at", check)

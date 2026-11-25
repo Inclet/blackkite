@@ -60,12 +60,12 @@ def window(field: str, now: datetime) -> tuple[datetime, datetime]:
 @dataclass(frozen=True, slots=True)
 class DateCheck:
     value: datetime | None
-    status: str  # ok | no_year | unparsed | empty | out_of_window
+    status: str  # ok | no_year | unparsed | empty | out_of_window | mismatch
     raw: str | None
 
     @property
     def reviewable(self) -> bool:
-        return self.status in ("no_year", "unparsed", "out_of_window")
+        return self.status in ("no_year", "unparsed", "out_of_window", "mismatch")
 
 
 def check_date(field: str, parsed: ParsedDate, now: datetime) -> DateCheck:
@@ -83,6 +83,7 @@ def review_reason(field: str, check: DateCheck) -> str:
         "no_year": f"{field}: date has no year{raw}; not guessed",
         "unparsed": f"{field}: date not understood{raw}",
         "out_of_window": f"{field}: date outside the plausible window{raw}",
+        "mismatch": f"{field}: extracted date not stated in its snippet{raw}",
     }[check.status]
 
 

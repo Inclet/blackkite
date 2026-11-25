@@ -638,7 +638,12 @@ def _finalise(
         for sid, entry in ev.get("_sources", {}).items():
             for key in ("deadline_extracted", "deadline_listed"):
                 e = entry.get(key) or {}
-                if e.get("status") in ("no_year", "unparsed", "out_of_window"):
+                if e.get("status") in (
+                    "no_year",
+                    "unparsed",
+                    "out_of_window",
+                    "mismatch",
+                ):
                     # Not guessed: keep the raw text so a reviewer can see it.
                     ev.setdefault(
                         "deadline_at",
