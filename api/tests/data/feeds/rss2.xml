@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Example Business News</title>
+    <link>https://news.example/business</link>
+    <item>
+      <title>Call for applications: agri-food accelerator &amp; grant</title>
+      <link>https://news.example/2026/11/accelerator</link>
+      <pubDate>Tue, 24 Nov 2026 10:00:00 +0000</pubDate>
+      <dc:creator>A. Reporter</dc:creator>
+      <category>Funding</category>
+      <description><![CDATA[<p>Applications close <b>15 December 2026</b>.</p><script>x()</script>]]></description>
+    </item>
+    <item>
+      <title>Treasury bond issue announced</title>
+      <guid isPermaLink="true">https://news.example/2026/11/bond</guid>
+      <author>desk@news.example (Markets Desk)</author>
+      <pubDate>25 Nov 2026</pubDate>
+      <content:encoded><![CDATA[<div>Ten-year bond, auction on 2 December.</div>]]></content:encoded>
+    </item>
+    <item>
+      <title>Relative link item</title>
+      <link>/2026/11/relative</link>
+    </item>
+    <item>
+      <title>Internal link item</title>
+      <link>http://10.0.0.5/admin</link>
+    </item>
+    <item>
+      <title>Non-permalink guid only</title>
+      <guid isPermaLink="false">tag:news.example,2026:1</guid>
+    </item>
+    <item>
+      <description>Summit on logistics in Kigali next March, registration open now for all.</description>
+      <link>https://news.example/2026/11/summit</link>
+    </item>
+    <item>
+      <title>Duplicate</title>
+      <link>https://news.example/2026/11/accelerator</link>
+    </item>
+  </channel>
+</rss>

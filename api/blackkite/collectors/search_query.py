@@ -56,10 +56,16 @@ class SearchQueryConfig(BaseModel):
     queries: Annotated[
         list[Annotated[str, Field(min_length=1, max_length=300)]],
         Field(min_length=1, max_length=20),
-    ]
-    domains: Annotated[list[str], Field(max_length=10)] = []
-    recency_days: Annotated[int, Field(ge=1, le=365)] | None = None
-    count: Annotated[int, Field(ge=1, le=20)] = 20
+    ] = Field(description="Search queries, one request each per run.")
+    domains: Annotated[list[str], Field(max_length=10)] = Field(
+        default=[], description="Only keep results from these domains (site: filter)."
+    )
+    recency_days: Annotated[int, Field(ge=1, le=365)] | None = Field(
+        default=None, description="Only results from roughly the last N days."
+    )
+    count: Annotated[int, Field(ge=1, le=20)] = Field(
+        default=20, description="Results per query (1-20)."
+    )
 
     @field_validator("domains")
     @classmethod
