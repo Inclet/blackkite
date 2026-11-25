@@ -31,3 +31,14 @@ test('All has no icon and reports clicks', () => {
   fireEvent.click(chip);
   expect(onClick).toHaveBeenCalledOnce();
 });
+
+test('action: a plain one-shot button in the unselected look, no aria-pressed', () => {
+  const onClick = vi.fn();
+  render(<FilterChip stream="all" action label="Too small" onClick={onClick} />);
+  const chip = screen.getByRole('button', { name: 'Too small' });
+  expect(chip).not.toHaveAttribute('aria-pressed');
+  expect(chip).toHaveAttribute('type', 'button');
+  expect(chip).toHaveClass('chip', 'all', 'unselected');
+  fireEvent.click(chip);
+  expect(onClick).toHaveBeenCalledOnce();
+});

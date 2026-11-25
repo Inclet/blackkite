@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type Ref } from 'react';
 import { useLocation } from 'react-router';
 import { api } from '../../api/client';
 import { DISMISS_REASONS } from '../../api/types';
@@ -38,14 +38,27 @@ export const DETAIL_COPY = {
   provisional: 'Provisional',
 } as const;
 
+/**
+ * Whether the profile (and Provisional) tags belong on the item. Tenders and
+ * funding are scored: with no fit word (null or "not-scored") no match was made,
+ * so a profile tag would imply one. Events and investments are never given a fit
+ * word (contract: fit null by design) and keep the profile the API sends.
+ */
+export function showsProfile(item: FeedItem): boolean {
+  if (!item.detail.profile) return false;
+  if (item.fit === 'not-scored') return false;
+  return item.fit !== null || (item.stream !== 'tender' && item.stream !== 'funding');
+}
+
 /** Stream tag, profile tag (and "Provisional" when the profile is) and the deadline pill. */
 export function DetailTop({ item, tagGap }: { item: FeedItem; tagGap: 6 | 8 }) {
+  const profile = showsProfile(item);
   return (
     <div className={cx(styles.top, tagGap === 6 ? styles.topPhone : undefined)}>
       <span className={styles.tags}>
         <Tag kind="stream" stream={item.stream} />
-        {item.detail.profile && <Tag kind="profile">{item.detail.profile}</Tag>}
-        {item.provisional && <Tag kind="profile">{DETAIL_COPY.provisional}</Tag>}
+        {profile && <Tag kind="profile">{item.detail.profile}</Tag>}
+        {profile && item.provisional && <Tag kind="profile">{DETAIL_COPY.provisional}</Tag>}
       </span>
       <DeadlinePill {...pillFor(item)} />
     </div>
@@ -92,23 +105,38 @@ export function SaveButton({ saved, size, onClick }: { saved: boolean; size?: 'r
   );
 }
 
+/** Marks the reason chips' group, so the screens can tell when focus is inside the prompt. */
+export const DISMISS_PROMPT_ATTR = 'data-dismiss-prompt';
+
+/** True when focus is on one of the prompt's chips. */
+export function focusInDismissPrompt(): boolean {
+  return document.activeElement?.closest(`[${DISMISS_PROMPT_ATTR}]`) != null;
+}
+
 /**
- * "Why not? (optional)" after "Not for me" / X: the five reasons as FilterChips.
- * The item is already dismissed; a chip sends the reason. Gone after a choice or
- * on the next navigation (the dismissal's own move to the next item does not count).
- * Focus is not moved here, so J/K/S/X carry on; Tab reaches the chips. Design review.
+ * "Why not? (optional)" after "Not for me" / X: the five reasons as one-shot
+ * FilterChips (`action`: no aria-pressed). The item is already dismissed; a chip
+ * sends the reason. Gone after a choice or on the next navigation (the
+ * dismissal's own move to the next item does not count): J/K close it by design,
+ * since moving on means the user chose not to answer.
+ *
+ * Focus: after X it stays where it was, so J/K/S/X carry on and Tab reaches the
+ * chips. After the desktop pane's "Not for me" button the screen moves focus to
+ * the first chip (`firstChipRef`). Design review.
  */
 export function DismissReasonPrompt({
   model,
   className,
   padding,
   focusAfter,
+  firstChipRef,
 }: {
   model: FeedModel;
   className?: string;
   padding?: string;
   /** Where focus goes when a chip is chosen (the prompt and the chip leave the page). */
   focusAfter: () => void;
+  firstChipRef?: Ref<HTMLButtonElement>;
 }) {
   const prompt = model.dismissPrompt;
   if (!prompt) return null;
@@ -118,13 +146,14 @@ export function DismissReasonPrompt({
       <div className={styles.whyLabel} id={labelId}>
         {DISMISS_COPY.question}
       </div>
-      <div className={styles.progress} role="group" aria-labelledby={labelId}>
-        {DISMISS_REASONS.map((r) => (
+      <div className={styles.progress} role="group" aria-labelledby={labelId} {...{ [DISMISS_PROMPT_ATTR]: '' }}>
+        {DISMISS_REASONS.map((r, i) => (
           <FilterChip
             key={r}
+            ref={i === 0 ? firstChipRef : undefined}
             stream="all"
+            action
             label={DISMISS_COPY.reasons[r]}
-            selected={false}
             onClick={() => {
               model.chooseDismissReason(r);
               focusAfter();

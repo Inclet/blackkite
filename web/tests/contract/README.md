@@ -14,6 +14,11 @@ Two unit tests (part of `npm test`) check against it, with the small checker in
 - `src/api/requestContract.test.ts`: what the profile editor and digest form send
   is what the API accepts.
 
+The stub test also pins the shapes the screens depend on: `DigestSettingsIn` has
+`alertMinFit` and no `alertThreshold`, `FeedItem` (and `OpportunityOut`) require
+`provisional`, and `StateIn` exists with the dismiss reason codes in
+`src/api/types.ts` (`DISMISS_REASONS`).
+
 ## Regenerate
 
 After any change to the API's member models, from `web/`:
@@ -23,10 +28,3 @@ After any change to the API's member models, from `web/`:
 which runs `cd ../api && uv run python ../web/tests/contract/dump_schemas.py`.
 Commit the new `api-schemas.json`, then run `npm test`; a failure names the path
 and the mismatch.
-
-## Pending changes
-
-`pending.ts` lays the API track's in-flight changes (alertMinFit, FeedItem.provisional,
-StateIn with the dismiss reason codes) over the dumped file until it is regenerated.
-Each patch applies only while the file has the old shape; once regenerated they are
-all no-ops, and `pending.ts` can be removed.

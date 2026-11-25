@@ -4,13 +4,11 @@
  */
 import { expect, test } from 'vitest';
 import dump from '../../tests/contract/api-schemas.json';
-import { withPending } from '../../tests/contract/pending';
 import { check, type Schema } from '../../tests/contract/schemaCheck';
 import { toForm, toInput } from '../screens/profiles/profileForm';
 import { DISMISS_REASONS, type Profile } from './types';
 
-// The API track's parallel changes (tests/contract/pending.ts) until api-schemas.json is regenerated.
-const { schemas } = withPending(dump as unknown as { schemas: Record<string, Schema> });
+const schemas = dump.schemas as unknown as Record<string, Schema>;
 const fits = (value: unknown, model: string) => check(value, schemas[model]!);
 
 const IRONJI: Profile = {
@@ -60,4 +58,9 @@ test('the digest settings body fits DigestSettingsIn', () => {
 test('the state bodies fit StateIn: a dismiss with and without a reason code', () => {
   expect(fits({ state: 'dismissed' }, 'StateIn')).toEqual([]);
   for (const code of DISMISS_REASONS) expect(fits({ state: 'dismissed', dismissReason: code }, 'StateIn')).toEqual([]);
+});
+
+test('DISMISS_REASONS is exactly the code list StateIn accepts', () => {
+  const reason = schemas.StateIn!.properties!.dismissReason!.anyOf!.find((s) => s.type === 'string')!;
+  expect(reason.enum).toEqual([...DISMISS_REASONS]);
 });
