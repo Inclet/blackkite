@@ -325,3 +325,33 @@ def test_scheduler_has_one_tick_job(Sessions, settings, web):
     assert job.id == "run-due-sources"
     assert job.trigger.interval.total_seconds() == TICK_SECONDS
     assert job.max_instances == 1 and job.coalesce
+
+
+def test_runs_feed_last_seen_and_items_found_in_30_days(db, web, tmp_path):
+    """Spec 4.4 health: "items found in the last 30 days" counts the catalogue items
+    whose opportunity_source.last_seen falls in the window, so every run must bump
+    last_seen for what it saw again."""
+    from blackkite.sources.service import source_stats
+
+    s = add_source(db, "Health", created=NOW - timedelta(days=60))
+    make_deps = pipeline_deps(
+        tmp_path / "data", llm=FakeLLM(extraction), embedder=FakeEmbedder()
+    )
+    client = make_client(web)
+    old = NOW - timedelta(days=40)
+    runner.run_source(db, s, client=client, make_deps=make_deps, now=lambda: old)
+
+    def stats():
+        db.expire_all()
+        return source_stats(db, [s.id], now=NOW)[s.id]
+
+    links = lambda: db.scalars(sa.select(OpportunitySource)).all()
+    assert {(link.first_seen, link.last_seen) for link in links()} == {(old, old)}
+    assert stats().items_30d == 0 and stats().health == "ok"
+
+    run = runner.run_source(db, s, client=client, make_deps=make_deps, now=lambda: NOW)
+    assert (run.items_found, run.items_new) == (2, 0)
+    assert {(link.first_seen, link.last_seen) for link in links()} == {(old, NOW)}
+    st = stats()
+    assert st.items_30d == 2 and st.health == "ok"
+    assert st.last_success_at == NOW
