@@ -737,3 +737,100 @@ def test_kind_change_recomputes_verification(admin, db):
     assert r.status_code == 200, r.text
     db.expire_all()
     assert o.verification == "unverified"
+
+
+# --- role checks on every admin source and suggestion route ---------------------------------
+
+SOURCE_ADMIN_PREFIXES = ("/admin/sources", "/admin/source-suggestions")
+EXPECTED_SOURCE_ADMIN_ROUTES = {
+    ("GET", "/admin/sources"),
+    ("POST", "/admin/sources"),
+    ("GET", "/admin/sources/{source_id}"),
+    ("PATCH", "/admin/sources/{source_id}"),
+    ("POST", "/admin/sources/{source_id}/status"),
+    ("GET", "/admin/sources/{source_id}/runs"),
+    ("POST", "/admin/sources/test-run"),
+    ("POST", "/admin/sources/{source_id}/test-run"),
+    ("GET", "/admin/source-suggestions"),
+    ("POST", "/admin/source-suggestions/{suggestion_id}/accept"),
+    ("POST", "/admin/source-suggestions/{suggestion_id}/reject"),
+}
+
+
+def _source_admin_routes(app) -> list[tuple[str, str]]:
+    """From OpenAPI, so a new route is covered without editing this test."""
+    return sorted(
+        (method.upper(), path)
+        for path, ops in app.openapi()["paths"].items()
+        if path.startswith(SOURCE_ADMIN_PREFIXES)
+        for method in ops
+    )
+
+
+def _valid_request(method, path, source, suggestion):
+    """A request that would succeed for an admin: real ids, valid bodies."""
+    url = path.format(source_id=source.id, suggestion_id=suggestion.id)
+    payload = None
+    if (method, path) == ("POST", "/admin/sources"):
+        payload = body(name="Created by a non-admin")
+    elif method == "PATCH":
+        payload = {"name": "Renamed by a non-admin"}
+    elif path.endswith("/status"):
+        payload = {"status": "retired"}
+    elif path == "/admin/sources/test-run":
+        payload = {"collector_type": "html_list", "config": HTML_CONFIG}
+    return method, url, payload
+
+
+def _fixtures_for_routes(db, member_user):
+    src = add_source(db, "Guarded")
+    sug = SourceSuggestion(user_id=member_user.id, url="https://calls.example/")
+    db.add(sug)
+    db.commit()
+    return src, sug
+
+
+def _unchanged(db, src, sug):
+    db.expire_all()
+    assert db.get(Source, src.id).name == "Guarded"
+    assert db.get(Source, src.id).status == "testing"
+    assert db.get(SourceSuggestion, sug.id).status == "suggested"
+    assert count(db, Source) == 1
+
+
+def test_source_admin_route_list_is_complete(app):
+    assert set(_source_admin_routes(app)) >= EXPECTED_SOURCE_ADMIN_ROUTES
+
+
+def test_every_source_admin_route_needs_sign_in(app, db, web):
+    owner = make_user(db, OTHER)
+    src, sug = _fixtures_for_routes(db, owner)
+    c = new_client(app)
+    for method, path in _source_admin_routes(app):
+        m, url, payload = _valid_request(method, path, src, sug)
+        r = c.request(m, url, json=payload)
+        assert r.status_code == 401, (method, path, r.status_code)
+    _unchanged(db, src, sug)
+    assert web.requests == []  # no test run reached the network
+
+
+def test_every_source_admin_route_refuses_members(app, member, db, web):
+    src, sug = _fixtures_for_routes(db, member.user)
+    for method, path in _source_admin_routes(app):
+        m, url, payload = _valid_request(method, path, src, sug)
+        r = member.request(m, url, json=payload)
+        assert r.status_code == 403, (method, path, r.status_code)
+    _unchanged(db, src, sug)
+    assert web.requests == []
+
+
+def test_every_source_admin_route_admits_admins(app, admin, db, web):
+    """The same requests succeed for an admin, so the 401/403 above are real."""
+    member_user = make_user(db, MEMBER)
+    src, sug = _fixtures_for_routes(db, member_user)
+    for method, path in _source_admin_routes(app):
+        if path.endswith("/reject"):
+            continue  # accept ran first (sorted order) and used the suggestion
+        m, url, payload = _valid_request(method, path, src, sug)
+        r = admin.request(m, url, json=payload)
+        assert r.status_code < 400, (method, path, r.status_code, r.text)
