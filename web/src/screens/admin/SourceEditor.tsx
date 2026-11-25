@@ -53,6 +53,7 @@ import {
   fieldKind,
   fieldLabel,
   fieldsFor,
+  switchOn,
   toForm,
   validate,
   validateForTest,
@@ -440,7 +441,7 @@ function ConfigFields({
         const label = `${fieldLabel(f)}${f.required ? '' : ' (optional)'}`;
         if (kind === 'boolean') {
           return (
-            <SwitchRow key={f.name} label={label} description={f.help ?? undefined} checked={values[f.name] === true} onChange={(v) => onChange(f.name, v)} />
+            <SwitchRow key={f.name} label={label} description={f.help ?? undefined} checked={switchOn(f, values)} onChange={(v) => onChange(f.name, v)} />
           );
         }
         const hint = fieldHint(f);

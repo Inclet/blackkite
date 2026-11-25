@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { mockApi } from '../test/mockApi';
+import REAL_TYPES from '../../tests/fixtures/collector-types.json';
 import { camel, collectorTypesFrom, sourcesApi } from './sources';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -24,32 +25,25 @@ test('camel(): snake_case keys become camelCase, deeply; config and extra values
   });
 });
 
-test('collector types (contract 4.1): kind, nested fields, options and bounds; a map or older `type` keys also read', () => {
-  const sel = { name: 'title', kind: 'selector', required: true, help: 'Title', default: null, options: null, min: null, max: null, fields: null };
-  const raw = [
-    {
-      type: 'html_list',
-      implemented: true,
-      schemaSource: 'model',
-      fields: [
-        { name: 'max_pages', kind: 'integer', required: false, help: 'Pages', default: 1, options: null, min: 1, max: 20, fields: null },
-        { name: 'selectors', kind: 'object', required: true, help: 'Where', default: null, options: null, min: null, max: null, fields: [sel] },
-      ],
-    },
-    { type: 'rss', implemented: false, schemaSource: 'declared', fields: [{ name: 'feed_url', kind: 'url', required: true, help: 'Feed' }] },
-  ];
-  const [html, rss] = collectorTypesFrom(raw);
-  expect(html).toEqual({
-    type: 'html_list',
-    label: null,
-    implemented: true,
-    schemaSource: 'model',
-    fields: [
-      { name: 'max_pages', kind: 'integer', required: false, help: 'Pages', default: 1, options: null, min: 1, max: 20, fields: null, label: null },
-      { name: 'selectors', kind: 'object', required: true, help: 'Where', default: null, options: null, min: null, max: null, label: null, fields: [{ ...sel, label: null }] },
-    ],
-  });
-  expect(rss).toMatchObject({ type: 'rss', implemented: false, schemaSource: 'declared', fields: [{ name: 'feed_url', kind: 'url', required: true }] });
+test('collector types (contract 4.1): the real API answer reads with kinds, nested fields, options, defaults and bounds', () => {
+  const types = collectorTypesFrom(REAL_TYPES);
+  expect(types.map((t) => [t.type, t.implemented, t.schemaSource])).toEqual(REAL_TYPES.map((t) => [t.type, t.implemented, t.schemaSource]));
+  // Every field arrives as sent (plus label: null), at every depth.
+  const withLabel = (fields: unknown[]): unknown[] =>
+    fields.map((f) => {
+      const o = f as Record<string, unknown>;
+      return { ...o, label: null, fields: Array.isArray(o.fields) ? withLabel(o.fields) : null };
+    });
+  for (const [i, t] of types.entries()) expect(t.fields).toEqual(withLabel(REAL_TYPES[i]!.fields));
+  const html = types.find((t) => t.type === 'html_list')!;
+  expect(html.fields.find((f) => f.name === 'max_pages')).toMatchObject({ kind: 'integer', default: 1, min: 1, max: 20 });
+  expect(html.fields.find((f) => f.name === 'selectors')!.fields!.find((f) => f.name === 'title')).toMatchObject({ kind: 'selector', required: true });
+  expect(types.find((t) => t.type === 'email_ingest')!.fields.find((f) => f.name === 'parse_mode')).toMatchObject({ kind: 'choice', options: ['links', 'message'] });
+});
+
+test('collector types: a declared (not built) type, a map keyed by type, older `type` keys, and nothing', () => {
+  const declared = { type: 'rss', implemented: false, schemaSource: 'declared', fields: [{ name: 'feed_url', kind: 'url', required: true, help: 'Feed' }] };
+  expect(collectorTypesFrom([declared])[0]).toMatchObject({ type: 'rss', implemented: false, schemaSource: 'declared', fields: [{ name: 'feed_url', kind: 'url', required: true, default: null }] });
   expect(collectorTypesFrom({ custom: [{ name: 'class_name', type: 'string' }] })[0]).toMatchObject({ type: 'custom', fields: [{ name: 'class_name', kind: 'string', required: false, help: null }] });
   expect(collectorTypesFrom(null)).toEqual([]);
 });

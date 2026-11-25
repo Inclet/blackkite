@@ -113,10 +113,12 @@ test('admin: promotion is refused with the gate explained; run history and error
   await expect(page.getByRole('region', { name: 'Error log' }).getByText('HTTP 503 from www.umucyo.gov.rw')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Run history' }).getByText('9 found · 2 new')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Status history' }).getByText('Created as testing')).toBeVisible();
-  // A collector not built yet says so, and its declared fields still render.
-  await page.getByRole('form', { name: 'Umucyo e-procurement' }).getByRole('button', { name: 'JSON API' }).click();
-  await expect(page.getByText(/This collector is not built yet/)).toBeVisible();
-  await expect(page.getByLabel('Field mapping')).toBeVisible();
+  // Every collector is built now: JSON API renders its mapping and pagination fields, with no "not built" note.
+  const form = page.getByRole('form', { name: 'Umucyo e-procurement' });
+  await form.getByRole('button', { name: 'JSON API' }).click();
+  await expect(form.getByLabel('Mapping: title', { exact: true })).toBeVisible();
+  await expect(form.getByLabel('Pagination (optional)')).toBeVisible();
+  await expect(page.getByText(/This collector is not built yet/)).toHaveCount(0);
 });
 
 test('admin: accept a suggestion, then create a source from it, prefilled', async ({ page }, testInfo) => {

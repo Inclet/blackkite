@@ -49,12 +49,18 @@ export function fieldHint(f: ConfigField): string | undefined {
   let help = f.help ?? '';
   if (kind === 'list') help = /one per line/i.test(help) ? help.replace(/,?\s*one per line/i, ', separated by commas') : [help, 'Separate with commas.'].filter(Boolean).join(' ');
   const parts = [help];
-  if (kind === 'selector') parts.push('A CSS selector, or JSON such as {"css": "a", "attr": "href"}.');
+  if (kind === 'selector' && !/css selector/i.test(help)) parts.push('A CSS selector, or JSON such as {"css": "a", "attr": "href"}.');
   if (kind === 'json') parts.push('JSON.');
   const hasDefault = f.default !== null && f.default !== undefined && !(Array.isArray(f.default) && f.default.length === 0) && kind !== 'boolean';
   if (hasDefault) parts.push(`Default: ${Array.isArray(f.default) ? f.default.join(', ') : typeof f.default === 'object' ? JSON.stringify(f.default) : String(f.default)}.`);
   if ((kind === 'integer' || kind === 'number') && f.min !== null && f.min !== undefined && f.max !== null && f.max !== undefined) parts.push(`From ${f.min} to ${f.max}.`);
   return parts.filter(Boolean).join(' ') || undefined;
+}
+
+/** A switch's state: the value set in the form, else the API's default (so an "on" default is never turned off silently). */
+export function switchOn(f: ConfigField, values: ConfigValues): boolean {
+  const v = values[f.name];
+  return typeof v === 'boolean' ? v : f.default === true;
 }
 
 /** "selectors.item_title" -> "Selectors: item title". */
@@ -163,7 +169,11 @@ export function fieldsFor(types: CollectorTypeInfo[] | undefined, type: Collecto
 export function configValues(fields: ConfigField[] | null, config: Record<string, unknown>): ConfigValues {
   if (!fields) return { [WHOLE_CONFIG]: Object.keys(config).length ? JSON.stringify(config, null, 0) : '' };
   const out: ConfigValues = {};
-  for (const f of fields) out[f.name] = toText(fieldKind(f.kind), getPath(config, f.name));
+  for (const f of fields) {
+    const v = getPath(config, f.name);
+    // A switch the config leaves unset shows (and saves) the API's default, so an "on" default is not turned off silently.
+    out[f.name] = fieldKind(f.kind) === 'boolean' && v === undefined ? f.default === true : toText(fieldKind(f.kind), v);
+  }
   return out;
 }
 
@@ -225,7 +235,7 @@ export function buildConfig(
     const kind = fieldKind(f.kind);
     const raw = values[f.name];
     if (kind === 'boolean') {
-      setPath(config, f.name, raw === true);
+      setPath(config, f.name, switchOn(f, values));
       continue;
     }
     const text = String(raw ?? '').trim();

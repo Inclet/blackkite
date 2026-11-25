@@ -88,7 +88,7 @@ test('new source: the config form is rendered from collector-types; a test run p
   const router = renderAt('/admin/sources/new');
   const form = within(await screen.findByRole('form', { name: EDITOR_COPY.newTitle }));
   fireEvent.click(form.getByRole('button', { name: 'RSS feed' }));
-  expect(form.getByLabelText('Feed url')).toHaveAccessibleDescription('The feed address.');
+  expect(form.getByLabelText('Feed url')).toHaveAccessibleDescription('Address of the RSS or Atom feed.');
   fireEvent.click(form.getByRole('button', { name: 'Web page list' }));
   expect(form.queryByLabelText('Feed url')).toBeNull();
   expect(form.getByLabelText('Selectors: item')).toBeInTheDocument();
@@ -97,7 +97,7 @@ test('new source: the config form is rendered from collector-types; a test run p
   // A test run checks only the config.
   fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.testRun }));
   expect(await screen.findByText(EDITOR_COPY.checkFields)).toBeInTheDocument();
-  expect(form.getByLabelText('List url')).toHaveAccessibleDescription(`The page that lists the notices. This is needed for this collector.`);
+  expect(form.getByLabelText('List url')).toHaveAccessibleDescription('Address of the listing page (page 1). This is needed for this collector.');
   fireEvent.change(form.getByLabelText('List url'), { target: { value: 'https://www.ncst.gov.rw/calls' } });
   fireEvent.change(form.getByLabelText('Selectors: item'), { target: { value: 'article' } });
   fireEvent.change(form.getByLabelText('Selectors: title'), { target: { value: 'h2 a' } });
@@ -345,7 +345,7 @@ test('phone: admin screens sit under More', async () => {
   expect(screen.getByRole('link', { name: 'More' })).toHaveAttribute('aria-current', 'page');
 });
 
-test('editor extras: status history, a collector not built yet, choice fields as chips', async () => {
+test('editor extras: status history, every real collector is built, choice fields as chips, booleans as switches', async () => {
   editorRoutes();
   renderAt('/admin/sources/src-1');
   const history = within(await screen.findByRole('region', { name: EDITOR_COPY.history }));
@@ -353,11 +353,27 @@ test('editor extras: status history, a collector not built yet, choice fields as
   const form = within(screen.getByRole('form', { name: 'Umucyo e-procurement' }));
   expect(screen.queryByText(EDITOR_COPY.notBuilt)).toBeNull();
   fireEvent.click(form.getByRole('button', { name: 'Email alerts' }));
+  expect(screen.queryByText(EDITOR_COPY.notBuilt)).toBeNull();
+  const mode = within(form.getByRole('group', { name: 'Parse mode (optional)' }));
+  fireEvent.click(mode.getByRole('button', { name: 'message' }));
+  expect(mode.getByRole('button', { name: 'message' })).toHaveAttribute('aria-pressed', 'true');
+  expect(form.getByRole('switch', { name: 'Require authenticated (optional)' })).toBeInTheDocument();
+});
+
+test('a collector the API declares but has not built: the editor says so (synthetic type)', async () => {
+  const declared = {
+    type: 'rss',
+    implemented: false,
+    schemaSource: 'declared',
+    fields: [{ name: 'feed_url', kind: 'url', required: true, help: 'Feed.', default: null, options: null, min: null, max: null, fields: null }],
+  };
+  editorRoutes({ 'GET /api/admin/collector-types': [declared] });
+  renderAt('/admin/sources/new');
+  const form = within(await screen.findByRole('form', { name: EDITOR_COPY.newTitle }));
+  expect(screen.queryByText(EDITOR_COPY.notBuilt)).toBeNull();
+  fireEvent.click(form.getByRole('button', { name: 'RSS feed' }));
   expect(screen.getByText(EDITOR_COPY.notBuilt)).toBeInTheDocument();
-  const format = within(form.getByRole('group', { name: 'Format (optional)' }));
-  fireEvent.click(format.getByRole('button', { name: 'text' }));
-  expect(format.getByRole('button', { name: 'text' })).toHaveAttribute('aria-pressed', 'true');
-  expect(form.getByRole('switch', { name: 'Strip footer (optional)' })).toHaveAttribute('aria-checked', 'false');
+  expect(form.getByLabelText('Feed url')).toHaveAccessibleDescription('Feed.');
 });
 
 test('users: last sign-in, role change (PATCH), and the last-admin refusal', async () => {

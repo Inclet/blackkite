@@ -2,55 +2,8 @@
 export const ADMIN_ME = { id: 'u1', email: 'clet@example.rw', name: 'Clet', role: 'admin' };
 export const MEMBER_ME = { id: 'u2', email: 'amina@example.rw', name: 'Amina', role: 'member' };
 
-/** GET /api/admin/collector-types, as the API sends it (contract 4.1; a subset of the real fields). */
-const sel = (name: string, required: boolean, help: string) => ({ name, kind: 'selector', required, help, default: null, options: null, min: null, max: null, fields: null });
-const f = (name: string, kind: string, required: boolean, help: string, more: Record<string, unknown> = {}) => ({
-  name,
-  kind,
-  required,
-  help,
-  default: null,
-  options: null,
-  min: null,
-  max: null,
-  fields: null,
-  ...more,
-});
-export const COLLECTOR_TYPES = [
-  { type: 'rss', implemented: false, schemaSource: 'declared', fields: [f('feed_url', 'url', true, 'The feed address.')] },
-  {
-    type: 'html_list',
-    implemented: true,
-    schemaSource: 'model',
-    fields: [
-      f('list_url', 'url', true, 'The page that lists the notices.'),
-      f('max_pages', 'integer', false, 'Pages to fetch in total.', { default: 1, min: 1, max: 20 }),
-      f('selectors', 'object', true, 'Where each listing is.', {
-        fields: [f('item', 'string', true, 'CSS for one notice.'), sel('title', true, 'Selector for the title.'), sel('link', false, 'Selector for the link.')],
-      }),
-      f('detail', 'object', false, 'Optional: follow each listing.', {
-        fields: [f('selectors', 'object', true, 'Fields read from the detail page.', { fields: [sel('deadline', false, 'Selector for the closing date.')] }), f('max_items', 'integer', false, 'At most.', { default: 20, min: 1, max: 50 })],
-      }),
-    ],
-  },
-  {
-    type: 'search_query',
-    implemented: true,
-    schemaSource: 'model',
-    fields: [
-      f('queries', 'string_list', true, 'Search queries, one per line.'),
-      f('domains', 'string_list', false, 'Only these domains.', { default: [] }),
-      f('recency_days', 'integer', false, 'Only results from the last N days.', { min: 1, max: 365 }),
-    ],
-  },
-  {
-    type: 'email_ingest',
-    implemented: false,
-    schemaSource: 'declared',
-    fields: [f('sender', 'string', true, 'Sender address.'), f('strip_footer', 'boolean', false, 'Drop the footer.'), f('format', 'choice', false, 'Body format.', { options: ['html', 'text'] })],
-  },
-  { type: 'json_api', implemented: false, schemaSource: 'declared', fields: [f('endpoint', 'url', true, 'The JSON endpoint.'), f('params', 'map', false, 'Query parameters.')] },
-];
+/** GET /api/admin/collector-types, the real API answer (tests/fixtures/collector-types.json, dumped from api CollectorTypeOut by alias). */
+export { default as COLLECTOR_TYPES } from '../../../tests/fixtures/collector-types.json';
 
 export function adminSource(over: Record<string, unknown> = {}) {
   return {

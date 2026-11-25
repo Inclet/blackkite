@@ -46,21 +46,34 @@ test('the contract\'s field kinds map to inputs; object_list, map, json and unkn
 test('nested objects flatten to dotted names; a field inside an optional object is optional', () => {
   expect(HTML.map((f) => [f.name, f.kind, f.required])).toEqual([
     ['list_url', 'url', true],
+    ['pagination_pattern', 'string', false],
+    ['first_page', 'integer', false],
     ['max_pages', 'integer', false],
     ['selectors.item', 'string', true],
     ['selectors.title', 'selector', true],
     ['selectors.link', 'selector', false],
+    ['selectors.date', 'selector', false],
+    ['selectors.deadline', 'selector', false],
+    ['selectors.organisation', 'selector', false],
+    ['selectors.snippet', 'selector', false],
+    ['detail.selectors.date', 'selector', false],
     ['detail.selectors.deadline', 'selector', false],
+    ['detail.selectors.organisation', 'selector', false],
+    ['detail.selectors.snippet', 'selector', false],
     ['detail.max_items', 'integer', false],
   ]);
   expect(flattenFields([field('a', 'object')])).toEqual([field('a', 'object')]);
 });
 
-test('hints: the API\'s help, defaults, ranges; string lists say commas', () => {
-  expect(fieldHint(HTML[1]!)).toBe('Pages to fetch in total. Default: 1. From 1 to 20.');
-  expect(fieldHint(fieldsFor(TYPES, 'search_query')![0]!)).toBe('Search queries, separated by commas.');
-  expect(fieldHint(fieldsFor(TYPES, 'search_query')![1]!)).toBe('Only these domains. Separate with commas.');
-  expect(fieldHint(HTML[3]!)).toBe('Selector for the title. A CSS selector, or JSON such as {"css": "a", "attr": "href"}.');
+test('hints: the API\'s help, defaults, ranges; string lists say commas; selectors explained once', () => {
+  const html = (name: string) => HTML.find((f) => f.name === name)!;
+  expect(fieldHint(html('max_pages'))).toBe('Pages to read per run, counting list_url as 1. Default: 1. From 1 to 20.');
+  expect(fieldHint(fieldsFor(TYPES, 'search_query')![0]!)).toBe('Search queries, one request each per run. Separate with commas.');
+  expect(fieldHint(field('queries', 'string_list', { help: 'Search queries, one per line.' }))).toBe('Search queries, separated by commas.');
+  expect(fieldHint(fieldsFor(TYPES, 'search_query')![1]!)).toBe('Only keep results from these domains (site: filter). Separate with commas.');
+  // The API's selector help already says "A CSS selector, or {css, attr}"; the editor does not repeat it.
+  expect(fieldHint(html('selectors.title'))).toBe('Title inside the item. A CSS selector, or {css, attr} to read an attribute.');
+  expect(fieldHint(field('title', 'selector', { help: 'Title.' }))).toBe('Title. A CSS selector, or JSON such as {"css": "a", "attr": "href"}.');
 });
 
 test('config to form and back: nesting, numbers, selectors as text or JSON, undescribed keys survive', () => {
