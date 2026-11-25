@@ -39,6 +39,7 @@ from blackkite.db.models import (
     User,
     UserSourceMute,
 )
+from blackkite.pipeline.visibility import refresh_verification_for_source
 
 ALLOWED: dict[str, frozenset[str]] = {
     "suggested": frozenset({"testing", "retired"}),
@@ -112,6 +113,8 @@ def change_status(db: Session, source: Source, new: str) -> Source:
             )
     source.status = new
     db.flush()
+    # Verification counts only member-visible sources (pipeline/visibility.py).
+    refresh_verification_for_source(db, source.id)
     return source
 
 

@@ -22,7 +22,9 @@ from blackkite.auth.deps import (
 from blackkite.collectors.http import FetchClient, make_fetch_client
 from blackkite.collectors.registry import validate_config
 from blackkite.db.models import Source, SourceRun, SourceSuggestion
+from blackkite.pipeline.visibility import refresh_verification_for_source
 from blackkite.routes.source_schemas import (
+    ORIGINAL_SEARCH_QUERY,
     AdminSuggestionOut,
     MemberSourceOut,
     PreviewIn,
@@ -227,6 +229,11 @@ def edit_source(
         if ctype != source.collector_type or validated != source.config:
             source.config_changed_at = service.now_utc()
         changes["config"] = validated
+    kind = changes.get("kind", source.kind)
+    ctype = changes.get("collector_type", source.collector_type)
+    if kind == "original" and ctype == "search_query":
+        raise HTTPException(422, ORIGINAL_SEARCH_QUERY)
+    kind_changed = "kind" in changes and changes["kind"] != source.kind
     for k, v in changes.items():
         setattr(source, k, v)
     try:
@@ -234,6 +241,8 @@ def edit_source(
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "A source with that name already exists") from None
+    if kind_changed:
+        refresh_verification_for_source(db, source.id)
     db.commit()
     db.refresh(source)
     return _source_out(db, settings, [source])[0]

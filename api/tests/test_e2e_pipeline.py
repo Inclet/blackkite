@@ -19,6 +19,7 @@ from pydantic import SecretStr
 from blackkite.db.models import Document, Opportunity, OpportunitySource, Source
 from blackkite.pipeline.dates import kigali_date
 from blackkite.pipeline.validate import trust_state
+from blackkite.sources import service
 from blackkite.worker import runner
 from tests.fakes import FakeWeb, make_client, pipeline_deps
 from tests.pipeline.fakes import FakeEmbedder, FakeLLM, q
@@ -236,10 +237,10 @@ def test_html_list_source_end_to_end_then_dedupes(db, web, model, tmp_path):
     assert ev["_embedding"]["model"] == emb.model
     assert "_enrich" not in ev  # every fetch succeeded
 
-    # Verification and the UI trust state (spec 6, 12).
-    assert vac.verification == "verified_original"
-    assert trust_state(vac.verification, vac.evidence) == "confirmed"
-    assert ev["_trust"] == "confirmed" and ev["_deadline_conflict"] is False
+    # Verification and the UI trust state (spec 6, 12): the source is still
+    # testing, so members cannot see it and it confirms nothing yet.
+    assert vac.verification == "unverified"
+    assert ev["_trust"] == "unconfirmed" and ev["_deadline_conflict"] is False
 
     # Carrying source: canonical URL (tracking parameter dropped), marked original.
     [link] = links(db, vac)
@@ -275,6 +276,14 @@ def test_html_list_source_end_to_end_then_dedupes(db, web, model, tmp_path):
     assert (link.first_seen, link.last_seen) == (NOW, later)
     assert len(docs(db, opps[VACCINES])) == 2
     assert db.scalar(sa.select(sa.func.count()).select_from(OpportunitySource)) == 2
+
+    # Two good runs: promoted to active, and its items are now confirmed.
+    service.change_status(db, src, "active")
+    db.commit()
+    vac = by_title(db)[VACCINES]
+    assert vac.verification == "verified_original"
+    assert trust_state(vac.verification, vac.evidence) == "confirmed"
+    assert vac.evidence["_trust"] == "confirmed"
 
 
 BRAVE_RESPONSE = {
@@ -319,6 +328,8 @@ def test_search_query_source_flows_into_the_same_pipeline(db, web, model, tmp_pa
     orig = html_source(db)
     runner.run_source(db, orig, client=client, make_deps=make_deps, now=lambda: NOW)
     assert len(llm.calls) == 2
+    orig.status = "active"  # promoted (the promotion gate is tested elsewhere)
+    db.commit()
 
     src = search_source(db)
     later = NOW + timedelta(hours=3)

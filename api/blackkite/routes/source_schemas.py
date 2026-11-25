@@ -31,6 +31,10 @@ Publisher = Annotated[str, Field(max_length=200)]
 Note = Annotated[str, Field(max_length=5000)]
 RateLimit = Annotated[float, Field(gt=0, le=3600)]
 Streams = Annotated[list[Stream], Field(min_length=1, max_length=4)]
+ORIGINAL_SEARCH_QUERY = (
+    "a search_query source cannot be kind 'original': search results are never "
+    "the issuer itself"
+)
 
 
 def _url(v: str | None) -> str | None:
@@ -94,6 +98,8 @@ class SourceIn(_SourceFields):
 
     @model_validator(mode="after")
     def _check_config(self):
+        if self.kind == "original" and self.collector_type == "search_query":
+            raise ValueError(ORIGINAL_SEARCH_QUERY)
         self.config = _config(self.collector_type, self.config)
         return self
 

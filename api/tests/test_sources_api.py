@@ -161,6 +161,8 @@ def test_admin_creates_source_as_testing(admin, db):
         {"collector_type": "selenium"},
         {"rate_limit": 0},
         {"collector_type": "search_query", "config": {"queries": []}},
+        # Search results are never the issuer itself.
+        {"collector_type": "search_query", "config": {"queries": ["tender"]}},
     ],
 )
 def test_create_rejects_bad_input(admin, over):
@@ -648,3 +650,90 @@ def test_member_visibility_mixed_sources_and_private_items(db):
         .all()
     )
     assert links == ["Active"]
+
+
+def test_original_search_query_is_refused_on_edit(admin, db):
+    s = add_source(
+        db,
+        "Search",
+        kind="publisher",
+        collector_type="search_query",
+        config={"queries": ["tender Rwanda"]},
+    )
+    r = admin.patch(f"/admin/sources/{s.id}", json={"kind": "original"})
+    assert r.status_code == 422 and "search_query" in r.json()["detail"]
+    o = add_source(db, "Orig", kind="original")
+    r = admin.patch(
+        f"/admin/sources/{o.id}",
+        json={"collector_type": "search_query", "config": {"queries": ["x"]}},
+    )
+    assert r.status_code == 422
+    ok = admin.patch(
+        f"/admin/sources/{o.id}",
+        json={
+            "kind": "publisher",
+            "collector_type": "search_query",
+            "config": {"queries": ["x"]},
+        },
+    )
+    assert ok.status_code == 200, ok.text
+
+
+def _carried_by(db, title, *sources, original=None):
+    o = Opportunity(stream="tender", title=title, evidence={})
+    db.add(o)
+    db.flush()
+    for i, src in enumerate(sources):
+        db.add(
+            OpportunitySource(
+                opportunity_id=o.id,
+                source_id=src.id,
+                url=f"https://x/{title}/{i}",
+                is_original=src is original,
+            )
+        )
+    db.commit()
+    return o
+
+
+def test_verification_counts_only_member_visible_sources(admin, db):
+    orig = add_source(db, "Issuer", "testing", kind="original")
+    agg = add_source(db, "Agg", "active", kind="aggregator")
+    o = _carried_by(db, "cold rooms", orig, agg, original=orig)
+    service.refresh_verification_for_source(db, orig.id)
+    db.commit()
+    db.refresh(o)
+    # Testing original: members see only the aggregator.
+    assert o.verification == "aggregator_only"
+    assert o.evidence["_trust"] == "unconfirmed"
+
+    # Promotion through the API recomputes the source's items.
+    add_run(db, orig, found=2, ago_hours=3)
+    add_run(db, orig, found=2, ago_hours=2)
+    r = admin.post(f"/admin/sources/{orig.id}/status", json={"status": "active"})
+    assert r.status_code == 200, r.text
+    db.expire_all()
+    assert o.verification == "verified_original"
+    assert o.evidence["_trust"] == "confirmed"
+
+    # Paused stays visible (and confirmed); retired no longer counts.
+    admin.post(f"/admin/sources/{orig.id}/status", json={"status": "paused"})
+    db.expire_all()
+    assert o.verification == "verified_original"
+    admin.post(f"/admin/sources/{orig.id}/status", json={"status": "retired"})
+    db.expire_all()
+    assert o.verification == "aggregator_only"
+    assert o.evidence["_trust"] == "unconfirmed"
+
+
+def test_kind_change_recomputes_verification(admin, db):
+    src = add_source(db, "Board", "active", kind="original")
+    o = _carried_by(db, "freight", src, original=src)
+    service.refresh_verification_for_source(db, src.id)
+    db.commit()
+    db.refresh(o)
+    assert o.verification == "verified_original"
+    r = admin.patch(f"/admin/sources/{src.id}", json={"kind": "publisher"})
+    assert r.status_code == 200, r.text
+    db.expire_all()
+    assert o.verification == "unverified"

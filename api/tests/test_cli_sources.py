@@ -142,9 +142,8 @@ def test_run_source_records_a_run_and_caches(bk, db, monkeypatch, tmp_path):
     assert run.status == "succeeded" and (run.items_found, run.items_new) == (1, 1)
     assert db.get(HttpCache, f"https://{H}/tenders").etag == '"abc"'
     (opp,) = db.scalars(sa.select(Opportunity)).all()
-    assert (
-        opp.title == "Invitation for Bids" and opp.verification == "verified_original"
-    )
+    # The source is still testing: members cannot see it, so it confirms nothing.
+    assert opp.title == "Invitation for Bids" and opp.verification == "unverified"
     assert opp.evidence["deadline_at"]["snippet"] == "Bids close on 30 November 2026"
     assert opp.embedding is not None and len(llm.calls) == 1
     (link,) = db.scalars(sa.select(OpportunitySource)).all()

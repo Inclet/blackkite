@@ -83,8 +83,8 @@ from blackkite.pipeline.validate import (
     review_reason,
     status_for,
     trust_state,
-    verification_for,
 )
+from blackkite.pipeline.visibility import verification_of
 
 log = logging.getLogger("blackkite.pipeline")
 
@@ -674,12 +674,7 @@ def _finalise(
         opp.event_end,
         now,
     )
-    links = session.execute(
-        sa.select(OpportunitySource.is_original, Source.kind)
-        .join(Source, Source.id == OpportunitySource.source_id)
-        .where(OpportunitySource.opportunity_id == opp.id)
-    ).all()
-    opp.verification = verification_for((bool(o), k) for o, k in links)
+    opp.verification = verification_of(session, opp.id)  # member-visible sources
     ev["_trust"] = trust_state(opp.verification, ev)
 
     reasons: list[dict[str, str]] = list(ev.get("_review", []))
