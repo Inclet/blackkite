@@ -158,7 +158,7 @@ def test_run_source_failure_exit_code(bk, db):
     add(db, "Feed", collector_type="rss", config={})
     r = bk("run-source", "Feed")
     assert r.exit_code == 1
-    assert "not implemented yet" in r.output
+    assert "invalid rss config" in r.output
     assert db.scalars(sa.select(SourceRun.status)).all() == ["failed"]
 
 

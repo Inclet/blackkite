@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Example Issuer Notices</title>
+  <entry>
+    <title type="html">EOI: cold &lt;em&gt;chain&lt;/em&gt; logistics</title>
+    <link rel="self" href="https://issuer.example/feed/1"/>
+    <link rel="alternate" href="https://issuer.example/notices/1"/>
+    <id>urn:uuid:1</id>
+    <published>2026-11-20T08:00:00Z</published>
+    <updated>2026-11-21T08:00:00Z</updated>
+    <author><name>Example Issuer Ltd</name></author>
+    <category term="tender"/>
+    <summary>Deadline 10 Dec 2026.</summary>
+  </entry>
+  <entry>
+    <title>Second notice</title>
+    <link href="notices/2"/>
+    <updated>2026-11-22T08:00:00Z</updated>
+    <content type="html">&lt;p&gt;Full text here.&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <title>No link at all</title>
+  </entry>
+</feed>

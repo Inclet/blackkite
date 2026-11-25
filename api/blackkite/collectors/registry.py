@@ -18,7 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel, SecretStr
 
-from blackkite.collectors import forms, html_list, search_query
+from blackkite.collectors import forms, html_list, rss, search_query
 from blackkite.collectors.base import Collector, CollectorError
 from blackkite.collectors.http import FetchClient
 from blackkite.db.models import COLLECTOR_TYPES
@@ -30,10 +30,12 @@ MAX_CONFIG_BYTES = 20_000
 CONFIG_MODELS: dict[str, type[BaseModel]] = {
     "html_list": html_list.HtmlListConfig,
     "search_query": search_query.SearchQueryConfig,
+    "rss": rss.RssConfig,
 }
 _PARSERS: dict[str, Callable[[dict[str, Any]], BaseModel]] = {
     "html_list": html_list.parse_config,
     "search_query": search_query.parse_config,
+    "rss": rss.parse_config,
 }
 IMPLEMENTED = tuple(CONFIG_MODELS)
 
@@ -61,6 +63,8 @@ def build_collector(
         return html_list.HtmlListCollector(client, preview=preview)
     if collector_type == "search_query":
         return search_query.SearchQueryCollector(client, brave_api_key, preview=preview)
+    if collector_type == "rss":
+        return rss.RssCollector(client, preview=preview)
     if collector_type in COLLECTOR_TYPES:
         return UnimplementedCollector(collector_type)
     raise CollectorError(f"unknown collector type {collector_type!r}")

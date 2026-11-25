@@ -214,8 +214,8 @@ def test_one_failing_source_never_stops_the_others(Sessions, db, web, monkeypatc
     monkeypatch.setattr(ingest, "ingest_items", ingest_or_crash)
     add_source(db, "A blocked", config={**CONFIG, "list_url": f"https://{H}/blocked"})
     add_source(db, "B crashes in ingest")
-    s = add_source(db, "C unimplemented")
-    s.collector_type = "rss"
+    s = add_source(db, "C bad config")
+    s.collector_type = "rss"  # html_list config under the rss type
     db.commit()
     add_source(db, "D good")
     out = runner.run_due_sources(
@@ -224,11 +224,11 @@ def test_one_failing_source_never_stops_the_others(Sessions, db, web, monkeypatc
     assert [(o.name, o.status) for o in out] == [
         ("A blocked", "failed"),
         ("B crashes in ingest", "failed"),
-        ("C unimplemented", "failed"),
+        ("C bad config", "failed"),
         ("D good", "succeeded"),
     ]
     assert real == ["D good"]
-    assert "not implemented yet" in out[2].error
+    assert "invalid rss config" in out[2].error
     assert len(runs(db)) == 4
 
 

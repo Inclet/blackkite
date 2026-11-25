@@ -24,6 +24,7 @@ dependencies = [
     "sqlalchemy>=2",
     "typer>=0.29.2",
     "uvicorn>=0.54.0",
+    "defusedxml>=0.7.1",
 ]
 
 [project.scripts]

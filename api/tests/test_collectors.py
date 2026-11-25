@@ -7,6 +7,7 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
+from blackkite.collectors import registry
 from blackkite.collectors.base import CollectorError
 from blackkite.collectors.registry import build_collector, validate_config
 from blackkite.db.models import COLLECTOR_TYPES, Source
@@ -393,7 +394,7 @@ def test_search_query_bad_config(config):
 
 
 @pytest.mark.parametrize(
-    "ctype", [t for t in COLLECTOR_TYPES if t not in ("html_list", "search_query")]
+    "ctype", [t for t in COLLECTOR_TYPES if t not in registry.IMPLEMENTED]
 )
 def test_unimplemented_types_fail_cleanly(ctype):
     web = FakeWeb()
@@ -405,8 +406,8 @@ def test_unimplemented_types_fail_cleanly(ctype):
 
 def test_validate_config_limits():
     with pytest.raises(TypeError, match="JSON object"):
-        validate_config("rss", [1])
+        validate_config("html_list", [1])
     with pytest.raises(ValueError, match="larger"):
-        validate_config("rss", {"x": "y" * 30_000})
+        validate_config("html_list", {"x": "y" * 30_000})
     with pytest.raises(CollectorError, match="unknown"):
         build_collector("ftp", make_client(FakeWeb()))
