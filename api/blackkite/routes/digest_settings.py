@@ -1,16 +1,18 @@
-"""Digest settings (decision 18: weekly on Monday, or off) and the caller's
-display name (the digest and feed greet people by first name)."""
+"""The caller's own account: digest settings (decision 18: weekly on Monday, or
+off), display name (the digest and feed greet people by first name), and export
+and deletion (spec 10)."""
 
 from __future__ import annotations
 
 from typing import Annotated, Literal
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import Field, field_validator
 
-from blackkite.auth.deps import CurrentUser, DbDep, require_user
+from blackkite.auth.deps import CurrentUser, DbDep, SettingsDep, require_user
 from blackkite.db.models import DigestSetting, User
+from blackkite.member import privacy
 from blackkite.member.schemas import CamelIn, CamelModel
 from blackkite.routes.schemas import UserOut
 
@@ -102,3 +104,27 @@ def set_name(body: NameIn, user: CurrentUser, db: DbDep) -> UserOut:
     db.commit()
     db.refresh(user)
     return UserOut.model_validate(user)
+
+
+@router.get("/me/export")
+def export_me(user: CurrentUser, db: DbDep) -> dict:
+    return privacy.export(db, user)
+
+
+@router.delete("/me", status_code=204)
+def delete_me(user: CurrentUser, db: DbDep, settings: SettingsDep) -> Response:
+    try:
+        privacy.delete_account(db, user)
+    except privacy.LastAdmin:
+        raise HTTPException(
+            409, "You are the only admin. Make someone else an admin first."
+        ) from None
+    resp = Response(status_code=204)
+    resp.delete_cookie(
+        settings.session_cookie_name,
+        path="/",
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+    )
+    return resp
