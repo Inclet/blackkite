@@ -255,6 +255,91 @@ def test_source_cmd(
             typer.echo(f"    {line}")
 
 
+# --- scoring ---------------------------------------------------------------------------
+
+
+def _scoring_deps():
+    """Scoring clients for CLI runs. Tests replace this to inject fakes."""
+    from blackkite.scoring.service import default_deps
+
+    return default_deps()
+
+
+def _find_user(db, ref: str):
+    import uuid
+
+    from blackkite.auth.service import find_user_by_email
+    from blackkite.db.models import User
+
+    try:
+        found = db.get(User, uuid.UUID(ref))
+    except ValueError:
+        found = find_user_by_email(db, ref)
+    if found is None:
+        typer.echo(f"error: no user {ref!r} (give their email or id)", err=True)
+        raise typer.Exit(1)
+    return found
+
+
+def _echo_scoring(deps, stats) -> None:
+    if deps.llm is None:
+        typer.echo(
+            "warning: ANTHROPIC_API_KEY is not set; tender and funding pairs were "
+            "scored without the model",
+            err=True,
+        )
+    typer.echo(stats.summary())
+
+
+@app.command("score")
+def score_cmd(
+    user: str = typer.Option(..., "--user", help="User email or id."),
+) -> None:
+    """Match and score every active profile of one user over the open items they can see."""
+    from blackkite.db.session import get_sessionmaker
+    from blackkite.scoring.service import score_user
+
+    deps = _scoring_deps()
+    with get_sessionmaker()() as db:
+        found = _find_user(db, user)
+        if found.status != "active":
+            typer.echo(f"error: {found.email} is deactivated", err=True)
+            raise typer.Exit(1)
+        stats = score_user(db, found.id, deps=deps)
+        db.commit()
+    _echo_scoring(deps, stats)
+
+
+@app.command("backfill")
+def backfill_cmd(
+    profile: str = typer.Option(..., "--profile", help="Profile id."),
+) -> None:
+    """Match and score one profile over the currently open items (spec 5 backfill)."""
+    import uuid
+
+    from blackkite.db.models import Profile
+    from blackkite.db.session import get_sessionmaker
+    from blackkite.scoring.service import backfill_profile
+
+    try:
+        pid = uuid.UUID(profile)
+    except ValueError:
+        typer.echo(f"error: {profile!r} is not a profile id", err=True)
+        raise typer.Exit(1) from None
+    deps = _scoring_deps()
+    with get_sessionmaker()() as db:
+        found = db.get(Profile, pid)
+        if found is None:
+            typer.echo(f"error: no profile {profile}", err=True)
+            raise typer.Exit(1)
+        if not found.active:
+            typer.echo(f"error: profile {found.name!r} is not active", err=True)
+            raise typer.Exit(1)
+        stats = backfill_profile(db, pid, deps=deps)
+        db.commit()
+    _echo_scoring(deps, stats)
+
+
 @app.command()
 def worker() -> None:
     """Run the scheduler: every active/testing source on its schedule."""
