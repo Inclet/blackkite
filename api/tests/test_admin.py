@@ -16,11 +16,12 @@ MEMBER = "member@example.com"
 
 
 def _admin_route_templates(app) -> set[tuple[str, str]]:
-    """Every (method, path) under /admin, from the OpenAPI schema (all are in it)."""
+    """Every (method, path) under /admin or /api/admin, from the OpenAPI schema
+    (all are in it)."""
     return {
         (method.upper(), path)
         for path, ops in app.openapi()["paths"].items()
-        if path.startswith("/admin")
+        if path.startswith(("/admin", "/api/admin"))
         for method in ops
     }
 
@@ -58,8 +59,8 @@ def test_admin_routes_exist(app):
         ("GET", "/admin/source-suggestions"),
         ("POST", "/admin/source-suggestions/{suggestion_id}/accept"),
         ("POST", "/admin/source-suggestions/{suggestion_id}/reject"),
-        ("GET", "/admin/catalogue"),
-        ("POST", "/admin/catalogue/{opportunity_id}/review"),
+        ("GET", "/api/admin/catalogue"),
+        ("POST", "/api/admin/catalogue/{opportunity_id}/review"),
     }
 
 
@@ -248,3 +249,36 @@ def test_admin_can_deactivate_another_admin(app, admin_client, db, outbox):
     assert r.status_code == 200 and r.json()["status"] == "deactivated"
     assert c.get("/me").status_code == 401
     assert admin_client.get("/me").status_code == 200
+
+
+def test_member_routes_live_under_api(app):
+    """docs/api-contract.md section 2: Phase 4 member routes are under /api; /auth/*,
+    GET /me, /sources* and the earlier /admin/* keep their paths."""
+    paths = {(m.upper(), p) for p, ops in app.openapi()["paths"].items() for m in ops}
+    for route in [
+        ("GET", "/api/feed"),
+        ("GET", "/api/shortlist"),
+        ("GET", "/api/opportunities/{opportunity_id}"),
+        ("PUT", "/api/opportunities/{opportunity_id}/state"),
+        ("PUT", "/api/opportunities/{opportunity_id}/note"),
+        ("GET", "/api/profiles"),
+        ("POST", "/api/profiles"),
+        ("GET", "/api/profiles/{profile_id}"),
+        ("PATCH", "/api/profiles/{profile_id}"),
+        ("DELETE", "/api/profiles/{profile_id}"),
+        ("GET", "/api/digest-settings"),
+        ("PUT", "/api/digest-settings"),
+        ("PATCH", "/api/me"),
+        ("DELETE", "/api/me"),
+        ("GET", "/api/me/export"),
+        ("GET", "/me"),
+        ("POST", "/auth/request-link"),
+        ("GET", "/sources"),
+    ]:
+        assert route in paths, route
+    old = {"/feed", "/shortlist", "/profiles", "/digest-settings", "/me/export"}
+    assert not old & {p for _, p in paths}
+    assert ("PATCH", "/me") not in paths and ("DELETE", "/me") not in paths
+    assert not any(
+        p.startswith(("/opportunities", "/admin/catalogue")) for _, p in paths
+    )

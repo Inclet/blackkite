@@ -15,6 +15,9 @@ from blackkite.routes import (
 )
 
 
+API_PREFIX = "/api"
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     warn_ignored_env()
     app = FastAPI(title="Blackkite API", version="0.1.0")
@@ -29,10 +32,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin.router)
     app.include_router(sources.member_router)
     app.include_router(sources.admin_router)
-    app.include_router(member.router)
-    app.include_router(catalogue.router)
-    app.include_router(profiles.router)
-    app.include_router(digest_settings.router)
+    # Phase 4 member routes (and the admin catalogue) live under /api so no API
+    # path collides with a web page (docs/api-contract.md section 2). /auth/*,
+    # GET /me, /sources* and the earlier /admin/* routes keep their paths.
+    app.include_router(member.router, prefix=API_PREFIX)
+    app.include_router(catalogue.router, prefix=API_PREFIX)
+    app.include_router(profiles.router, prefix=API_PREFIX)
+    app.include_router(digest_settings.router, prefix=API_PREFIX)
 
     @app.get("/healthz", include_in_schema=False)
     def healthz() -> dict[str, str]:

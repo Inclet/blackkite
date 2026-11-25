@@ -962,11 +962,11 @@ def test_mute_and_unmute_rescore_the_caller(member, db):
 
     assert member.post(f"/sources/{src.id}/mute").status_code == 204
     assert _filtered(db, member.user, opp) == ["muted_source_only"]
-    assert member.get("/feed").json()["items"] == []
+    assert member.get("/api/feed").json()["items"] == []
 
     assert member.delete(f"/sources/{src.id}/mute").status_code == 204
     assert _filtered(db, member.user, opp) == [None]
-    assert [i["id"] for i in member.get("/feed").json()["items"]] == [str(opp.id)]
+    assert [i["id"] for i in member.get("/api/feed").json()["items"]] == [str(opp.id)]
 
 
 def test_mute_rescores_only_the_caller(app, member, db, outbox, monkeypatch):

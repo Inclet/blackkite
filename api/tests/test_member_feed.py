@@ -48,7 +48,7 @@ def ana(db):
 
 
 def _items(client: TestClient, **params) -> list[dict]:
-    r = client.get("/feed", params=params)
+    r = client.get("/api/feed", params=params)
     assert r.status_code == 200, r.text
     return r.json()["items"]
 
@@ -81,11 +81,11 @@ def _subtitle(item: dict) -> str:
 @pytest.mark.parametrize(
     ("method", "path"),
     [
-        ("get", "/feed"),
-        ("get", "/shortlist"),
-        ("get", f"/opportunities/{uuid.uuid4()}"),
-        ("put", f"/opportunities/{uuid.uuid4()}/state"),
-        ("put", f"/opportunities/{uuid.uuid4()}/note"),
+        ("get", "/api/feed"),
+        ("get", "/api/shortlist"),
+        ("get", f"/api/opportunities/{uuid.uuid4()}"),
+        ("put", f"/api/opportunities/{uuid.uuid4()}/state"),
+        ("put", f"/api/opportunities/{uuid.uuid4()}/note"),
     ],
 )
 def test_every_route_needs_a_session(client, method, path):
@@ -140,7 +140,7 @@ def _wfp(db, user):
 def test_wfp_item_matches_the_reference_fixture(db, ana, login):
     opp = _wfp(db, ana)
     c = login(ana.email)
-    body = c.get("/feed").json()
+    body = c.get("/api/feed").json()
     assert body["user"] == {"name": "Ana"}
     assert body["digest"] == {"channel": "email"}
     [item] = body["items"]
@@ -429,7 +429,7 @@ def test_best_profile_and_hard_filtered_rows(db, ana, login):
     assert set(only_a) == {"Both"}
     assert only_a["Both"]["fit"] == "possible"
     # The detail page still opens a filtered item, with no fit shown.
-    r = c.get(f"/opportunities/{gone.id}")
+    r = c.get(f"/api/opportunities/{gone.id}")
     assert r.status_code == 200 and r.json()["fit"] is None
 
 
@@ -514,18 +514,18 @@ def test_no_route_touches_another_users_private_item(db, ana, login):
     db.commit()
     c = login(ana.email)
     for opp in (theirs, hidden):
-        assert c.get(f"/opportunities/{opp.id}").status_code == 404
+        assert c.get(f"/api/opportunities/{opp.id}").status_code == 404
         for state in ("saved", "dismissed", "acting", "done"):
-            r = c.put(f"/opportunities/{opp.id}/state", json={"state": state})
+            r = c.put(f"/api/opportunities/{opp.id}/state", json={"state": state})
             assert r.status_code == 404
-        r = c.put(f"/opportunities/{opp.id}/note", json={"note": "mine now"})
+        r = c.put(f"/api/opportunities/{opp.id}/note", json={"note": "mine now"})
         assert r.status_code == 404
-    assert c.get(f"/opportunities/{uuid.uuid4()}").status_code == 404
+    assert c.get(f"/api/opportunities/{uuid.uuid4()}").status_code == 404
     assert db.scalar(sa.select(sa.func.count()).select_from(UserOpportunity)) == 0
     # Ben still sees his own item, with no trace of Ana.
     b = login(other.email)
     assert [i["title"] for i in _items(b)] == ["Ben's private"]
-    r = b.get(f"/opportunities/{theirs.id}")
+    r = b.get(f"/api/opportunities/{theirs.id}")
     assert r.status_code == 200
     assert r.json()["detail"]["note"] is None
     assert r.json()["detail"]["trust"]["desktop"] == (
@@ -541,23 +541,23 @@ def test_states_and_notes_are_per_user(db, ana, login):
     db.commit()
     a, b = login(ana.email), login(ben.email)
     r = a.put(
-        f"/opportunities/{opp.id}/state",
+        f"/api/opportunities/{opp.id}/state",
         json={"state": "dismissed", "dismissReason": "too far"},
     )
     assert r.status_code == 200
     assert r.json()["state"] == "dismissed" and r.json()["dismissReason"] == "too far"
-    a.put(f"/opportunities/{opp.id}/note", json={"note": "  call Monday "})
+    a.put(f"/api/opportunities/{opp.id}/note", json={"note": "  call Monday "})
     assert _items(a) == []
     assert [i["id"] for i in _items(a, state="dismissed")] == [str(opp.id)]
     # Ben's view is untouched.
     assert [i["id"] for i in _items(b)] == [str(opp.id)]
-    detail_b = b.get(f"/opportunities/{opp.id}").json()["detail"]
+    detail_b = b.get(f"/api/opportunities/{opp.id}").json()["detail"]
     assert detail_b["note"] is None and detail_b["state"] == "unseen"
-    detail_a = a.get(f"/opportunities/{opp.id}").json()["detail"]
+    detail_a = a.get(f"/api/opportunities/{opp.id}").json()["detail"]
     assert detail_a["note"] == "call Monday"
     assert detail_a["state"] == "dismissed" and detail_a["dismissReason"] == "too far"
     # Moving off dismissed drops the reason; the note stays.
-    r = a.put(f"/opportunities/{opp.id}/state", json={"state": "saved"})
+    r = a.put(f"/api/opportunities/{opp.id}/state", json={"state": "saved"})
     assert r.json() == {
         "opportunityId": str(opp.id),
         "state": "saved",
@@ -574,17 +574,19 @@ def test_state_body_is_validated(db, ana, login):
     db.commit()
     c = login(ana.email)
     assert (
-        c.put(f"/opportunities/{opp.id}/state", json={"state": "liked"}).status_code
+        c.put(f"/api/opportunities/{opp.id}/state", json={"state": "liked"}).status_code
         == 422
     )
     assert (
         c.put(
-            f"/opportunities/{opp.id}/state", json={"state": "saved", "x": 1}
+            f"/api/opportunities/{opp.id}/state", json={"state": "saved", "x": 1}
         ).status_code
         == 422
     )
     assert (
-        c.put(f"/opportunities/{opp.id}/note", json={"note": "x" * 5001}).status_code
+        c.put(
+            f"/api/opportunities/{opp.id}/note", json={"note": "x" * 5001}
+        ).status_code
         == 422
     )
 
@@ -604,7 +606,7 @@ def test_shortlist_is_saved_and_acting_soonest_first(db, ana, login):
         f.state(db, ana, o, st)
         rows[title] = o
     db.commit()
-    r = login(ana.email).get("/shortlist")
+    r = login(ana.email).get("/api/shortlist")
     assert [i["title"] for i in r.json()] == [
         "Saved soon",
         "Acting later",
@@ -648,8 +650,8 @@ def test_filters(db, ana, login):
         str(ev.id),
         str(undated.id),
     }
-    assert c.get("/feed", params={"stream": "jobs"}).status_code == 422
-    assert c.get("/feed", params={"verification": "confirmed"}).status_code == 422
+    assert c.get("/api/feed", params={"stream": "jobs"}).status_code == 422
+    assert c.get("/api/feed", params={"verification": "confirmed"}).status_code == 422
 
 
 def test_items_only_from_muted_sources_leave_the_feed(db, ana, login):
@@ -664,7 +666,7 @@ def test_items_only_from_muted_sources_leave_the_feed(db, ana, login):
     db.commit()
     c = login(ana.email)
     assert [i["title"] for i in _items(c)] == ["Both"]
-    assert c.get(f"/opportunities/{only_muted.id}").status_code == 200
+    assert c.get(f"/api/opportunities/{only_muted.id}").status_code == 200
 
 
 # --- opportunity page -----------------------------------------------------------------------
@@ -719,7 +721,7 @@ def test_opportunity_detail(db, ana, login):
     )
     f.state(db, ana, opp, "saved", note="Ask about subcontracting")
     db.commit()
-    r = login(ana.email).get(f"/opportunities/{opp.id}")
+    r = login(ana.email).get(f"/api/opportunities/{opp.id}")
     assert r.status_code == 200
     body = r.json()
     d = body["detail"]
@@ -763,5 +765,5 @@ def test_best_profile_ignores_a_higher_inactive_profile(db, ana, login):
     [item] = _items(c)
     assert item["fit"] == "possible" and item["detail"]["profile"] == "Live"
     assert "topFlag" not in item
-    assert c.get(f"/opportunities/{opp.id}").json()["detail"]["profile"] == "Live"
+    assert c.get(f"/api/opportunities/{opp.id}").json()["detail"]["profile"] == "Live"
     assert _items(c, profile=str(old.id)) == []
