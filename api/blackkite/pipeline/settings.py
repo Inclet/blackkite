@@ -7,6 +7,7 @@ ANTHROPIC_API_KEY, VOYAGE_API_KEY).
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +19,8 @@ class PipelineSettings(BaseSettings):
     data_dir: Path = Path("data")
     # Largest detail page or attachment the enrich stage keeps, in bytes.
     document_max_bytes: int = 10_000_000
+    # Wall-clock limit for extracting one PDF's text (killed after this).
+    pdf_text_timeout_seconds: float = Field(default=20.0, gt=0)
     # Attachments (PDFs) followed per item.
     documents_per_item: int = 3
     # Characters of source text sent to the extraction model.

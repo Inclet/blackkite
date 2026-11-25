@@ -368,3 +368,13 @@ def test_unknown_content_encoding_is_refused():
     with pytest.raises(FetchError, match="unsupported content-encoding"):
         make_client(web).get(f"https://{H}/br")
 
+
+def test_client_fetcher_reports_the_final_url():
+    from blackkite.collectors.http import ClientFetcher
+
+    web = FakeWeb()
+    web.add(H, "/t/1", httpx.Response(302, headers={"location": "/notices/2026/1"}))
+    web.html(H, "/notices/2026/1", "<p>notice</p>")
+    ctype, body, final = ClientFetcher(make_client(web)).get(f"https://{H}/t/1")
+    assert final == f"https://{H}/notices/2026/1"
+    assert body == b"<p>notice</p>" and ctype.startswith("text/html")

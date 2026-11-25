@@ -107,3 +107,102 @@ def test_enrich_failures_are_recorded_not_raised(tmp_path: Path):
         max_attachments=1,
     )
     assert "scheme" in out.errors[0]
+
+
+def spin_forever(_arg):  # runs in the child process
+    import time
+
+    while True:
+        time.sleep(0.05)
+
+
+def crash_child(_arg):  # runs in the child process
+    import os
+
+    os._exit(3)
+
+
+def test_slow_extraction_is_killed_after_the_limit():
+    import time
+
+    import pytest
+
+    from blackkite.pipeline.enrich import PdfTimeout, run_limited
+
+    t0 = time.monotonic()
+    with pytest.raises(PdfTimeout, match="took over 1 s"):
+        run_limited(spin_forever, b"", 1.0)
+    assert time.monotonic() - t0 < 10
+    with pytest.raises(ValueError, match="exited without a result"):
+        run_limited(crash_child, b"", 10.0)
+
+
+def test_pdf_timeout_is_an_item_error_not_a_crash(tmp_path: Path, monkeypatch):
+    from blackkite.pipeline import enrich as mod
+
+    def fake_limited(content, timeout):
+        assert timeout == 7.5
+        raise mod.PdfTimeout("PDF text extraction took over 7.5 s; stopped")
+
+    monkeypatch.setattr(mod, "pdf_to_text_limited", fake_limited)
+    f = FakeFetcher(
+        {
+            "https://example.org/t/1": ("text/html", DETAIL),
+            "https://example.org/files/bid-document.pdf": (
+                "application/pdf",
+                make_pdf("slow"),
+            ),
+        }
+    )
+    out = enrich(
+        f,
+        "https://example.org/t/1",
+        data_dir=tmp_path,
+        max_bytes=1_000_000,
+        max_attachments=1,
+        pdf_timeout=7.5,
+    )
+    [att] = out.attachments
+    assert att.text is None and att.file_path  # kept for the owner, no text
+    assert any("PdfTimeout" in e and "7.5 s" in e for e in out.errors)
+
+
+def test_real_pdf_text_through_the_time_limited_child():
+    from blackkite.pipeline.enrich import pdf_to_text_limited
+
+    assert "Lot 3 cold rooms" in pdf_to_text_limited(make_pdf("Lot 3 cold rooms"), 20)
+
+
+def test_pdf_links_resolve_against_the_final_url(tmp_path: Path):
+    page = b'<a href="docs/tender.pdf">Tender</a><a href="/abs.pdf">Abs</a>'
+    pdf = make_pdf("after redirect")
+
+    class Redirecting(FakeFetcher):
+        def get(self, url):
+            ctype, body = super().get(url)
+            if url == "https://example.org/t/1":
+                return ctype, body, "https://portal.example.org/notices/2026/1"
+            return ctype, body
+
+    f = Redirecting(
+        {
+            "https://example.org/t/1": ("text/html", page),
+            "https://portal.example.org/notices/2026/docs/tender.pdf": (
+                "application/pdf",
+                pdf,
+            ),
+            "https://portal.example.org/abs.pdf": ("application/pdf", pdf),
+        }
+    )
+    out = enrich(
+        f,
+        "https://example.org/t/1",
+        data_dir=tmp_path,
+        max_bytes=1_000_000,
+        max_attachments=3,
+    )
+    assert out.errors == []
+    assert [d.url for d in out.attachments] == [
+        "https://portal.example.org/notices/2026/docs/tender.pdf",
+        "https://portal.example.org/abs.pdf",
+    ]

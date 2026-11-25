@@ -460,9 +460,10 @@ class ClientFetcher:
         self.client = client
         self.delay = delay
 
-    def get(self, url: str) -> tuple[str, bytes]:
+    def get(self, url: str) -> tuple[str, bytes, str]:
+        """(content type, body, final URL after redirects)."""
         resp = self.client.get(url, delay=self.delay)
-        return resp.headers.get("content-type", ""), resp.content
+        return resp.headers.get("content-type", ""), resp.content, resp.url
 
 
 def make_fetch_client(

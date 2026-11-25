@@ -7,6 +7,15 @@ for http(s) URLs and never follows more than ``documents_per_item`` attachments.
 
 Downloaded files are kept under ``<data_dir>/documents`` for extraction and the
 owner's reference. They are never served to members (spec 10).
+
+PDF text extraction runs in a separate process with a wall-clock limit
+(``BK_PDF_TEXT_TIMEOUT_SECONDS``, default 20 s): a malformed or hostile PDF that
+makes the parser spin is killed and recorded as this item's enrich error, so it
+cannot hold the run (and its open transaction) for long.
+
+Links on a detail page are resolved against the page's final URL (after
+redirects) when the fetcher reports it: ``get`` may return ``(content_type, body)``
+or ``(content_type, body, final_url)``.
 """
 
 from __future__ import annotations
@@ -14,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import io
 import logging
+import multiprocessing
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
@@ -26,12 +36,18 @@ log = logging.getLogger("blackkite.pipeline.enrich")
 
 MAX_PDF_PAGES = 100
 MAX_TEXT_CHARS = 500_000
+DEFAULT_PDF_TIMEOUT = 20.0
 
 
 class Fetcher(Protocol):
-    """GET a URL; return (content type, body). Raise on any failure."""
+    """GET a URL; return (content type, body) or (content type, body, final URL
+    after redirects). Raise on any failure."""
 
-    def get(self, url: str) -> tuple[str, bytes]: ...
+    def get(self, url: str) -> tuple[str, bytes] | tuple[str, bytes, str]: ...
+
+
+class PdfTimeout(Exception):
+    pass
 
 
 @dataclass
@@ -134,6 +150,47 @@ def pdf_to_text(content: bytes) -> str:
     return "\n".join(t.strip() for t in texts if t.strip())[:MAX_TEXT_CHARS]
 
 
+def _limited_child(conn, func, arg) -> None:  # pragma: no cover - child process
+    try:
+        conn.send(("ok", func(arg)))
+    except Exception as exc:  # noqa: BLE001 - malformed files raise anything
+        conn.send(("error", f"{type(exc).__name__}: {exc}"))
+    finally:
+        conn.close()
+
+
+def run_limited(func, arg, timeout: float, what: str = "PDF text extraction"):
+    """``func(arg)`` in a child process, killed after ``timeout`` seconds.
+
+    The forkserver start method is used so the child never inherits the worker's
+    threads or database connections. ``func`` must be importable (module level).
+    Raises PdfTimeout, or ValueError when ``func`` failed or the child died."""
+    ctx = multiprocessing.get_context("forkserver")
+    recv, send = ctx.Pipe(duplex=False)
+    proc = ctx.Process(target=_limited_child, args=(send, func, arg), daemon=True)
+    proc.start()
+    send.close()
+    try:
+        if not recv.poll(timeout):
+            raise PdfTimeout(f"{what} took over {timeout:g} s; stopped")
+        try:
+            kind, value = recv.recv()
+        except EOFError:
+            raise ValueError(f"{what} exited without a result") from None
+    finally:
+        if proc.is_alive():
+            proc.kill()
+        proc.join(5)
+        recv.close()
+    if kind != "ok":
+        raise ValueError(value)
+    return value
+
+
+def pdf_to_text_limited(content: bytes, timeout: float = DEFAULT_PDF_TIMEOUT) -> str:
+    return run_limited(pdf_to_text, content, timeout)
+
+
 def is_pdf(content_type: str, content: bytes) -> bool:
     return "pdf" in content_type.lower() or content[:5] == b"%PDF-"
 
@@ -177,13 +234,22 @@ def store_file(data_dir: Path, content: bytes, suffix: str) -> str:
 
 
 def _fetch(
-    fetcher: Fetcher, url: str, *, data_dir: Path, max_bytes: int, errors: list[str]
-) -> tuple[FetchedDocument, list[tuple[str, str | None]]] | None:
+    fetcher: Fetcher,
+    url: str,
+    *,
+    data_dir: Path,
+    max_bytes: int,
+    errors: list[str],
+    pdf_timeout: float,
+) -> tuple[FetchedDocument, list[tuple[str, str | None]], str] | None:
+    """(document, links on it, final URL) or None."""
     if urlsplit(url).scheme not in ("http", "https"):
         errors.append(f"not fetched (scheme): {url}")
         return None
     try:
-        content_type, content = fetcher.get(url)
+        got = fetcher.get(url)
+        content_type, content = got[0], got[1]
+        final_url = got[2] if len(got) > 2 else url
     # Any fetcher failure (its exception types are its own) is this item's problem,
     # never the run's.
     except Exception as exc:  # noqa: BLE001
@@ -194,7 +260,7 @@ def _fetch(
         return None
     try:
         if is_pdf(content_type, content):
-            text, links = pdf_to_text(content), []
+            text, links = pdf_to_text_limited(content, pdf_timeout), []
             suffix = ".pdf"
         elif is_html(content_type, content):
             text, links = html_to_text(content)
@@ -206,7 +272,7 @@ def _fetch(
         errors.append(f"text extraction failed: {url}: {type(exc).__name__}: {exc}")
         text, links, suffix = None, [], ".bin"
     path = store_file(data_dir, content, suffix)
-    return FetchedDocument(url, content_type, path, text or None), links
+    return FetchedDocument(url, content_type, path, text or None), links, final_url
 
 
 def enrich(
@@ -216,24 +282,27 @@ def enrich(
     data_dir: Path,
     max_bytes: int,
     max_attachments: int,
+    pdf_timeout: float = DEFAULT_PDF_TIMEOUT,
 ) -> Enrichment:
     """Fetch ``url`` (the detail page) and up to ``max_attachments`` linked PDFs."""
     out = Enrichment()
     if fetcher is None:
         out.errors.append("no fetcher configured; detail page not followed")
         return out
-    got = _fetch(
-        fetcher, url, data_dir=data_dir, max_bytes=max_bytes, errors=out.errors
-    )
+    kw = {
+        "data_dir": data_dir,
+        "max_bytes": max_bytes,
+        "errors": out.errors,
+        "pdf_timeout": pdf_timeout,
+    }
+    got = _fetch(fetcher, url, **kw)
     if got is None:
         return out
-    out.detail, links = got
-    for pdf in pdf_links(url, links)[:max_attachments]:
-        if pdf == url:
+    out.detail, links, final_url = got
+    for pdf in pdf_links(final_url, links)[:max_attachments]:
+        if pdf in (url, final_url):
             continue
-        doc = _fetch(
-            fetcher, pdf, data_dir=data_dir, max_bytes=max_bytes, errors=out.errors
-        )
+        doc = _fetch(fetcher, pdf, **kw)
         if doc is not None:
             out.attachments.append(doc[0])
     for e in out.errors:

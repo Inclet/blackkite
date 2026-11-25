@@ -306,6 +306,7 @@ def _ingest_one(
             data_dir=ps.data_dir,
             max_bytes=ps.document_max_bytes,
             max_attachments=ps.documents_per_item,
+            pdf_timeout=ps.pdf_text_timeout_seconds,
         )
         if deps.llm is None:
             review(
