@@ -14,6 +14,8 @@ import http from 'node:http';
  *   POST /__stub/sessions/:id   body: Partial<Seed>, resets that session
  *   GET  /__stub/sessions/:id/seen   the requests that session made
  *   GET  /__stub/anonymous/seen      requests made without a session cookie
+ *
+ * POST /api/unsubscribe answers with or without a session (see unsubscribe below).
  */
 
 export const STUB_COOKIE = 'bk_stub';
@@ -343,6 +345,26 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
   return send(res, 404, { detail: 'Not found' });
 }
 
+/**
+ * Test tokens for POST /api/unsubscribe: `digest-…` and `alert-…` succeed (and, when
+ * the request carries a session cookie, turn that session's digest or alerts off, as
+ * the API does for the token's user); `busy` answers 429; anything else 400.
+ */
+export const UNSUBSCRIBE_INVALID = 'This unsubscribe link is not valid. Change your emails in settings.';
+
+function unsubscribe(method: string, contentType: string, body: unknown, s: Session | undefined, res: http.ServerResponse): void {
+  if (method === 'GET') return send(res, 405, { detail: 'Use POST to unsubscribe. Opening this link changes nothing.' });
+  if (method !== 'POST') return send(res, 405, { detail: 'Method Not Allowed' });
+  if (!contentType.toLowerCase().startsWith('application/json')) return send(res, 415, { detail: 'Send JSON {token} or the one-click form.' });
+  const token = (body as { token?: unknown } | null)?.token;
+  if (typeof token !== 'string') return send(res, 422, { detail: 'token is required.' });
+  if (token === 'busy') return send(res, 429, { detail: 'Too many requests. Try again later.' });
+  const kind = token.startsWith('digest-') ? 'digest' : token.startsWith('alert-') ? 'alert' : null;
+  if (!kind) return send(res, 400, { detail: UNSUBSCRIBE_INVALID });
+  if (s) s.digest = kind === 'digest' ? { ...s.digest, frequency: 'off' } : { ...s.digest, alertMinFit: null };
+  return send(res, 200, { kind, detail: "You won't get these emails any more." });
+}
+
 export function startStubApi(port: number): Promise<{ port: number; close: () => Promise<void> }> {
   const sessions = new Map<string, Session>();
   const anonymous: Seen[] = [];
@@ -388,6 +410,8 @@ export function startStubApi(port: number): Promise<{ port: number; close: () =>
         return send(res, 202, { detail: 'If this address can sign in, a link is on its way.' });
       }
       if (method === 'POST' && path === '/auth/verify') return send(res, 200, { redirect: '/shortlist' });
+      // One-click unsubscribe (decision 43) needs no session: the token is the authority.
+      if (path === '/api/unsubscribe') return unsubscribe(method, req.headers['content-type'] ?? '', body, id ? session(id) : undefined, res);
       if (!id) return send(res, 401, { detail: 'Sign in first.' });
       member(session(id), method, path, body, res);
     });
