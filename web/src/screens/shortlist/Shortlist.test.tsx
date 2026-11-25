@@ -21,7 +21,7 @@ const ME = { id: 'u', email: 'c@x.rw', name: 'Clet', role: 'member' };
 
 test('saved and acting items, closing soonest first, in feed rows that open the item', async () => {
   const [wfp, abh, , , , bond] = referenceItems();
-  mockApi({ 'GET /shortlist': [{ ...bond!, state: 'saved' }, { ...wfp!, state: 'acting' }, { ...abh!, state: 'saved' }], 'GET /me': ME });
+  mockApi({ 'GET /api/shortlist': [{ ...bond!, state: 'saved' }, { ...wfp!, state: 'acting' }, { ...abh!, state: 'saved' }], 'GET /me': ME });
   const router = renderAt('/shortlist');
   expect(screen.getByTestId('kite-orbit')).toBeInTheDocument();
   const list = within(await screen.findByRole('region', { name: 'Shortlist' }));
@@ -37,7 +37,7 @@ test('saved and acting items, closing soonest first, in feed rows that open the 
 
 test('phone: the phone rows and the tab bar', async () => {
   setViewport('phone');
-  mockApi({ 'GET /shortlist': [referenceItems()[0]], 'GET /me': ME });
+  mockApi({ 'GET /api/shortlist': [referenceItems()[0]], 'GET /me': ME });
   renderAt('/shortlist');
   await screen.findByRole('region', { name: 'Shortlist' });
   const tabs = screen.getByRole('navigation', { name: 'Main' });
@@ -47,7 +47,7 @@ test('phone: the phone rows and the tab bar', async () => {
 });
 
 test('empty: the nothing-new card pointing at the feed', async () => {
-  mockApi({ 'GET /shortlist': [], 'GET /me': ME });
+  mockApi({ 'GET /api/shortlist': [], 'GET /me': ME });
   const router = renderAt('/shortlist');
   expect(await screen.findByText(SHORTLIST_COPY.emptyTitle)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: SHORTLIST_COPY.openFeed }));
@@ -55,16 +55,16 @@ test('empty: the nothing-new card pointing at the feed', async () => {
 });
 
 test('401 signs in; unreachable says so', async () => {
-  mockApi({ 'GET /shortlist': status(401) });
+  mockApi({ 'GET /api/shortlist': status(401) });
   renderAt('/shortlist');
   expect(await screen.findByRole('button', { name: SIGN_IN.button })).toBeInTheDocument();
 });
 
 test('unreachable: plain wording and Try again', async () => {
-  const api = mockApi({ 'GET /shortlist': status(500), 'GET /me': ME });
+  const api = mockApi({ 'GET /api/shortlist': status(500), 'GET /me': ME });
   renderAt('/shortlist');
   expect(await screen.findByText(COPY.unreachableTitle)).toBeInTheDocument();
-  api.on('GET /shortlist', []);
+  api.on('GET /api/shortlist', []);
   fireEvent.click(screen.getByRole('button', { name: COPY.tryAgain }));
   expect(await screen.findByText(SHORTLIST_COPY.emptyTitle)).toBeInTheDocument();
 });

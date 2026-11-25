@@ -15,10 +15,11 @@ export type { FeedContent, FeedItem };
 export type ItemState = 'unseen' | 'saved' | 'dismissed' | 'acting' | 'done';
 
 /**
- * A feed item as the API may send it. `state` is not in the contract yet; when
- * present it is read, otherwise saved-ness comes from /shortlist membership.
+ * A feed item as the API sends it: always with the caller's state (contract
+ * section 2, on feed, shortlist and detail items). The screens read saved,
+ * acting and done from it.
  */
-export type LiveFeedItem = FeedItem & { state?: ItemState };
+export type LiveFeedItem = FeedItem & { state: ItemState };
 
 export interface ExtractedField {
   name: string;

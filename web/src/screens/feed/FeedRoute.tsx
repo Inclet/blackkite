@@ -43,11 +43,10 @@ function FeedScreens({ model, openId }: { model: ReturnType<typeof useFeedModel>
   return <FeedPhone model={model} />;
 }
 
-/** Saved and acting items from /shortlist; an explicit `state` on an item wins. */
-function statesFrom(feedItems: LiveFeedItem[], shortlist: LiveFeedItem[] | undefined): Record<string, ItemState> {
+/** Each feed item carries the caller's state (contract section 2); the feed is the source of truth. */
+export function statesFrom(feedItems: LiveFeedItem[]): Record<string, ItemState> {
   const out: Record<string, ItemState> = {};
-  for (const i of shortlist ?? []) out[i.id] = i.state ?? 'saved';
-  for (const i of feedItems) if (i.state && i.state !== 'unseen') out[i.id] = i.state;
+  for (const i of feedItems) if (i.state !== 'unseen') out[i.id] = i.state;
   return out;
 }
 
@@ -104,7 +103,7 @@ function LiveFeedScreens({
 }) {
   const content = feed.data!;
   const source: FeedSource = useMemo(() => ({ feed: content, states: liveStates(content, shortlist.data) }), [content, shortlist.data]);
-  const initial = useMemo(() => statesFrom(content.items, shortlist.data), [content.items, shortlist.data]);
+  const initial = useMemo(() => statesFrom(content.items), [content.items]);
 
   const { setData: setShortlist } = shortlist;
   const { setData: setFeed } = feed;
@@ -118,7 +117,14 @@ function LiveFeedScreens({
           const rest = (prev ?? []).filter((i) => i.id !== item.id);
           return state === 'saved' || state === 'acting' ? [...rest, { ...item, state }] : rest;
         });
-        if (state === 'dismissed') setFeed((prev) => prev && { ...prev, items: prev.items.filter((i) => i.id !== item.id) });
+        setFeed((prev) => {
+          if (!prev) return prev;
+          const items: LiveFeedItem[] = prev.items;
+          return {
+            ...prev,
+            items: state === 'dismissed' ? items.filter((i) => i.id !== item.id) : items.map((i) => (i.id === item.id ? { ...i, state } : i)),
+          };
+        });
       },
     }),
     [initial, setShortlist, setFeed],

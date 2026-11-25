@@ -1,7 +1,8 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { referenceItems } from '../../fixtures/reference';
-import type { FeedContent } from '../../fixtures/types';
+import type { ItemState } from '../../api/types';
+import type { FeedContent, FeedItem } from '../../fixtures/types';
 import { setNowForTests } from '../../lib/now';
 import { mockApi, status } from '../../test/mockApi';
 import { COPY } from '../common/copy';
@@ -21,18 +22,19 @@ afterEach(() => {
 const PROFILE = { id: 'p1', name: 'Ironji-Trade', type: 'business', data: {}, version: 1, active: true };
 
 /** The reference items in a scrambled order: the screen ranks them closing soonest first. */
-function feed(items = referenceItems().reverse()): FeedContent {
-  return { user: { name: 'Clet' }, sources: { checked: 3, when: 'this morning' }, digest: { channel: 'email' }, items };
+function feed(items: (FeedItem & { state?: ItemState })[] = referenceItems().reverse()): FeedContent {
+  // The API always sends the caller's state (contract section 2).
+  return { user: { name: 'Clet' }, sources: { checked: 3, when: 'this morning' }, digest: { channel: 'email' }, items: items.map((i) => ({ state: 'unseen', ...i })) };
 }
 
 function liveApi(overrides: Record<string, unknown> = {}) {
   return mockApi({
-    'GET /feed': feed(),
-    'GET /shortlist': [],
-    'GET /profiles': [PROFILE],
+    'GET /api/feed': feed(),
+    'GET /api/shortlist': [],
+    'GET /api/profiles': [PROFILE],
     'GET /me': { id: 'u', email: 'c@x.rw', name: 'Clet', role: 'admin' },
-    'PUT /opportunities/wfp-logistics/state': {},
-    'PUT /opportunities/abh-summit/state': {},
+    'PUT /api/opportunities/wfp-logistics/state': {},
+    'PUT /api/opportunities/abh-summit/state': {},
     ...overrides,
   });
 }
@@ -61,7 +63,7 @@ test('loads from the API: the circling kite first, then the ranked list', async 
   // Closing soonest first, whatever order the API sent.
   expect(rows[0]).toHaveTextContent('Logistics, transport and warehousing support');
   expect(rows[5]).toHaveTextContent('Five-year treasury bond');
-  expect(api.calls.map((c) => c.key)).toEqual(expect.arrayContaining(['GET /feed', 'GET /shortlist', 'GET /profiles']));
+  expect(api.calls.map((c) => c.key)).toEqual(expect.arrayContaining(['GET /api/feed', 'GET /api/shortlist', 'GET /api/profiles']));
   expect(screen.queryByText(COPY.refreshingTitle)).toBeNull();
 });
 
@@ -73,18 +75,18 @@ test('with ?fixture= nothing is fetched', () => {
 });
 
 test('401: the sign-in screen', async () => {
-  liveApi({ 'GET /feed': status(401, { detail: 'Sign in' }) });
+  liveApi({ 'GET /api/feed': status(401, { detail: 'Sign in' }) });
   renderAt('/');
   expect(await screen.findByRole('heading', { level: 1, name: SIGN_IN.heading })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: SIGN_IN.button })).toBeInTheDocument();
 });
 
 test('unreachable: plain wording and Try again, which loads the feed', async () => {
-  const api = liveApi({ 'GET /feed': status(502) });
+  const api = liveApi({ 'GET /api/feed': status(502) });
   renderAt('/');
   expect(await screen.findByText(COPY.unreachableTitle)).toBeInTheDocument();
   expect(screen.queryByRole('progressbar')).toBeNull();
-  api.on('GET /feed', feed());
+  api.on('GET /api/feed', feed());
   fireEvent.click(screen.getByRole('button', { name: COPY.tryAgain }));
   expect(await screen.findByRole('heading', { level: 1, name: 'Good afternoon, Clet' })).toBeInTheDocument();
 });
@@ -97,7 +99,7 @@ test('coming back: the previous list stays on screen under the checking card', a
   const api2 = { gate: new Promise<void>((r) => (release = r)) };
   // The next load waits, so the cached list shows while it is checking.
   const { on } = liveApiKeepCache();
-  on('GET /feed', async () => {
+  on('GET /api/feed', async () => {
     await api2.gate;
     return feed();
   });
@@ -112,8 +114,8 @@ test('coming back: the previous list stays on screen under the checking card', a
 /** Re-stub routes without clearing the cache. */
 function liveApiKeepCache() {
   const table = new Map<string, unknown>([
-    ['GET /shortlist', []],
-    ['GET /profiles', [PROFILE]],
+    ['GET /api/shortlist', []],
+    ['GET /api/profiles', [PROFILE]],
     ['GET /me', { id: 'u', email: 'c@x.rw', name: 'Clet', role: 'admin' }],
   ]);
   vi.stubGlobal(
@@ -127,10 +129,26 @@ function liveApiKeepCache() {
   return { on: (k: string, h: unknown) => void table.set(k, h) };
 }
 
-test('saved items from /shortlist start pressed', async () => {
-  liveApi({ 'GET /shortlist': [{ ...referenceItems()[0]!, state: 'saved' }] });
+test("the feed item's state is the truth: a saved item starts pressed", async () => {
+  const [first, ...rest] = referenceItems();
+  liveApi({ 'GET /api/feed': feed([{ ...first!, state: 'saved' }, ...rest]) });
   renderAt('/');
   await waitFor(() => expect(saveButton()).toHaveAttribute('aria-pressed', 'true'));
+});
+
+test('acting starts pressed and shows its chip; done is not on the shortlist', async () => {
+  const [first, ...rest] = referenceItems();
+  liveApi({ 'GET /api/feed': feed([{ ...first!, state: 'acting' }, ...rest]) });
+  renderAt('/');
+  await waitFor(() => expect(saveButton()).toHaveAttribute('aria-pressed', 'true'));
+  expect(screen.getByRole('button', { name: 'Acting on it' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('shortlist membership no longer infers saved: an unseen feed item stays unpressed', async () => {
+  liveApi({ 'GET /api/shortlist': [{ ...referenceItems()[0]!, state: 'saved' }] });
+  renderAt('/');
+  await ready();
+  expect(saveButton()).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('save: pressed at once, sent with PUT; S unsaves', async () => {
@@ -139,14 +157,14 @@ test('save: pressed at once, sent with PUT; S unsaves', async () => {
   await ready();
   fireEvent.click(saveButton());
   expect(saveButton()).toHaveAttribute('aria-pressed', 'true');
-  await waitFor(() => expect(api.calls).toContainEqual({ key: 'PUT /opportunities/wfp-logistics/state', body: { state: 'saved' } }));
+  await waitFor(() => expect(api.calls).toContainEqual({ key: 'PUT /api/opportunities/wfp-logistics/state', body: { state: 'saved' } }));
   press('s');
   expect(saveButton()).toHaveAttribute('aria-pressed', 'false');
-  await waitFor(() => expect(api.calls).toContainEqual({ key: 'PUT /opportunities/wfp-logistics/state', body: { state: 'unseen' } }));
+  await waitFor(() => expect(api.calls).toContainEqual({ key: 'PUT /api/opportunities/wfp-logistics/state', body: { state: 'unseen' } }));
 });
 
 test('save that does not reach the server is undone, and says so', async () => {
-  liveApi({ 'PUT /opportunities/wfp-logistics/state': status(503) });
+  liveApi({ 'PUT /api/opportunities/wfp-logistics/state': status(503) });
   renderAt('/');
   await ready();
   fireEvent.click(saveButton());
@@ -157,12 +175,12 @@ test('save that does not reach the server is undone, and says so', async () => {
 });
 
 test('X dismisses with PUT; a failed dismissal brings the row back, and J reaches it again', async () => {
-  const api = liveApi({ 'PUT /opportunities/wfp-logistics/state': status(500) });
+  const api = liveApi({ 'PUT /api/opportunities/wfp-logistics/state': status(500) });
   renderAt('/');
   await ready();
   press('x');
   expect(list().getAllByRole('link')).toHaveLength(5);
-  await waitFor(() => expect(api.calls).toContainEqual({ key: 'PUT /opportunities/wfp-logistics/state', body: { state: 'dismissed' } }));
+  await waitFor(() => expect(api.calls).toContainEqual({ key: 'PUT /api/opportunities/wfp-logistics/state', body: { state: 'dismissed' } }));
   await waitFor(() => expect(list().getAllByRole('link')).toHaveLength(6));
   // Selection moved to the next row; K goes back up to the restored one.
   press('k');
@@ -179,7 +197,7 @@ test('a dismissal that is saved stays gone', async () => {
 });
 
 test('no profiles yet: the first-visit card, and the list unranked', async () => {
-  liveApi({ 'GET /profiles': [] });
+  liveApi({ 'GET /api/profiles': [] });
   const router = renderAt('/');
   expect(await screen.findByText('Tell Blackkite what you do')).toBeInTheDocument();
   expect(list().queryByText(/Strong fit/)).toBeNull();
@@ -188,7 +206,7 @@ test('no profiles yet: the first-visit card, and the list unranked', async () =>
 });
 
 test('an empty feed: nothing new, with live counts', async () => {
-  liveApi({ 'GET /feed': feed([]), 'GET /shortlist': [{ ...referenceItems()[0]!, state: 'saved' }] });
+  liveApi({ 'GET /api/feed': feed([]), 'GET /api/shortlist': [{ ...referenceItems()[0]!, state: 'saved' }] });
   renderAt('/');
   expect(await screen.findByText('Nothing new since yesterday')).toBeInTheDocument();
   expect(screen.getByText('All 3 sources were checked this morning. Your shortlist has 1 item closing this month.')).toBeInTheDocument();
@@ -197,8 +215,8 @@ test('an empty feed: nothing new, with live counts', async () => {
 
 test('acting and done chips, and the note, are saved with PUT', async () => {
   const api = liveApi({
-    'GET /opportunities/wfp-logistics': { ...referenceItems()[0]!, detail: { ...referenceItems()[0]!.detail, note: 'Ask Eric' } },
-    'PUT /opportunities/wfp-logistics/note': {},
+    'GET /api/opportunities/wfp-logistics': { ...referenceItems()[0]!, detail: { ...referenceItems()[0]!.detail, note: 'Ask Eric' } },
+    'PUT /api/opportunities/wfp-logistics/note': {},
   });
   renderAt('/');
   const pane = await ready();
@@ -209,22 +227,22 @@ test('acting and done chips, and the note, are saved with PUT', async () => {
   fireEvent.click(acting);
   expect(acting).toHaveAttribute('aria-pressed', 'true');
   expect(saveButton()).toHaveAttribute('aria-pressed', 'true');
-  await waitFor(() => expect(api.calls).toContainEqual({ key: 'PUT /opportunities/wfp-logistics/state', body: { state: 'acting' } }));
+  await waitFor(() => expect(api.calls).toContainEqual({ key: 'PUT /api/opportunities/wfp-logistics/state', body: { state: 'acting' } }));
   fireEvent.click(within(pane).getByRole('button', { name: LIVE_COPY.done }));
   expect(acting).toHaveAttribute('aria-pressed', 'false');
-  await waitFor(() => expect(api.calls).toContainEqual({ key: 'PUT /opportunities/wfp-logistics/state', body: { state: 'done' } }));
+  await waitFor(() => expect(api.calls).toContainEqual({ key: 'PUT /api/opportunities/wfp-logistics/state', body: { state: 'done' } }));
 
   fireEvent.change(note, { target: { value: 'Ask Eric about the partner trucks' } });
   // Typing in the note is not a feed key.
   fireEvent.keyDown(note, { key: 'x' });
   fireEvent.click(within(pane).getByRole('button', { name: LIVE_COPY.saveNote }));
   expect(await within(pane).findByText(LIVE_COPY.noteSaved)).toBeInTheDocument();
-  expect(api.calls).toContainEqual({ key: 'PUT /opportunities/wfp-logistics/note', body: { note: 'Ask Eric about the partner trucks' } });
+  expect(api.calls).toContainEqual({ key: 'PUT /api/opportunities/wfp-logistics/note', body: { note: 'Ask Eric about the partner trucks' } });
   expect(list().getAllByRole('link')).toHaveLength(6);
 });
 
 test('a note that does not reach the server keeps the text and shows the field error', async () => {
-  liveApi({ 'PUT /opportunities/wfp-logistics/note': status(500) });
+  liveApi({ 'PUT /api/opportunities/wfp-logistics/note': status(500) });
   renderAt('/');
   const pane = await ready();
   const note = within(pane).getByLabelText(LIVE_COPY.note);
@@ -241,7 +259,7 @@ test('phone: the opportunity page saves through the API too', async () => {
   const save = await screen.findByRole('button', { name: 'Save to shortlist' });
   fireEvent.click(save);
   expect(save).toHaveAttribute('aria-pressed', 'true');
-  await waitFor(() => expect(api.calls).toContainEqual({ key: 'PUT /opportunities/wfp-logistics/state', body: { state: 'saved' } }));
+  await waitFor(() => expect(api.calls).toContainEqual({ key: 'PUT /api/opportunities/wfp-logistics/state', body: { state: 'saved' } }));
   expect(screen.getByLabelText(LIVE_COPY.note)).toBeInTheDocument();
 });
 
