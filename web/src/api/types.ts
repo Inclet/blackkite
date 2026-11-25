@@ -21,10 +21,17 @@ export type ItemState = 'unseen' | 'saved' | 'dismissed' | 'acting' | 'done';
  */
 export type LiveFeedItem = FeedItem & { state: ItemState };
 
+/**
+ * One extracted field with the passage(s) behind it (api member/schemas.py
+ * FieldOut). `requirements` is a list with `snippets`; every other field is one
+ * value with `snippet`. Absent keys were empty on the server (never null).
+ */
 export interface ExtractedField {
+  /** camelCase field name, e.g. deadlineAt, valueAmount, requirements. */
   name: string;
-  value: string;
-  snippet?: string | null;
+  value: string | number | string[];
+  snippet?: string;
+  snippets?: string[];
 }
 
 export interface OpportunitySource {
@@ -35,21 +42,28 @@ export interface OpportunitySource {
   lastSeen: string;
 }
 
+/** A stored document, by file name (the file itself is not served to members). */
+export interface OpportunityDocument {
+  name: string;
+}
+
 export interface OpportunityChange {
   field: string;
-  old: string | null;
-  new: string | null;
+  old: unknown;
+  new: unknown;
   at: string;
 }
 
-/** GET /opportunities/{id}: the FeedItem plus the detail extras. */
+/** GET /opportunities/{id}: the FeedItem plus the detail extras (api OpportunityOut). */
 export type OpportunityDetail = LiveFeedItem & {
   detail: FeedItemDetail & {
-    fields?: ExtractedField[];
-    sources?: OpportunitySource[];
-    documents?: string[];
-    changes?: OpportunityChange[];
-    note?: string | null;
+    fields: ExtractedField[];
+    sources: OpportunitySource[];
+    documents: OpportunityDocument[];
+    changes: OpportunityChange[];
+    note: string | null;
+    state: ItemState;
+    dismissReason?: string;
   };
 };
 

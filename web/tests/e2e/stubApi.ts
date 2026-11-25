@@ -112,6 +112,40 @@ export function defaultItems(): Item[] {
   ];
 }
 
+/**
+ * The detail extras GET /api/opportunities/{id} adds (api OpportunityOut): fields
+ * with a snippet (or snippets, for requirements), sources, documents by name,
+ * changes, the note and the state. Real shapes, checked by tests/contract.
+ */
+export const DETAIL_EXTRAS: Record<string, Record<string, unknown>> = {
+  'wfp-logistics': {
+    fields: [
+      { name: 'organisation', value: 'World Food Programme', snippet: 'The World Food Programme (WFP) invites bids' },
+      { name: 'deadlineAt', value: '2026-11-30T17:00:00+02:00', snippet: 'Closing date: 30 November 2026, 17:00 Kigali time' },
+      { name: 'valueAmount', value: 120000000, snippet: 'estimated at FRW 120,000,000' },
+      { name: 'requirements', value: ['Proof of owned vehicles', 'RRA tax clearance'], snippets: ['logbooks in the bidder’s name', 'a valid tax clearance certificate'] },
+      { name: 'location', value: 'Kigali' },
+    ],
+    sources: [
+      {
+        name: 'Job in Rwanda, tenders',
+        url: 'https://www.jobinrwanda.com/jobs/tender',
+        isOriginal: false,
+        firstSeen: '2026-11-09T06:00:00Z',
+        lastSeen: '2026-11-24T06:00:00Z',
+      },
+    ],
+    documents: [{ name: 'wfp-logistics-rfp.pdf' }],
+    changes: [{ field: 'deadline_at', old: '2026-11-28T17:00:00+02:00', new: '2026-11-30T17:00:00+02:00', at: '2026-11-20T06:00:00Z' }],
+  },
+};
+
+/** One GET /api/opportunities/{id} answer, in the API's shape. */
+export function opportunityBody(item: Item & { state: string }, note: string | null): Record<string, unknown> {
+  const extras = { fields: [], sources: [], documents: [], changes: [], ...DETAIL_EXTRAS[item.id] };
+  return { ...item, detail: { ...(item.detail as object), ...extras, note, state: item.state } };
+}
+
 export function defaultSeed(): Seed {
   return {
     items: defaultItems(),
@@ -204,7 +238,7 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
     const item = s.items.find((i) => i.id === decodeURIComponent(opp[1]!));
     if (!item) return send(res, 404, { detail: 'Not found' });
     if (method === 'GET' && !opp[2]) {
-      return send(res, 200, { ...withState(item), detail: { ...(item.detail as object), note: s.notes[item.id] ?? null, sources: [], documents: [], changes: [], fields: [] } });
+      return send(res, 200, opportunityBody(withState(item), s.notes[item.id] ?? null));
     }
     if (method === 'PUT' && opp[2] === '/state') {
       const state = (body as { state?: string } | null)?.state;
