@@ -1,5 +1,5 @@
 """Source routes. Members (mounted under /api): sources page, mute, suggest (spec 3,
-4.4). Admins (/admin): the registry, status changes, run history, test runs,
+4.4). Admins (/api/admin): the registry, status changes, run history, test runs,
 suggestion review (spec 4.3)."""
 
 from __future__ import annotations
@@ -398,7 +398,7 @@ def _review(suggestion_id: uuid.UUID, admin, db, decision: str) -> AdminSuggesti
 def accept_suggestion(
     suggestion_id: uuid.UUID, admin: AdminUser, db: DbDep
 ) -> AdminSuggestionOut:
-    """Marks it accepted. The admin then creates the source (POST /admin/sources
+    """Marks it accepted. The admin then creates the source (POST /api/admin/sources
     with suggestion_id), which links the two."""
     return _review(suggestion_id, admin, db, "accepted")
 

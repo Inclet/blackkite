@@ -106,7 +106,7 @@ class SourceIn(_SourceFields):
 
 
 class SourcePatch(_SourceFields):
-    """Edit. Status changes go through POST /admin/sources/{id}/status."""
+    """Edit. Status changes go through POST /api/admin/sources/{id}/status."""
 
     name: Name | None = None
     home_url: str | None = None

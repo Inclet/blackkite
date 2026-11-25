@@ -34,12 +34,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         per_ip=settings.unsubscribe_rate_per_ip_per_hour,
     )
     app.include_router(auth.router)
-    app.include_router(admin.router)
+    # Every member and admin API route lives under /api so no API path collides
+    # with a web page (docs/api-contract.md section 2): admin routes are
+    # /api/admin/*, since /admin/* are the admin screens. /auth/* and GET /me
+    # keep their paths.
+    app.include_router(admin.router, prefix=API_PREFIX)
     app.include_router(sources.member_router, prefix=API_PREFIX)
-    app.include_router(sources.admin_router)
-    # Phase 4 member routes (and the admin catalogue) live under /api so no API
-    # path collides with a web page (docs/api-contract.md section 2). /auth/*,
-    # GET /me and the earlier /admin/* routes keep their paths.
+    app.include_router(sources.admin_router, prefix=API_PREFIX)
     app.include_router(member.router, prefix=API_PREFIX)
     app.include_router(catalogue.router, prefix=API_PREFIX)
     app.include_router(profiles.router, prefix=API_PREFIX)

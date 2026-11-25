@@ -236,7 +236,8 @@ def test_invite_link_points_at_confirm_page(app, db, outbox):
         TestClient(app, base_url="https://testserver"), outbox, "admin@example.com"
     )
     assert (
-        c.post("/admin/invites", json={"email": "new@example.com"}).status_code == 201
+        c.post("/api/admin/invites", json={"email": "new@example.com"}).status_code
+        == 201
     )
     text = outbox.outbox[-1].text
     assert "https://testserver/auth/confirm#token=" in text
