@@ -91,8 +91,18 @@ STARTUP_GRACE_SECONDS = 20.0
 TAG_ENV = "BK_RENDERER_TAG"
 MAX_REDIRECTS = 5
 CHROMIUM_ARGS = [
-    # Chromium resolves nothing itself; all traffic goes through the route.
+    # The route interception (``_render_one``) is the primary control: every
+    # request is fetched by us through the guard. These flags are the backstop
+    # for anything the route misses.
+    # Chromium resolves nothing itself. The rule also covers IP literals
+    # (127.0.0.1, 2130706433, [::1], 10.0.0.1): they fail as NOTFOUND too
+    # (checked against real Chromium in tests/test_collector_browser.py).
     "--host-resolver-rules=MAP * ~NOTFOUND",
+    # Loopback goes to the dead proxy like everything else. Chromium bypasses
+    # the proxy for loopback by default; Playwright adds this rule too, but not
+    # when PLAYWRIGHT_DISABLE_FORCED_CHROMIUM_PROXIED_LOOPBACK is set, so we set
+    # it ourselves (it comes after Playwright's own and wins).
+    "--proxy-bypass-list=<-loopback>",
     "--disable-background-networking",
     "--disable-component-update",
     "--disable-sync",

@@ -453,3 +453,45 @@ def test_real_browser_with_production_guard_cannot_reach_loopback(local_server):
         r.close()
     assert hits == []
     assert bl.tagged_pids(r.tag) == []
+
+
+@real_browser
+def test_real_browser_flags_alone_block_loopback_and_ip_literals(
+    local_server, monkeypatch
+):
+    """The backstop under the route: Chromium launched as the renderer launches
+    it, with no route at all, reaches nothing. Loopback is not exempt from the
+    dead proxy even when Playwright is told to stop forcing that, and the
+    resolver rule refuses IP literals as well as names."""
+    from playwright.sync_api import Error as PlaywrightError
+    from playwright.sync_api import sync_playwright
+
+    assert "--proxy-bypass-list=<-loopback>" in bl.CHROMIUM_ARGS
+    port, hits = local_server
+    monkeypatch.setenv("PLAYWRIGHT_DISABLE_FORCED_CHROMIUM_PROXIED_LOOPBACK", "1")
+    urls = [
+        f"http://127.0.0.1:{port}/plain",
+        f"http://localhost:{port}/plain",
+        f"http://2130706433:{port}/plain",  # 127.0.0.1 as one number
+        f"http://[::1]:{port}/plain",
+    ]
+    resolver_only = [a for a in bl.CHROMIUM_ARGS if not a.startswith("--proxy")]
+    proxy_only = [a for a in bl.CHROMIUM_ARGS if not a.startswith("--host-resolver")]
+    # bypass "<loopback>" asks Playwright to let loopback skip the proxy; our
+    # flag, after Playwright's, overrides it.
+    leaky_proxy = {"server": bl.DEAD_PROXY, "bypass": "<loopback>"}
+    with sync_playwright() as p:
+        for launch in (
+            {"args": bl.CHROMIUM_ARGS, "proxy": leaky_proxy},  # as the renderer
+            {"args": proxy_only, "proxy": leaky_proxy},  # the proxy flag alone
+            {"args": resolver_only},  # no proxy: the resolver rule alone
+        ):
+            browser = p.chromium.launch(headless=True, **launch)
+            try:
+                page = browser.new_page()
+                for url in urls:
+                    with pytest.raises(PlaywrightError, match="net::ERR_"):
+                        page.goto(url, timeout=5000)
+            finally:
+                browser.close()
+    assert hits == []
