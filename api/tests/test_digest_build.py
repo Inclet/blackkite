@@ -198,6 +198,18 @@ def test_rules_only_reason_is_never_printed(db, ana, world, settings):
     assert "without the model" not in mail.html
 
 
+def test_no_name_greets_without_one(db, ana, world, settings):
+    ana.name = None
+    item(db, ana, world, "Cold chain tender", 80)
+    db.commit()
+    out = MemoryTransport()
+    assert send_digest(db, ana, settings, out, MONDAY).status == "sent"
+    [mail] = out.outbox
+    assert mail.text.startswith("Good morning\n")
+    assert ">Good morning</td>" in mail.html
+    assert "there" not in mail.text.split("\n")[0]
+
+
 def test_wording_helpers():
     assert (
         W.deadline_line(kigali(2026, 12, 7, 23, 59)) == "Closes Monday 7 December 2026"
@@ -406,7 +418,7 @@ def test_user_without_a_setting_gets_weekly_to_account_email(db, settings):
     out = MemoryTransport()
     assert send_digest(db, u, settings, out, MONDAY).status == "sent"
     assert out.outbox[0].to == "carol@example.com"
-    assert "Good morning, there" in out.outbox[0].text
+    assert out.outbox[0].text.startswith("Good morning\n")  # no name set
 
 
 def test_best_profile_is_chosen_among_active_profiles(db, ana, world, settings):

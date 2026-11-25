@@ -576,9 +576,10 @@ def opportunity_out(db: Session, row: Row, now: datetime) -> S.OpportunityOut:
 
 
 def first_name(user: User) -> str:
-    """For the greeting. "there" ("Good morning, there") when no name is set."""
+    """For the greeting. Empty when no name is set: the greeting then has no
+    name ("Good morning"), never a stand-in."""
     name = (user.name or "").strip()
-    return name.split()[0] if name else "there"
+    return name.split()[0] if name else ""
 
 
 def _when(at: datetime, now: datetime) -> str:

@@ -115,6 +115,8 @@ class FeedItem(CamelModel):
 
 
 class FeedUser(CamelModel):
+    # First name for the greeting; "" when the user has not set one (the web
+    # then greets without a name).
     name: str
 
 

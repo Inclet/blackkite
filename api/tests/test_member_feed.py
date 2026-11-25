@@ -439,6 +439,16 @@ def test_best_profile_and_hard_filtered_rows(db, ana, login):
     assert r.status_code == 200 and r.json()["fit"] is None
 
 
+def test_feed_user_name_is_empty_without_a_name(db, ana, login):
+    ana.name = None
+    db.commit()
+    c = login(ana.email)
+    assert c.get("/api/feed").json()["user"] == {"name": ""}
+    ana.name = "  "
+    db.commit()
+    assert c.get("/api/feed").json()["user"] == {"name": ""}
+
+
 def test_provisional_follows_the_matched_profile(db, ana, login):
     """Spec 7.1: AI lab matches are labelled provisional; the flag comes from the
     best profile's score row, on the feed and on the opportunity page."""

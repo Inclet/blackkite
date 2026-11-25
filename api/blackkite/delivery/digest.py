@@ -142,6 +142,7 @@ class DigestFooter(_Model):
 class DigestView(_Model):
     subject: str
     sender: str = "Blackkite"
+    # Empty when the user has not set a name: the heading is the greeting alone.
     first_name: str
     issue_date: date
     greeting: str = "Good morning"
@@ -163,7 +164,8 @@ class DigestView(_Model):
 
     @property
     def heading(self) -> str:
-        return f"{self.greeting}, {self.first_name}"
+        name = self.first_name.strip()
+        return f"{self.greeting}, {name}" if name else self.greeting
 
     @property
     def more_line(self) -> str | None:
