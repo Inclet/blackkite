@@ -126,7 +126,8 @@ def config_form(collector_type: str) -> dict[str, Any]:
      ...}], "json_schema": {...}}
 
     For ``custom`` it also has ``collectors``: per allowlisted class, its help
-    line and the fields of its ``options``.
+    line and the fields of its ``options``, limited to the collectors available
+    under BK_ENV (``custom.available_collectors``).
     """
     model = CONFIG_MODELS.get(collector_type)
     if model is None:
@@ -137,7 +138,7 @@ def config_form(collector_type: str) -> dict[str, Any]:
         "json_schema": model.model_json_schema(),
     }
     if collector_type == "custom":
-        form["collectors"] = custom.option_forms()
+        custom.patch_form(form)
     return form
 
 

@@ -20,6 +20,10 @@ Shipped: ``jsonld_events``, schema.org Event objects from a listing page's
 JSON-LD (spec 4.5: Eventbrite and 10times listing pages carry them); and
 ``demo_fictional``, a no-op for the fictional sources of ``bk demo-seed`` (no
 fetch, no items), so a run of a demo source succeeds instead of failing.
+
+``demo_fictional`` exists only when BK_ENV=dev (``DEV_ONLY``): with BK_ENV=prod it
+is left out of the admin form and refused as an unknown custom collector, so no
+real source can be configured with it and a stray demo row fails its run.
 """
 
 from __future__ import annotations
@@ -316,15 +320,32 @@ CUSTOM_COLLECTORS: dict[str, type] = {
     JsonLdEventsCollector.name: JsonLdEventsCollector,
     DemoFictionalCollector.name: DemoFictionalCollector,
 }
+# Collectors that exist only when BK_ENV=dev.
+DEV_ONLY = frozenset({DemoFictionalCollector.name})
+
+
+def available_collectors(env: str | None = None) -> dict[str, type]:
+    """The allowlist for this environment (``env`` defaults to BK_ENV): every
+    collector in dev, none of ``DEV_ONLY`` anywhere else."""
+    if env is None:
+        from blackkite.config import get_settings
+
+        env = get_settings().env
+    return {
+        name: cls
+        for name, cls in CUSTOM_COLLECTORS.items()
+        if env == "dev" or name not in DEV_ONLY
+    }
+
+
+COLLECTOR_HELP = "Which built-in custom collector to run"
 
 
 class CustomConfig(BaseModel):
+    # The choices depend on BK_ENV, so the form and JSON schema get them from
+    # ``patch_form`` at request time, not from this static model.
     model_config = ConfigDict(extra="forbid")
-    collector: str = Field(
-        description="Which built-in custom collector to run: "
-        + ", ".join(sorted(CUSTOM_COLLECTORS)),
-        json_schema_extra={"enum": sorted(CUSTOM_COLLECTORS)},
-    )
+    collector: str = Field(description=COLLECTOR_HELP + ".")
     options: dict[str, Any] = Field(
         default={}, description="Settings for the chosen collector (see its form)."
     )
@@ -332,10 +353,11 @@ class CustomConfig(BaseModel):
     @field_validator("collector")
     @classmethod
     def _known(cls, v: str) -> str:
-        if v not in CUSTOM_COLLECTORS:
+        allowed = available_collectors()
+        if v not in allowed:
             raise ValueError(
                 f"unknown custom collector {v!r}; choose one of "
-                + ", ".join(sorted(CUSTOM_COLLECTORS))
+                + ", ".join(sorted(allowed))
             )
         return v
 
@@ -375,10 +397,23 @@ class CustomCollector:
         )
 
 
-def option_forms() -> dict[str, dict[str, Any]]:
+def option_forms(env: str | None = None) -> dict[str, dict[str, Any]]:
     from blackkite.collectors.forms import describe
 
     return {
         name: {"help": cls.help, "fields": describe(cls.Options)}
-        for name, cls in CUSTOM_COLLECTORS.items()
+        for name, cls in available_collectors(env).items()
     }
+
+
+def patch_form(form: dict[str, Any], env: str | None = None) -> None:
+    """Fill the env-dependent parts of the ``custom`` config form in place: the
+    ``collector`` choices (field and JSON schema) and the per-collector forms."""
+    names = sorted(available_collectors(env))
+    help_text = f"{COLLECTOR_HELP}: {', '.join(names)}"
+    for f in form["fields"]:
+        if f["name"] == "collector":
+            f.update(type="enum", choices=names, help=help_text)
+    prop = form["json_schema"]["properties"]["collector"]
+    prop.update(enum=names, description=help_text)
+    form["collectors"] = option_forms(env)

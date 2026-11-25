@@ -159,3 +159,31 @@ def test_demo_fictional_is_a_no_op_with_no_options():
     assert (
         registry.config_form("custom")["collectors"]["demo_fictional"]["fields"] == []
     )
+
+
+@pytest.mark.parametrize("env", ["dev", "prod"])
+def test_demo_fictional_exists_only_in_dev(bk_env, env):
+    bk_env(env)
+    cfg = {"collector": "demo_fictional", "options": {}}
+    form = registry.config_form("custom")
+    (collector,) = [f for f in form["fields"] if f["name"] == "collector"]
+    schema_enum = form["json_schema"]["properties"]["collector"]["enum"]
+    if env == "dev":
+        assert validate_config("custom", cfg) == cfg
+        assert (
+            collector["choices"] == schema_enum == ["demo_fictional", "jsonld_events"]
+        )
+        assert "demo_fictional" in form["collectors"]
+        assert (
+            build_collector("custom", make_client(FakeWeb())).fetch(source(cfg)) == []
+        )
+        return
+    with pytest.raises(ValueError, match="unknown custom collector 'demo_fictional'"):
+        validate_config("custom", cfg)
+    assert collector["choices"] == schema_enum == ["jsonld_events"]
+    assert "demo_fictional" not in collector["help"]
+    assert set(form["collectors"]) == {"jsonld_events"}
+    # a stray demo row fails its run instead of silently succeeding
+    with pytest.raises(CollectorError, match="unknown custom collector"):
+        build_collector("custom", make_client(FakeWeb())).fetch(source(cfg))
+    assert validate_config("custom", CFG)["collector"] == "jsonld_events"

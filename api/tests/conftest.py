@@ -217,3 +217,18 @@ def sign_in(client: TestClient, outbox: MemoryTransport, email: str) -> TestClie
 def verify(client: TestClient, token: str):
     """What the web confirm page does when the person presses Continue."""
     return client.post("/auth/verify", json={"token": token})
+
+
+@pytest.fixture
+def bk_env(monkeypatch):
+    """Set BK_ENV for code that reads it through ``get_settings()``:
+    ``bk_env("prod")``. The settings cache is cleared now and after the test."""
+    from blackkite.config import get_settings
+
+    def set_env(value: str) -> None:
+        monkeypatch.setenv("BK_ENV", value)
+        get_settings.cache_clear()
+
+    yield set_env
+    monkeypatch.delenv("BK_ENV", raising=False)
+    get_settings.cache_clear()

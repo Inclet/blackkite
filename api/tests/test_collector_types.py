@@ -179,3 +179,38 @@ def test_requires_admin(client, db, outbox):
     make_user(db, "m@example.com")
     member = sign_in(client, outbox, "m@example.com")
     assert member.get("/api/admin/collector-types").status_code == 403
+
+
+DEMO_SOURCE = {
+    "name": "Demo Example",
+    "home_url": "https://demo.example.com",
+    "publisher": "Demo",
+    "streams": ["event"],
+    "kind": "publisher",
+    "collector_type": "custom",
+    "config": {"collector": "demo_fictional", "options": {}},
+}
+
+
+@pytest.mark.parametrize("env", ["dev", "prod"])
+def test_demo_fictional_only_offered_and_accepted_in_dev(admin_client, bk_env, env):
+    bk_env(env)
+    s = _by_type(admin_client.get("/api/admin/collector-types").json())["custom"]
+    which = _field(s["fields"], "collector")
+    opts = _field(s["fields"], "options")
+    created = admin_client.post("/api/admin/sources", json=DEMO_SOURCE)
+    preview = admin_client.post(
+        "/api/admin/sources/test-run",
+        json={k: DEMO_SOURCE[k] for k in ("home_url", "collector_type", "config")},
+    )
+    if env == "dev":
+        assert which["options"] == ["demo_fictional", "jsonld_events"]
+        assert "demo_fictional: none." in opts["help"]
+        assert created.status_code == 201, created.text
+        assert preview.status_code == 200, preview.text
+        return
+    assert which["options"] == ["jsonld_events"]
+    assert "demo_fictional" not in which["help"] + opts["help"]
+    for r in (created, preview):
+        assert r.status_code == 422, r.text
+        assert "unknown custom collector" in r.text
