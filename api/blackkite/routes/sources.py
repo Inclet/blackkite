@@ -210,12 +210,27 @@ def get_source(source_id: uuid.UUID, db: DbDep, settings: SettingsDep) -> Source
     return _source_out(db, settings, [_get_source(db, source_id)])[0]
 
 
+def _normalised_config(source: Source) -> dict | None:
+    """The stored config as validation would store it (seeded or older rows may
+    hold it unnormalised), or None when it no longer validates."""
+    try:
+        return validate_config(source.collector_type, source.config)
+    except (ValueError, TypeError):
+        return None
+
+
 @admin_router.patch("/sources/{source_id}", response_model=SourceOut)
 def edit_source(
     source_id: uuid.UUID, body: SourcePatch, db: DbDep, settings: SettingsDep
 ) -> SourceOut:
+    """Edit a source. Changing ``collector_type`` or ``config`` of an ``active``
+    source sends it back to ``testing`` in the same request (owner's ruling,
+    2026-11-25): promotion then needs two good runs of the new config again, and
+    its items stay visible to members only through other active/paused sources.
+    Other fields never change the status."""
     source = _get_source(db, source_id)
     changes = body.model_dump(exclude_unset=True)
+    config_changed = False
     required = {"name", "home_url", "streams", "kind", "collector_type", "config"}
     if nulls := sorted(k for k in required if k in changes and changes[k] is None):
         raise HTTPException(422, f"cannot clear {', '.join(nulls)}")
@@ -226,8 +241,9 @@ def edit_source(
             validated = validate_config(ctype, config)
         except (ValueError, TypeError) as e:
             raise HTTPException(422, f"config: {e}") from None
-        if ctype != source.collector_type or validated != source.config:
+        if ctype != source.collector_type or validated != _normalised_config(source):
             source.config_changed_at = service.now_utc()
+            config_changed = True
         changes["config"] = validated
     kind = changes.get("kind", source.kind)
     ctype = changes.get("collector_type", source.collector_type)
@@ -241,7 +257,10 @@ def edit_source(
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "A source with that name already exists") from None
-    if kind_changed:
+    if config_changed and source.status == "active":
+        # Also recomputes verification for the source's items.
+        service.change_status(db, source, "testing")
+    elif kind_changed:
         refresh_verification_for_source(db, source.id)
     db.commit()
     db.refresh(source)
