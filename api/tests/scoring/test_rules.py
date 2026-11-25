@@ -201,9 +201,39 @@ def test_owned_fleet_not_flagged_when_profile_owns_trucks():
     }
     r = rules(opp(requirements=["Copies of vehicle logbooks."]), owner)
     assert "owned_fleet" not in codes(r)
-    # A stated owned fleet below an ownership threshold is a capacity shortfall.
+    # An owned fleet below an ownership threshold, with a partner network that
+    # covers it: kept and flagged with the quote (spec 7.1), not ineligible.
     r = rules(opp(requirements=["The bidder must own at least 20 trucks."]), owner)
-    assert r.hard_filtered == "ineligible"
+    assert r.hard_filtered is None
+    [f] = [f for f in r.flags if f.code == "owned_fleet"]
+    assert f.label == "May require owned fleet" and "own at least 20 trucks" in f.quote
+
+
+@pytest.mark.parametrize("owned", [0, 5, None])
+def test_owned_threshold_with_partner_network_is_flagged_not_filtered(owned):
+    p = seed("Ironji-Trade")
+    p.data = {**p.data, "capacity": {**p.data["capacity"], "owned_trucks": owned}}
+    o = opp(requirements=["The bidder must own at least 20 trucks."])
+    r = rules(o, p)
+    assert r.hard_filtered is None
+    [f] = [f for f in r.flags if f.code == "owned_fleet"]
+    assert f.quote in o.requirements[0] and f.quote in f.to_check
+
+
+def test_owned_threshold_filters_only_without_network_capacity():
+    p = seed("Ironji-Trade")
+    o = opp(requirements=["The bidder must own at least 20 trucks."])
+    # No network at all, owned fleet too small: ineligible.
+    p.data = {**p.data, "capacity": {"model": "owned fleet", "owned_trucks": 5}}
+    r = rules(o, p)
+    assert r.hard_filtered == "ineligible" and "20" in r.filter_reason
+    # A network smaller than the threshold does not cover it either.
+    p.data = {**p.data, "capacity": {"trucks_in_network": 10, "owned_trucks": 0}}
+    assert rules(o, p).hard_filtered == "ineligible"
+    # Enough owned trucks: met, no flag.
+    p.data = {**p.data, "capacity": {"trucks_in_network": 10, "owned_trucks": 25}}
+    r = rules(o, p)
+    assert r.hard_filtered is None and "owned_fleet" not in codes(r)
 
 
 def test_transport_licence_flag():

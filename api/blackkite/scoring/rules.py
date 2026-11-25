@@ -13,7 +13,10 @@ Hard filters, in the order checked (first hit wins, stored in ``hard_filtered``)
 * ``muted_source_only``: every source carrying the item is muted by the user.
 * ``ineligible``: the notice explicitly limits applicants to NGOs / non-profits (or
   excludes for-profits) and the profile is not one; or it states a capacity
-  threshold above what the profile states.
+  threshold above what the profile states. An owned-vehicle threshold above the
+  owned fleet is kept and flagged "May require owned fleet" while the partner
+  network covers the number (spec 7.1); it filters only when the network does
+  not either.
 * ``below_min_value``: a tender whose value is stated in RWF under the profile's
   ``min_contract_rwf``.
 
@@ -259,6 +262,18 @@ def check_capacity(profile: Profile, parts: list[str]) -> CapacityCheck:
             have = _num(cap.get(key))
             if key == "trucks_in_network" and have is None:
                 have = _num(cap.get("owned_trucks"))
+            network = _num(cap.get("trucks_in_network"))
+            # Spec 7.1: the volume is there through the partner network; the
+            # ownership may not be. Keep and flag "May require owned fleet" when
+            # the network covers the number; filter only when it does not.
+            if (
+                owned
+                and (have is None or have < n)
+                and network is not None
+                and network >= n
+            ):
+                out.owned = out.owned or quote
+                continue
             if have is None:
                 if owned:
                     out.owned = out.owned or quote
@@ -339,7 +354,9 @@ def rule_flags(
         return []
     who = _who(opp)
     flags: list[Flag] = []
-    if not _owns_fleet(profile):
+    # An ownership threshold the stated owned fleet does not meet flags even when
+    # the profile owns some trucks (check_capacity keeps it via the network).
+    if capacity.owned or not _owns_fleet(profile):
         quote = capacity.owned or _find(OWNED_FLEET_RE, parts)
         if quote:
             flags.append(
