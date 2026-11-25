@@ -342,8 +342,11 @@ def _to_check(best: ScoreView | None) -> str | None:
     return text if text.startswith("To check") else TO_CHECK_PREFIX + text
 
 
-def _top_flag(best: ScoreView | None) -> str | None:
-    if best is None or not best.flags:
+def _top_flag(best: ScoreView | None, fit: str | None) -> str | None:
+    """The first flag's label, sent only for a "good" fit (contract section 2):
+    the row subtitle then reads "Good fit · <flag>" (develoPPP board). A strong
+    item keeps its organisation in the subtitle; its flag shows as To check."""
+    if fit != "good" or best is None or not best.flags:
         return None
     label = best.flags[0].get("label")
     return label if isinstance(label, str) and label.strip() else None
@@ -384,6 +387,7 @@ def _item_fields(row: Row, now: datetime) -> dict[str, Any]:
         )
     elif o.deadline_at is not None:
         deadline = kigali_date(o.deadline_at).isoformat()
+    fit = fit_for(row, now)
     no_deadline = None
     if deadline is None and event_dates is None:
         no_deadline = (
@@ -395,8 +399,8 @@ def _item_fields(row: Row, now: datetime) -> dict[str, Any]:
         "title": o.title,
         "organisation": o.organisation or "",
         "organisation_short": o.organisation_short,
-        "fit": fit_for(row, now),
-        "top_flag": _top_flag(best) if o.stream in SCORED_STREAMS else None,
+        "fit": fit,
+        "top_flag": _top_flag(best, fit),
         "topic": _topic(o) if o.stream == "event" else None,
         "venue": o.location if o.stream == "event" else None,
         "note": o.value_note if o.stream == "investment" else None,

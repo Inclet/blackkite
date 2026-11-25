@@ -57,6 +57,24 @@ def _ids(client: TestClient, **params) -> list[str]:
     return [i["id"] for i in _items(client, **params)]
 
 
+_FIT_WORDS = {
+    "strong": "Strong fit",
+    "good": "Good fit",
+    "possible": "Possible fit",
+    "not-scored": "Not scored",
+}
+
+
+def _subtitle(item: dict) -> str:
+    """web/src/lib/subtitle.ts rowSubtitle, desktop, tender/funding branch."""
+    top = item.get("topFlag")
+    parts = [
+        _FIT_WORDS.get(item["fit"]) if item["fit"] else None,
+        top[0].lower() + top[1:] if top else item["organisation"],
+    ]
+    return " · ".join(p for p in parts if p)
+
+
 # --- auth -----------------------------------------------------------------------------
 
 
@@ -126,9 +144,10 @@ def test_wfp_item_matches_the_reference_fixture(db, ana, login):
     assert body["user"] == {"name": "Ana"}
     assert body["digest"] == {"channel": "email"}
     [item] = body["items"]
-    # web/src/fixtures/reference.ts, item wfp-logistics, word for word. The board
-    # shows no top flag for a strong fit; the contract's topFlag is the first flag.
-    assert item.pop("topFlag") == "May require owned fleet"
+    # web/src/fixtures/reference.ts, item wfp-logistics, word for word: Strong with
+    # a flag, so no topFlag (contract section 2); the flag shows as To check.
+    assert "topFlag" not in item
+    assert _subtitle(item) == "Strong fit · World Food Programme"
     assert item == {
         "id": str(opp.id),
         "stream": "tender",
@@ -157,6 +176,93 @@ def test_wfp_item_matches_the_reference_fixture(db, ana, login):
             "originalUrl": "https://www.jobinrwanda.com/jobs/tender",
         },
     }
+
+
+def test_developpp_item_matches_the_reference_fixture(db, ana, login):
+    org = f.source(db, "develoPPP site", kind="original", publisher="develoPPP")
+    opp = f.opportunity(
+        db,
+        "develoPPP Ventures, cohort 6",
+        stream="funding",
+        organisation="develoPPP",
+        location="Rwanda",
+        deadline_at=kigali(2026, 12, 31),
+        verification="verified_original",
+        evidence={"_trust": "confirmed"},
+    )
+    f.link(db, opp, org, "https://www.developpp.de/", is_original=True)
+    ironji = f.profile(db, ana, "Ironji-Trade")
+    f.score(
+        db,
+        ana,
+        opp,
+        ironji,
+        70,
+        fit_word="good",
+        reasons=[
+            "It backs growing companies in Africa that want to scale a proven business."
+        ],
+        flags=[
+            {
+                "code": "model_other",
+                "label": "Needs matching funds",
+                "quote": "matching funds",
+                "to_check": "it needs matching funds from your side.",
+            }
+        ],
+    )
+    db.commit()
+    [item] = _items(login(ana.email))
+    # web/src/fixtures/reference.ts, item developpp-6, word for word except two
+    # things: hideOnPhone is web-only (decision 4), and the fixture's trust copy
+    # says "the programme’s" where the API fills in the source's publisher.
+    trust = item["detail"].pop("trust")
+    assert trust == {
+        "state": "confirmed",
+        "desktop": "Matched to the call on develoPPP’s own site.",
+        "phone": "Matched to the call on develoPPP’s own site.",
+    }
+    assert item == {
+        "id": str(opp.id),
+        "stream": "funding",
+        "title": "develoPPP Ventures, cohort 6",
+        "organisation": "develoPPP",
+        "fit": "good",
+        "topFlag": "Needs matching funds",
+        "deadline": "2026-12-31",
+        "detail": {
+            "profile": "Ironji-Trade",
+            "location": "Rwanda",
+            "reasons": [
+                (
+                    "It backs growing companies in Africa that want to scale a "
+                    "proven business."
+                )
+            ],
+            "toCheck": "To check: it needs matching funds from your side.",
+            "originalUrl": "https://www.developpp.de/",
+        },
+    }
+    assert _subtitle(item) == "Good fit · needs matching funds"
+
+
+@pytest.mark.parametrize(
+    ("word", "flags", "top"),
+    [
+        ("strong", [{"label": "Value unknown"}], None),
+        ("good", [{"label": "Value unknown"}], "Value unknown"),
+        ("good", [], None),
+        ("possible", [{"label": "Value unknown"}], None),
+    ],
+)
+def test_top_flag_only_for_good_fit(db, ana, login, word, flags, top):
+    src = f.source(db, "Src")
+    opp = f.opportunity(db, "X", deadline_at=kigali(2026, 12, 10))
+    f.link(db, opp, src)
+    f.score(db, ana, opp, f.profile(db, ana, "P"), 70, fit_word=word, flags=flags)
+    db.commit()
+    [item] = _items(login(ana.email))
+    assert item["fit"] == word and item.get("topFlag") == top
 
 
 def test_event_item_matches_the_reference_fixture(db, ana, login):
