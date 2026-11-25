@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { Profile } from '../../api/types';
-import { chipOptions, DEFAULT_STREAMS, ERRORS, parseList, parseNumber, toForm, toInput, validate } from './profileForm';
+import { chipOptions, DATA_KEYS, DEFAULT_STREAMS, ERRORS, parseList, parseNumber, toForm, toInput, validate } from './profileForm';
 
 /** Spec 7.1's Ironji-Trade, camelCase. */
 const IRONJI: Profile = {
@@ -81,4 +81,25 @@ test('streams are sent in stream order', () => {
 
 test('chip options: the spec set, then anything else already held', () => {
   expect(chipOptions(['a', 'b'], ['b', 'c'])).toEqual(['a', 'b', 'c']);
+});
+
+test('a change of type sends only keys valid for the new type (the API refuses the rest)', () => {
+  const asPersonal = { ...toForm(IRONJI, 'business'), type: 'personal' as const, instruments: ['RSE shares'] };
+  const d = toInput(asPersonal, { ...IRONJI.data, sectors: ['logistics'], locations: ['Musanze'] }).data;
+  for (const k of Object.keys(d)) expect(DATA_KEYS.personal).toContain(k);
+  expect(d).toMatchObject({ streams: ['tender', 'funding', 'event'], location: 'Kigali, Rwanda', locations: ['Musanze'], instruments: ['RSE shares'] });
+  for (const k of ['services', 'sectors', 'capacity', 'registrationsHeld', 'registrationsNotHeld', 'minContractRwf']) expect(d).not.toHaveProperty(k);
+
+  const personal = { streams: ['investment' as const], horizon: '5 years', availability: 'evenings', budgetRwf: 200000, ticketRangeRwf: { min: 1, max: 2 } };
+  const b = toInput({ ...toForm({ name: 'P', type: 'personal', active: true, data: personal }, 'personal'), type: 'business' }, personal).data;
+  for (const k of Object.keys(b)) expect(DATA_KEYS.business).toContain(k);
+  for (const k of ['horizon', 'availability', 'budgetRwf', 'ticketRangeRwf', 'instruments', 'eventTopics']) expect(b).not.toHaveProperty(k);
+});
+
+test('same type: extra keys the API accepts are kept (business sectors and locations; personal horizon, availability, budget)', () => {
+  const extra = { streams: ['investment' as const, 'event' as const], horizon: '5 years', availability: 'evenings', budgetRwf: 200000, locations: ['Kigali'] };
+  const d = toInput(toForm({ name: 'P', type: 'personal', active: true, data: extra }, 'personal'), extra).data;
+  expect(d).toMatchObject(extra);
+  const biz = { ...IRONJI.data, sectors: ['logistics'], locations: ['Kigali', 'Rubavu'] };
+  expect(toInput(toForm({ ...IRONJI, data: biz }, 'business'), biz).data).toMatchObject({ sectors: ['logistics'], locations: ['Kigali', 'Rubavu'] });
 });

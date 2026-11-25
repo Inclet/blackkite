@@ -60,6 +60,12 @@ export interface StateUpdate {
 
 export type ProfileType = 'business' | 'personal';
 
+/** A range in whole units (the API's `Range`: integers, min not above max). */
+export interface Range {
+  min?: number | null;
+  max?: number | null;
+}
+
 export interface ProfileCapacity {
   /** e.g. "partner network". */
   model?: string | null;
@@ -70,28 +76,48 @@ export interface ProfileCapacity {
 }
 
 export interface ProfileExclusions {
-  organisations?: string[];
-  sectors?: string[];
-  keywords?: string[];
+  organisations?: string[] | null;
+  sectors?: string[] | null;
+  keywords?: string[] | null;
 }
 
-/** profile.data, camelCase (spec 7, 7.1). Null means "not provided yet" and never hard-filters. */
-export interface ProfileData {
-  streams?: Stream[];
+/** Keys every profile type accepts (api member/profiles.py `_Common`). */
+export interface CommonProfileData {
+  /** Required by the API, at least one, no repeats. */
+  streams: Stream[];
   location?: string | null;
-  /** Business. */
+  locations?: string[] | null;
+  exclusions?: ProfileExclusions | null;
+  /** A placeholder set the owner has yet to confirm (spec 7.1). */
+  provisional?: boolean | null;
+}
+
+/** api `BusinessData`. */
+export interface BusinessProfileData extends CommonProfileData {
   services?: string[] | null;
+  sectors?: string[] | null;
+  capacity?: ProfileCapacity | null;
   registrationsHeld?: string[] | null;
   registrationsNotHeld?: string[] | null;
-  capacity?: ProfileCapacity | null;
   minContractRwf?: number | null;
-  provisional?: boolean;
-  /** Personal. */
-  instruments?: string[] | null;
-  ticketRangeRwf?: { min?: number | null; max?: number | null } | null;
-  eventTopics?: string[] | null;
-  exclusions?: ProfileExclusions | null;
 }
+
+/** api `PersonalData`. */
+export interface PersonalProfileData extends CommonProfileData {
+  instruments?: string[] | null;
+  ticketRangeRwf?: Range | null;
+  horizon?: string | null;
+  eventTopics?: string[] | null;
+  availability?: string | null;
+  budgetRwf?: number | null;
+}
+
+/**
+ * profile.data, camelCase (spec 7, 7.1). Null means "not provided yet" and never
+ * hard-filters. The API refuses keys not valid for the profile's type (422), so
+ * what is sent holds only BusinessProfileData or PersonalProfileData keys.
+ */
+export type ProfileData = BusinessProfileData & PersonalProfileData;
 
 export interface Profile {
   id: string;
@@ -100,6 +126,9 @@ export interface Profile {
   data: ProfileData;
   version: number;
   active: boolean;
+  /** ISO date-times. */
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type ProfileInput = Pick<Profile, 'name' | 'type' | 'data'> & { active?: boolean };

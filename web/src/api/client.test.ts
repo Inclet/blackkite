@@ -49,7 +49,7 @@ test.each([
   ['note', () => api.setNote('wfp', 'Call Tuesday'), '/api/opportunities/wfp/note', 'PUT', { note: 'Call Tuesday' }],
   ['shortlist', () => api.shortlist(), '/api/shortlist', 'GET', undefined],
   ['profiles', () => api.profiles(), '/api/profiles', 'GET', undefined],
-  ['create profile', () => api.createProfile({ name: 'X', type: 'business', data: {} }), '/api/profiles', 'POST', { name: 'X', type: 'business', data: {} }],
+  ['create profile', () => api.createProfile({ name: 'X', type: 'business', data: { streams: ['tender'] } }), '/api/profiles', 'POST', { name: 'X', type: 'business', data: { streams: ['tender'] } }],
   ['update profile', () => api.updateProfile('p1', { name: 'Y' }), '/api/profiles/p1', 'PATCH', { name: 'Y' }],
   ['delete profile', () => api.deleteProfile('p1'), '/api/profiles/p1', 'DELETE', undefined],
   ['digest settings', () => api.digestSettings(), '/api/digest-settings', 'GET', undefined],

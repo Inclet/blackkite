@@ -1,4 +1,4 @@
-import type { Profile, ProfileData, ProfileInput, ProfileType } from '../../api/types';
+import type { Profile, ProfileCapacity, ProfileData, ProfileInput, ProfileType } from '../../api/types';
 import { STREAMS, type Stream } from '../../lib/streams';
 
 /** Spec 7.1: the owner's instrument list (personal profile). */
@@ -64,11 +64,30 @@ export const ERRORS = {
   ticketOrder: 'Make this at least the smallest ticket.',
 } as const;
 
+/**
+ * The data keys the API accepts for each type (api member/profiles.py
+ * `BusinessData` / `PersonalData`; it refuses any other key with a 422).
+ */
+const COMMON_KEYS = ['streams', 'location', 'locations', 'exclusions', 'provisional'] as const;
+export const DATA_KEYS: Record<ProfileType, readonly (keyof ProfileData)[]> = {
+  business: [...COMMON_KEYS, 'services', 'sectors', 'capacity', 'registrationsHeld', 'registrationsNotHeld', 'minContractRwf'],
+  personal: [...COMMON_KEYS, 'instruments', 'ticketRangeRwf', 'horizon', 'eventTopics', 'availability', 'budgetRwf'],
+};
+const CAPACITY_KEYS = ['model', 'trucksInNetwork', 'refrigeratedInNetwork', 'ownedTrucks', 'tonnage'] as const;
+
+/** Only the keys of `data` valid for `type`: what survives a change of type. */
+export function keysFor(type: ProfileType, data: Partial<ProfileData> | undefined): Partial<ProfileData> {
+  const out: Partial<ProfileData> = {};
+  if (!data) return out;
+  for (const k of DATA_KEYS[type]) if (k in data) (out as Record<string, unknown>)[k] = data[k];
+  return out;
+}
+
 const list = (v: string[] | null | undefined) => (v ?? []).join(', ');
 const num = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v));
 
 export function toForm(profile: Pick<Profile, 'name' | 'type' | 'data' | 'active'> | null, type: ProfileType): ProfileForm {
-  const d: ProfileData = profile?.data ?? {};
+  const d: Partial<ProfileData> = profile?.data ?? {};
   const t = profile?.type ?? type;
   return {
     type: t,
@@ -131,8 +150,11 @@ export function validate(f: ProfileForm): FormErrors {
 }
 
 /** The profile to send. Keys this form does not show are kept from `original`. */
-export function toInput(f: ProfileForm, original?: ProfileData): ProfileInput {
-  const keep: ProfileData = { ...(original ?? {}) };
+export function toInput(f: ProfileForm, original?: Partial<ProfileData>): ProfileInput {
+  // Only keys valid for the type being sent: after a change of type the old type's keys would be refused.
+  const keep = keysFor(f.type, original);
+  const keptCapacity: ProfileCapacity = {};
+  for (const k of CAPACITY_KEYS) if (original?.capacity && k in original.capacity) (keptCapacity as Record<string, unknown>)[k] = original.capacity[k];
   const streams = STREAMS.filter((s) => f.streams.includes(s));
   const exclusions = {
     organisations: parseList(f.excludeOrganisations) ?? [],
@@ -149,7 +171,7 @@ export function toInput(f: ProfileForm, original?: ProfileData): ProfileInput {
       registrationsHeld: parseList(f.registrationsHeld),
       registrationsNotHeld: parseList(f.registrationsNotHeld),
       capacity: {
-        ...(original?.capacity ?? {}),
+        ...keptCapacity,
         model: f.capacityModel.trim() || null,
         trucksInNetwork: parseNumber(f.trucksInNetwork),
         refrigeratedInNetwork: parseNumber(f.refrigeratedInNetwork),
