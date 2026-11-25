@@ -40,10 +40,7 @@ test('?fixture=reference renders the feed', () => {
   expect(screen.getByRole('heading', { level: 1, name: 'Good afternoon, Clet' })).toBeInTheDocument();
 });
 
-test.each([
-  ['/calendar', 'Calendar'],
-  ['/sources', 'Sources'],
-])('%s is not designed yet, in the app frame with the feed board\'s sidebar', (url, title) => {
+test.each([['/calendar', 'Calendar']])('%s is not designed yet, in the app frame with the feed board\'s sidebar', (url, title) => {
   mockApi({ 'GET /me': { id: 'u', email: 'c@x.rw', name: 'Clet', role: 'admin' } });
   renderAt(url);
   expect(screen.getByRole('heading', { level: 1, name: title })).toBeInTheDocument();

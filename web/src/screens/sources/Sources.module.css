@@ -1,0 +1,158 @@
+/* Not on any board (design review). The same values as the Profiles list and editor
+   (Profiles.module.css): rows 10px 0 with stone-200 dividers, 15px/20px 600 titles,
+   13px slate meta, the Components board's Fields card (14px gap, 12px/500 errors). */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 14px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.groupLabel {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.error {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bk-alert-text);
+}
+
+.help {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bk-slate);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.status {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--bk-slate);
+}
+
+.alertStatus {
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 500;
+  color: var(--bk-alert-text);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+}
+
+.row + .row {
+  border-top: 1px solid var(--bk-stone-200);
+}
+
+/* A row whose content stacks (review items, runs, previews). */
+.stackRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  min-width: 0;
+}
+
+.stackRow + .stackRow,
+.row + .stackRow,
+.stackRow + .row {
+  border-top: 1px solid var(--bk-stone-200);
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.rowTitle {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  font-size: 13px;
+  color: var(--bk-slate);
+  overflow-wrap: anywhere;
+}
+
+/* Member notes and server error text, as written. */
+.note {
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.side {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* The visible word beside a mute switch (the switch carries the full name). */
+.switchLabel {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.groupHeading {
+  margin: 0;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+.list {
+  margin: 0;
+  padding: 0 0 0 18px;
+  font-size: 13px;
+  line-height: 1.45;
+}
