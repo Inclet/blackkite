@@ -51,7 +51,10 @@ export interface Seed {
   mutes: string[];
   /** Every suggestion (api AdminSuggestionOut); members see their own (user_id u1). */
   suggestions: Record<string, unknown>[];
+  /** Runs per source, newest first (api RunOut). */
   runs: Record<string, Record<string, unknown>[]>;
+  /** Status changes per source, newest first (api StatusChangeOut). */
+  history: Record<string, Record<string, unknown>[]>;
   /** The admin catalogue (api CatalogueItem, camelCase). */
   catalogue: Record<string, unknown>[];
   users: Record<string, unknown>[];
@@ -217,21 +220,24 @@ export function defaultSeed(): Seed {
     suggestions: [
       {
         id: 'sg-1',
-        user_id: 'u2',
+        userId: 'u2',
         url: 'https://www.rdb.rw/calls',
         note: 'Covers: RDB calls for proposals\nWhy it is useful: funding calls appear here first',
         status: 'suggested',
-        created_at: '2026-11-23T08:00:00Z',
-        reviewed_at: null,
-        reviewed_by: null,
-        source_id: null,
+        createdAt: '2026-11-23T08:00:00Z',
+        reviewedAt: null,
+        reviewedBy: null,
+        sourceId: null,
       },
     ],
     runs: {
       'src-umucyo': [
-        { id: 'run-2', started_at: '2026-11-24T04:00:00Z', finished_at: '2026-11-24T04:01:00Z', status: 'succeeded', items_found: 9, items_new: 2, items_failed: 0, error: null },
-        { id: 'run-1', started_at: '2026-11-23T22:00:00Z', finished_at: '2026-11-23T22:00:30Z', status: 'failed', items_found: 0, items_new: 0, items_failed: 0, error: 'HTTP 503 from www.umucyo.gov.rw' },
+        { id: 'run-2', startedAt: '2026-11-24T04:00:00Z', finishedAt: '2026-11-24T04:01:00Z', status: 'succeeded', itemsFound: 9, itemsNew: 2, itemsFailed: 0, error: null },
+        { id: 'run-1', startedAt: '2026-11-23T22:00:00Z', finishedAt: '2026-11-23T22:00:30Z', status: 'failed', itemsFound: 0, itemsNew: 0, itemsFailed: 0, error: 'HTTP 503 from www.umucyo.gov.rw' },
       ],
+    },
+    history: {
+      'src-umucyo': [{ at: '2026-11-20T08:00:00Z', oldStatus: null, newStatus: 'testing', changedBy: 'u1', reason: 'created' }],
     },
     catalogue: [
       {
@@ -252,8 +258,8 @@ export function defaultSeed(): Seed {
       },
     ],
     users: [
-      { id: 'u1', email: 'clet@example.rw', name: 'Clet', role: 'admin', status: 'active', created_at: '2026-11-01T08:00:00Z' },
-      { id: 'u2', email: 'amina@example.rw', name: 'Amina', role: 'member', status: 'active', created_at: '2026-11-10T08:00:00Z' },
+      { id: 'u1', email: 'clet@example.rw', name: 'Clet', role: 'admin', status: 'active', createdAt: '2026-11-01T08:00:00Z', lastSignInAt: '2026-11-24T07:00:00Z' },
+      { id: 'u2', email: 'amina@example.rw', name: 'Amina', role: 'member', status: 'active', createdAt: '2026-11-10T08:00:00Z', lastSignInAt: null },
     ],
     invites: [],
   };
@@ -261,31 +267,31 @@ export function defaultSeed(): Seed {
 
 const STAMP_SOURCE = '2026-11-20T08:00:00Z';
 
-/** One SourceOut (api routes/source_schemas.py), snake_case. */
+/** One SourceOut (api routes/source_schemas.py), camelCase. */
 export function stubSource(over: Record<string, unknown>): Record<string, unknown> {
   return {
     id: 'src-x',
     name: 'Source',
-    home_url: 'https://example.rw/',
+    homeUrl: 'https://example.rw/',
     publisher: null,
     streams: ['tender'],
     kind: 'publisher',
-    collector_type: 'html_list',
+    collectorType: 'html_list',
     config: {},
     schedule: null,
-    effective_schedule: '0 */6 * * *',
-    rate_limit: null,
-    access_note: null,
+    effectiveSchedule: '0 */6 * * *',
+    rateLimit: null,
+    accessNote: null,
     status: 'testing',
-    added_by: 'u1',
-    created_at: STAMP_SOURCE,
-    updated_at: STAMP_SOURCE,
-    config_changed_at: null,
+    addedBy: 'u1',
+    createdAt: STAMP_SOURCE,
+    updatedAt: STAMP_SOURCE,
+    configChangedAt: null,
     health: 'unknown',
-    last_success_at: null,
-    last_run_at: null,
-    items_30d: 0,
-    promotion_runs: 0,
+    lastSuccessAt: null,
+    lastRunAt: null,
+    items30d: 0,
+    promotionRuns: 0,
     ...over,
   };
 }
@@ -295,111 +301,639 @@ export function defaultSources(): Record<string, unknown>[] {
     stubSource({
       id: 'src-jir',
       name: 'Job in Rwanda, tenders',
-      home_url: 'https://www.jobinrwanda.com/jobs/tender',
+      homeUrl: 'https://www.jobinrwanda.com/jobs/tender',
       publisher: 'Job in Rwanda',
       kind: 'publisher',
       config: { list_url: 'https://www.jobinrwanda.com/jobs/tender', selectors: { item: 'article', title: 'h2 a' } },
       status: 'active',
       health: 'ok',
-      last_success_at: '2026-11-24T04:00:00Z',
-      last_run_at: '2026-11-24T04:00:00Z',
-      items_30d: 31,
-      promotion_runs: 5,
+      lastSuccessAt: '2026-11-24T04:00:00Z',
+      lastRunAt: '2026-11-24T04:00:00Z',
+      items30d: 31,
+      promotionRuns: 5,
     }),
     stubSource({
       id: 'src-rse',
       name: 'RSE bond market',
-      home_url: 'https://www.rse.rw/',
+      homeUrl: 'https://www.rse.rw/',
       publisher: 'Rwanda Stock Exchange',
       kind: 'original',
       streams: ['investment'],
       config: { list_url: 'https://www.rse.rw/bonds', selectors: { item: 'tr', title: 'td' } },
       status: 'active',
       health: 'degraded',
-      last_success_at: '2026-11-23T04:00:00Z',
-      last_run_at: '2026-11-24T04:00:00Z',
-      items_30d: 4,
-      promotion_runs: 3,
+      lastSuccessAt: '2026-11-23T04:00:00Z',
+      lastRunAt: '2026-11-24T04:00:00Z',
+      items30d: 4,
+      promotionRuns: 3,
     }),
     stubSource({
       id: 'src-umucyo',
       name: 'Umucyo e-procurement',
-      home_url: 'https://www.umucyo.gov.rw/',
+      homeUrl: 'https://www.umucyo.gov.rw/',
       publisher: 'Rwanda Public Procurement Authority',
       kind: 'original',
       config: { list_url: 'https://www.umucyo.gov.rw/tenders', selectors: { item: 'tr', title: 'td a' } },
-      access_note: 'Tested from the host 24 Nov 2026: plain fetch works at a low rate.',
+      accessNote: 'Tested from the host 24 Nov 2026: plain fetch works at a low rate.',
       status: 'testing',
       health: 'degraded',
-      last_success_at: '2026-11-24T04:00:00Z',
-      last_run_at: '2026-11-24T04:00:00Z',
-      items_30d: 9,
-      config_changed_at: '2026-11-22T08:00:00Z',
-      promotion_runs: 1,
+      lastSuccessAt: '2026-11-24T04:00:00Z',
+      lastRunAt: '2026-11-24T04:00:00Z',
+      items30d: 9,
+      configChangedAt: '2026-11-22T08:00:00Z',
+      promotionRuns: 1,
     }),
   ];
 }
 
-/** GET /api/admin/collector-types: each type's config fields (name, type, required, help). */
+/** GET /api/admin/collector-types, as the API answers it (dumped from api sources/collector_types.py, 2026-11-25). */
 export const COLLECTOR_TYPES = [
   {
-    type: 'rss',
-    label: 'RSS feed',
-    fields: [{ name: 'feed_url', type: 'url', required: true, help: 'The address of the feed.' }],
+    "type": "rss",
+    "implemented": false,
+    "schemaSource": "declared",
+    "fields": [
+      {
+        "name": "feed_url",
+        "kind": "url",
+        "required": true,
+        "help": "RSS or Atom feed URL.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      }
+    ]
   },
   {
-    type: 'html_list',
-    label: 'Web page list',
-    fields: [
-      { name: 'list_url', type: 'url', required: true, help: 'The page that lists the notices.' },
-      { name: 'pagination_pattern', type: 'string', required: false, help: 'Address of later pages, with {page} for the number.' },
-      { name: 'max_pages', type: 'integer', required: false, help: 'Pages to follow, 1 to 20.' },
-      { name: 'selectors.item', type: 'string', required: true, help: 'CSS selector for one notice.' },
-      { name: 'selectors.title', type: 'string', required: true, help: 'CSS selector for its title, inside the notice.' },
-      { name: 'selectors.link', type: 'string', required: false, help: null },
-      { name: 'selectors.deadline', type: 'string', required: false, help: null },
-    ],
+    "type": "html_list",
+    "implemented": true,
+    "schemaSource": "model",
+    "fields": [
+      {
+        "name": "list_url",
+        "kind": "url",
+        "required": true,
+        "help": "Listing page to fetch (page 1).",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "pagination_pattern",
+        "kind": "string",
+        "required": false,
+        "help": "URL of further pages with {page} where the page number goes.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "first_page",
+        "kind": "integer",
+        "required": false,
+        "help": "Page number of the first pattern page.",
+        "default": 2,
+        "options": null,
+        "min": 0.0,
+        "max": 1000.0,
+        "fields": null
+      },
+      {
+        "name": "max_pages",
+        "kind": "integer",
+        "required": false,
+        "help": "Pages to fetch in total, counting the list URL.",
+        "default": 1,
+        "options": null,
+        "min": 1.0,
+        "max": 20.0,
+        "fields": null
+      },
+      {
+        "name": "selectors",
+        "kind": "object",
+        "required": true,
+        "help": "Where each listing and its fields are on the page.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": [
+          {
+            "name": "item",
+            "kind": "string",
+            "required": true,
+            "help": "CSS selector matching one node per listing.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "title",
+            "kind": "selector",
+            "required": true,
+            "help": "Selector for the listing's title.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "link",
+            "kind": "selector",
+            "required": false,
+            "help": "Selector for the link (default: the <a> in or around the title).",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "date",
+            "kind": "selector",
+            "required": false,
+            "help": "Selector for the published date.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "deadline",
+            "kind": "selector",
+            "required": false,
+            "help": "Selector for the closing date.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "organisation",
+            "kind": "selector",
+            "required": false,
+            "help": "Selector for the issuing organisation.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "snippet",
+            "kind": "selector",
+            "required": false,
+            "help": "Selector for a short description.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          }
+        ]
+      },
+      {
+        "name": "detail",
+        "kind": "object",
+        "required": false,
+        "help": "Optional: follow each listing to its detail page.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": [
+          {
+            "name": "selectors",
+            "kind": "object",
+            "required": true,
+            "help": "Fields read from the detail page; they win over the listing's.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": [
+              {
+                "name": "date",
+                "kind": "selector",
+                "required": false,
+                "help": "Selector for the published date.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "deadline",
+                "kind": "selector",
+                "required": false,
+                "help": "Selector for the closing date.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "organisation",
+                "kind": "selector",
+                "required": false,
+                "help": "Selector for the issuing organisation.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "snippet",
+                "kind": "selector",
+                "required": false,
+                "help": "Selector for a short description.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              }
+            ]
+          },
+          {
+            "name": "max_items",
+            "kind": "integer",
+            "required": false,
+            "help": "Detail pages to follow per run at most.",
+            "default": 20,
+            "options": null,
+            "min": 1.0,
+            "max": 50.0,
+            "fields": null
+          }
+        ]
+      }
+    ]
   },
   {
-    type: 'browser_list',
-    label: 'Web app list (browser)',
-    fields: [
-      { name: 'list_url', type: 'url', required: true, help: 'The page that lists the notices.' },
-      { name: 'selectors.item', type: 'string', required: true, help: null },
-      { name: 'selectors.title', type: 'string', required: true, help: null },
-    ],
+    "type": "browser_list",
+    "implemented": false,
+    "schemaSource": "declared",
+    "fields": [
+      {
+        "name": "list_url",
+        "kind": "url",
+        "required": true,
+        "help": "Listing page to fetch (page 1).",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "pagination_pattern",
+        "kind": "string",
+        "required": false,
+        "help": "URL of further pages with {page} where the page number goes.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "first_page",
+        "kind": "integer",
+        "required": false,
+        "help": "Page number of the first pattern page.",
+        "default": 2,
+        "options": null,
+        "min": 0.0,
+        "max": 1000.0,
+        "fields": null
+      },
+      {
+        "name": "max_pages",
+        "kind": "integer",
+        "required": false,
+        "help": "Pages to fetch in total, counting the list URL.",
+        "default": 1,
+        "options": null,
+        "min": 1.0,
+        "max": 20.0,
+        "fields": null
+      },
+      {
+        "name": "selectors",
+        "kind": "object",
+        "required": true,
+        "help": "Where each listing and its fields are on the page.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": [
+          {
+            "name": "item",
+            "kind": "string",
+            "required": true,
+            "help": "CSS selector matching one node per listing.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "title",
+            "kind": "selector",
+            "required": true,
+            "help": "Selector for the listing's title.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "link",
+            "kind": "selector",
+            "required": false,
+            "help": "Selector for the link (default: the <a> in or around the title).",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "date",
+            "kind": "selector",
+            "required": false,
+            "help": "Selector for the published date.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "deadline",
+            "kind": "selector",
+            "required": false,
+            "help": "Selector for the closing date.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "organisation",
+            "kind": "selector",
+            "required": false,
+            "help": "Selector for the issuing organisation.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "snippet",
+            "kind": "selector",
+            "required": false,
+            "help": "Selector for a short description.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          }
+        ]
+      },
+      {
+        "name": "detail",
+        "kind": "object",
+        "required": false,
+        "help": "Optional: follow each listing to its detail page.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": [
+          {
+            "name": "selectors",
+            "kind": "object",
+            "required": true,
+            "help": "Fields read from the detail page; they win over the listing's.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": [
+              {
+                "name": "date",
+                "kind": "selector",
+                "required": false,
+                "help": "Selector for the published date.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "deadline",
+                "kind": "selector",
+                "required": false,
+                "help": "Selector for the closing date.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "organisation",
+                "kind": "selector",
+                "required": false,
+                "help": "Selector for the issuing organisation.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "snippet",
+                "kind": "selector",
+                "required": false,
+                "help": "Selector for a short description.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              }
+            ]
+          },
+          {
+            "name": "max_items",
+            "kind": "integer",
+            "required": false,
+            "help": "Detail pages to follow per run at most.",
+            "default": 20,
+            "options": null,
+            "min": 1.0,
+            "max": 50.0,
+            "fields": null
+          }
+        ]
+      }
+    ]
   },
   {
-    type: 'json_api',
-    label: 'JSON API',
-    fields: [
-      { name: 'endpoint', type: 'url', required: true, help: 'The address the site’s front end calls.' },
-      { name: 'params', type: 'object', required: false, help: 'Query parameters.' },
-      { name: 'mapping', type: 'object', required: true, help: 'Which JSON fields are the title, link and dates.' },
-    ],
+    "type": "json_api",
+    "implemented": false,
+    "schemaSource": "declared",
+    "fields": [
+      {
+        "name": "endpoint",
+        "kind": "url",
+        "required": true,
+        "help": "JSON endpoint the site's front end calls.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "params",
+        "kind": "map",
+        "required": false,
+        "help": "Query parameters sent with each request.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "field_mapping",
+        "kind": "map",
+        "required": true,
+        "help": "Item field (title, url, deadline, ...) to its path in the JSON.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      }
+    ]
   },
   {
-    type: 'search_query',
-    label: 'Search results',
-    fields: [
-      { name: 'queries', type: 'list', required: true, help: 'What to search for.' },
-      { name: 'domains', type: 'list', required: false, help: 'Only results from these sites.' },
-      { name: 'recency_days', type: 'integer', required: false, help: 'Only results from the last this many days.' },
-    ],
+    "type": "search_query",
+    "implemented": true,
+    "schemaSource": "model",
+    "fields": [
+      {
+        "name": "queries",
+        "kind": "string_list",
+        "required": true,
+        "help": "Search queries, one per line.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "domains",
+        "kind": "string_list",
+        "required": false,
+        "help": "Restrict results to these domains (adds site:); empty for any site.",
+        "default": [],
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      },
+      {
+        "name": "recency_days",
+        "kind": "integer",
+        "required": false,
+        "help": "Only results from the last N days.",
+        "default": null,
+        "options": null,
+        "min": 1.0,
+        "max": 365.0,
+        "fields": null
+      },
+      {
+        "name": "count",
+        "kind": "integer",
+        "required": false,
+        "help": "Results per query (1-20).",
+        "default": 20,
+        "options": null,
+        "min": 1.0,
+        "max": 20.0,
+        "fields": null
+      }
+    ]
   },
   {
-    type: 'email_ingest',
-    label: 'Email alerts',
-    fields: [{ name: 'sender', type: 'string', required: true, help: 'Sender address or pattern in the shared inbox.' }],
+    "type": "email_ingest",
+    "implemented": false,
+    "schemaSource": "declared",
+    "fields": [
+      {
+        "name": "sender",
+        "kind": "string",
+        "required": true,
+        "help": "Sender address or pattern to pick from the shared inbox.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      }
+    ]
   },
   {
-    type: 'custom',
-    label: 'Custom collector',
-    fields: [{ name: 'class_name', type: 'string', required: true, help: 'One of the collectors allowed in code.' }],
-  },
+    "type": "custom",
+    "implemented": false,
+    "schemaSource": "declared",
+    "fields": [
+      {
+        "name": "class_name",
+        "kind": "string",
+        "required": true,
+        "help": "Name of a collector class from the allowlist in code.",
+        "default": null,
+        "options": null,
+        "min": null,
+        "max": null,
+        "fields": null
+      }
+    ]
+  }
 ];
 
-const SOURCE_KEYS = new Set(['name', 'home_url', 'publisher', 'streams', 'kind', 'collector_type', 'config', 'schedule', 'rate_limit', 'access_note']);
+const SOURCE_KEYS = new Set(['name', 'homeUrl', 'publisher', 'streams', 'kind', 'collectorType', 'config', 'schedule', 'rateLimit', 'accessNote']);
 const STATUS_MOVES: Record<string, string[]> = {
   suggested: ['testing', 'retired'],
   testing: ['active', 'paused', 'retired'],
@@ -410,14 +944,14 @@ const STATUS_MOVES: Record<string, string[]> = {
 
 /** Like SourceIn / SourcePatch: unknown keys, missing required ones, an original search_query and bad URLs are refused. */
 function sourceRefusal(b: Record<string, unknown>, create: boolean): string | null {
-  const extra = Object.keys(b).filter((k) => !SOURCE_KEYS.has(k) && !(create && k === 'suggestion_id'));
+  const extra = Object.keys(b).filter((k) => !SOURCE_KEYS.has(k) && !(create && k === 'suggestionId'));
   if (extra.length) return `extra keys: ${extra.join(', ')}`;
   if (create) {
-    for (const k of ['name', 'home_url', 'streams', 'kind', 'collector_type']) if (b[k] === undefined || b[k] === null || b[k] === '') return `${k}: required`;
+    for (const k of ['name', 'homeUrl', 'streams', 'kind', 'collectorType']) if (b[k] === undefined || b[k] === null || b[k] === '') return `${k}: required`;
   }
-  if (b.home_url !== undefined && !/^https?:\/\/[^/]+\.[^/]+/.test(String(b.home_url))) return 'home_url: not a public web address';
+  if (b.homeUrl !== undefined && !/^https?:\/\/[^/]+\.[^/]+/.test(String(b.homeUrl))) return 'homeUrl: not a public web address';
   if (Array.isArray(b.streams) && b.streams.length === 0) return 'streams: at least one';
-  if (b.kind === 'original' && b.collector_type === 'search_query') return "a search_query source cannot be kind 'original'";
+  if (b.kind === 'original' && b.collectorType === 'search_query') return "a search_query source cannot be kind 'original'";
   if (b.config !== undefined && (b.config === null || typeof b.config !== 'object' || Array.isArray(b.config))) return 'config must be a JSON object';
   return null;
 }
@@ -426,7 +960,7 @@ function sourceRefusal(b: Record<string, unknown>, create: boolean): string | nu
 function preview(config: Record<string, unknown>): Record<string, unknown> {
   const url = String(config.list_url ?? config.feed_url ?? config.endpoint ?? '');
   if (url.includes('fail')) {
-    return { ok: false, error: `HTTP 403 from ${url.replace(/^https?:\/\//, '').split('/')[0]}`, items: [], total_parsed: 0, requests_made: 1, elapsed_seconds: 0.4 };
+    return { ok: false, error: `HTTP 403 from ${url.replace(/^https?:\/\//, '').split('/')[0]}`, items: [], totalParsed: 0, requestsMade: 1, elapsedSeconds: 0.4 };
   }
   return {
     ok: true,
@@ -436,26 +970,26 @@ function preview(config: Record<string, unknown>): Record<string, unknown> {
         url: 'https://www.ncst.gov.rw/calls/1',
         title: 'Call for applied research proposals',
         organisation: 'National Council for Science and Technology',
-        listed_published: '20 Nov 2026',
-        listed_deadline: '15 Dec 2026',
+        listedPublished: '20 Nov 2026',
+        listedDeadline: '15 Dec 2026',
         snippet: 'Grants for applied research and innovation.',
-        detail_url: null,
+        detailUrl: null,
         extra: {},
       },
       {
         url: 'https://www.ncst.gov.rw/calls/2',
         title: 'Innovation challenge 2027',
         organisation: null,
-        listed_published: null,
-        listed_deadline: '31 Jan 2027',
+        listedPublished: null,
+        listedDeadline: '31 Jan 2027',
         snippet: null,
-        detail_url: null,
+        detailUrl: null,
         extra: {},
       },
     ],
-    total_parsed: 2,
-    requests_made: 1,
-    elapsed_seconds: 0.8,
+    totalParsed: 2,
+    requestsMade: 1,
+    elapsedSeconds: 0.8,
   };
 }
 
@@ -543,12 +1077,12 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
         .map((x) => ({
           id: x.id,
           name: x.name,
-          home_url: x.home_url,
+          homeUrl: x.homeUrl,
           publisher: x.publisher,
           kind: x.kind,
           streams: x.streams,
-          last_success_at: x.last_success_at,
-          items_30d: x.items_30d,
+          lastSuccessAt: x.lastSuccessAt,
+          items30d: x.items30d,
           health: x.health,
           muted: s.mutes.includes(String(x.id)),
         })),
@@ -571,7 +1105,7 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
       return send(
         res,
         200,
-        s.suggestions.filter((x) => x.user_id === 'u1').map(({ user_id: _u, reviewed_by: _r, ...x }) => x),
+        s.suggestions.filter((x) => x.userId === 'u1').map(({ userId: _u, reviewedBy: _r, ...x }) => x),
       );
     }
     if (method === 'POST') {
@@ -580,9 +1114,9 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
       if (extra.length) return send(res, 422, { detail: `extra keys: ${extra.join(', ')}` });
       if (typeof b.url !== 'string' || !/^https?:\/\/[^/]+\.[^/]+/.test(b.url)) return send(res, 422, { detail: 'url: not a public web address' });
       if (b.note !== undefined && b.note !== null && (typeof b.note !== 'string' || b.note.length > 2000)) return send(res, 422, { detail: 'note' });
-      const row = { id: `sg-${s.suggestions.length + 10}`, user_id: 'u1', url: b.url, note: b.note ?? null, status: 'suggested', created_at: STAMP, reviewed_at: null, reviewed_by: null, source_id: null };
+      const row = { id: `sg-${s.suggestions.length + 10}`, userId: 'u1', url: b.url, note: b.note ?? null, status: 'suggested', createdAt: STAMP, reviewedAt: null, reviewedBy: null, sourceId: null };
       s.suggestions.push(row);
-      const { user_id: _u, reviewed_by: _r, ...out } = row;
+      const { userId: _u, reviewedBy: _r, ...out } = row;
       return send(res, 201, out);
     }
   }
@@ -660,7 +1194,23 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
   return send(res, 404, { detail: 'Not found' });
 }
 
-/** The admin API (contract section 4), under /api/admin. 403 unless the session is an admin. */
+/** SourceDetailOut: the SourceOut plus the promotion gate and the status history. */
+function detail(s: Session, row: Record<string, unknown>): Record<string, unknown> {
+  const goodRuns = Number(row.promotionRuns);
+  return {
+    ...row,
+    promotionGate: { goodRuns, needed: 2, since: row.configChangedAt ?? null, met: goodRuns >= 2 },
+    statusHistory: s.history[String(row.id)] ?? [],
+  };
+}
+
+function logStatus(s: Session, id: string, oldStatus: unknown, newStatus: unknown, reason: string | null): void {
+  s.history[id] = [{ at: STAMP, oldStatus: oldStatus ?? null, newStatus, changedBy: 'u1', reason }, ...(s.history[id] ?? [])];
+}
+
+const activeAdmins = (s: Session) => s.users.filter((u) => u.role === 'admin' && u.status === 'active').length;
+
+/** The admin API (contract section 4.1), under /api/admin. 403 unless the session is an admin. */
 function admin(s: Session, method: string, path: string, fullPath: string, body: unknown, res: http.ServerResponse): void {
   if (s.role !== 'admin') return send(res, 403, { detail: 'Admins only' });
   const query = new URLSearchParams(fullPath.split('?')[1] ?? '');
@@ -670,6 +1220,7 @@ function admin(s: Session, method: string, path: string, fullPath: string, body:
   const sug = p.match(/^\/source-suggestions\/([^/]+)\/(accept|reject)$/);
   const review = p.match(/^\/catalogue\/([^/]+)\/review$/);
   const deactivate = p.match(/^\/users\/([^/]+)\/deactivate$/);
+  const user = p.match(/^\/users\/([^/]+)$/);
   const invite = p.match(/^\/invites\/([^/]+)$/);
 
   if (method === 'GET' && p === '/collector-types') return send(res, 200, COLLECTOR_TYPES);
@@ -681,20 +1232,21 @@ function admin(s: Session, method: string, path: string, fullPath: string, body:
     const refused = sourceRefusal(b, true);
     if (refused) return send(res, 422, { detail: refused });
     if (s.sources.some((x) => x.name === b.name)) return send(res, 409, { detail: 'A source with that name already exists' });
-    const suggestionId = b.suggestion_id as string | undefined;
+    const suggestionId = b.suggestionId as string | undefined;
     if (suggestionId !== undefined) {
       const sg = s.suggestions.find((x) => x.id === suggestionId);
       if (!sg) return send(res, 404, { detail: 'Suggestion not found' });
-      if (sg.status !== 'accepted' || sg.source_id) return send(res, 409, { detail: 'Suggestion must be accepted and not yet used' });
+      if (sg.status !== 'accepted' || sg.sourceId) return send(res, 409, { detail: 'Suggestion must be accepted and not yet used' });
     }
-    const { suggestion_id: _s, ...fields } = b;
-    const row = stubSource({ ...fields, id: `src-${s.sources.length + 10}`, status: 'testing', created_at: STAMP, updated_at: STAMP, config_changed_at: STAMP });
+    const { suggestionId: _s, ...fields } = b;
+    const row = stubSource({ ...fields, id: `src-${s.sources.length + 10}`, status: 'testing', createdAt: STAMP, updatedAt: STAMP, configChangedAt: STAMP });
     s.sources.push(row);
-    if (suggestionId) s.suggestions = s.suggestions.map((x) => (x.id === suggestionId ? { ...x, source_id: row.id } : x));
-    return send(res, 201, row);
+    logStatus(s, String(row.id), null, 'testing', 'created');
+    if (suggestionId) s.suggestions = s.suggestions.map((x) => (x.id === suggestionId ? { ...x, sourceId: row.id } : x));
+    return send(res, 201, detail(s, row));
   }
   if (method === 'POST' && p === '/sources/test-run') {
-    if (typeof b.collector_type !== 'string' || !b.config || typeof b.config !== 'object') return send(res, 422, { detail: 'collector_type and config are required' });
+    if (typeof b.collectorType !== 'string' || !b.config || typeof b.config !== 'object') return send(res, 422, { detail: 'collectorType and config are required' });
     return send(res, 200, preview(b.config as Record<string, unknown>));
   }
   if (src) {
@@ -702,29 +1254,37 @@ function admin(s: Session, method: string, path: string, fullPath: string, body:
     const i = s.sources.findIndex((x) => x.id === id);
     if (i < 0) return send(res, 404, { detail: 'Source not found' });
     const row = s.sources[i]!;
-    if (method === 'GET' && !src[2]) return send(res, 200, row);
-    if (method === 'GET' && src[2] === '/runs') return send(res, 200, s.runs[id] ?? []);
+    if (method === 'GET' && !src[2]) return send(res, 200, detail(s, row));
+    if (method === 'GET' && src[2] === '/runs') {
+      const status = query.get('status');
+      const all = (s.runs[id] ?? []).filter((r) => !status || r.status === status);
+      const offset = Number(query.get('offset') ?? 0);
+      const limit = Number(query.get('limit') ?? 50);
+      return send(res, 200, { total: all.length, items: all.slice(offset, offset + limit) });
+    }
     if (method === 'POST' && src[2] === '/test-run') return send(res, 200, preview(row.config as Record<string, unknown>));
     if (method === 'PATCH' && !src[2]) {
-      const refused = sourceRefusal({ kind: row.kind, collector_type: row.collector_type, ...b }, false);
+      const refused = sourceRefusal({ kind: row.kind, collectorType: row.collectorType, ...b }, false);
       if (refused) return send(res, 422, { detail: refused });
       if (b.name !== undefined && s.sources.some((x) => x.name === b.name && x.id !== id)) return send(res, 409, { detail: 'A source with that name already exists' });
       const configChanged =
-        (b.collector_type !== undefined && b.collector_type !== row.collector_type) || (b.config !== undefined && JSON.stringify(b.config) !== JSON.stringify(row.config));
-      const next = { ...row, ...b, updated_at: STAMP };
-      if (configChanged) Object.assign(next, { config_changed_at: STAMP, promotion_runs: 0, status: row.status === 'active' ? 'testing' : row.status });
+        (b.collectorType !== undefined && b.collectorType !== row.collectorType) || (b.config !== undefined && JSON.stringify(b.config) !== JSON.stringify(row.config));
+      const next: Record<string, unknown> = { ...row, ...b, updatedAt: STAMP };
+      if (configChanged) Object.assign(next, { configChangedAt: STAMP, promotionRuns: 0, status: row.status === 'active' ? 'testing' : row.status });
+      if (next.status !== row.status) logStatus(s, id, row.status, next.status, 'config changed');
       s.sources[i] = next;
-      return send(res, 200, next);
+      return send(res, 200, detail(s, next));
     }
     if (method === 'POST' && src[2] === '/status') {
       const to = String(b.status ?? '');
-      if (to === row.status) return send(res, 200, row);
+      if (to === row.status) return send(res, 200, detail(s, row));
       if (!(STATUS_MOVES[String(row.status)] ?? []).includes(to)) return send(res, 409, { detail: `cannot move a source from ${row.status} to ${to}` });
-      if (to === 'active' && Number(row.promotion_runs) < 2) {
-        return send(res, 409, { detail: `needs 2 successful runs that found items since its config last changed; has ${row.promotion_runs}` });
+      if (to === 'active' && Number(row.promotionRuns) < 2) {
+        return send(res, 409, { detail: `needs 2 successful runs that found items since its config last changed; has ${row.promotionRuns}` });
       }
-      s.sources[i] = { ...row, status: to, updated_at: STAMP };
-      return send(res, 200, s.sources[i]);
+      s.sources[i] = { ...row, status: to, updatedAt: STAMP };
+      logStatus(s, id, row.status, to, null);
+      return send(res, 200, detail(s, s.sources[i]!));
     }
   }
   if (method === 'GET' && p === '/source-suggestions') {
@@ -735,7 +1295,7 @@ function admin(s: Session, method: string, path: string, fullPath: string, body:
     const i = s.suggestions.findIndex((x) => x.id === decodeURIComponent(sug[1]!));
     if (i < 0) return send(res, 404, { detail: 'Suggestion not found' });
     if (s.suggestions[i]!.status !== 'suggested') return send(res, 409, { detail: `suggestion already ${s.suggestions[i]!.status}` });
-    s.suggestions[i] = { ...s.suggestions[i]!, status: sug[2] === 'accept' ? 'accepted' : 'rejected', reviewed_at: STAMP, reviewed_by: 'u1' };
+    s.suggestions[i] = { ...s.suggestions[i]!, status: sug[2] === 'accept' ? 'accepted' : 'rejected', reviewedAt: STAMP, reviewedBy: 'u1' };
     return send(res, 200, s.suggestions[i]);
   }
   if (method === 'GET' && p === '/catalogue') {
@@ -755,16 +1315,28 @@ function admin(s: Session, method: string, path: string, fullPath: string, body:
     if (id === 'u1') return send(res, 400, { detail: 'You cannot deactivate yourself' });
     const i = s.users.findIndex((x) => x.id === id);
     if (i < 0) return send(res, 404, { detail: 'User not found' });
+    if (s.users[i]!.role === 'admin' && s.users[i]!.status === 'active' && activeAdmins(s) <= 1) return send(res, 409, { detail: 'That would leave no active admin' });
     s.users[i] = { ...s.users[i]!, status: 'deactivated' };
     return send(res, 200, s.users[i]);
   }
+  if (method === 'PATCH' && user) {
+    const id = decodeURIComponent(user[1]!);
+    const extra = Object.keys(b).filter((k) => k !== 'role');
+    if (extra.length || (b.role !== 'member' && b.role !== 'admin')) return send(res, 422, { detail: 'role: member or admin' });
+    if (id === 'u1') return send(res, 400, { detail: 'You cannot change your own role' });
+    const i = s.users.findIndex((x) => x.id === id);
+    if (i < 0) return send(res, 404, { detail: 'User not found' });
+    if (b.role === 'member' && s.users[i]!.role === 'admin' && activeAdmins(s) <= 1) return send(res, 409, { detail: 'That would leave no active admin' });
+    s.users[i] = { ...s.users[i]!, role: b.role };
+    return send(res, 200, s.users[i]);
+  }
   if (p === '/invites') {
-    if (method === 'GET') return send(res, 200, s.invites);
+    if (method === 'GET') return send(res, 200, s.invites.filter((x) => !query.get('status') || x.status === query.get('status')));
     if (method === 'POST') {
       const email = typeof b.email === 'string' ? b.email.trim().toLowerCase() : '';
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return send(res, 422, { detail: 'email' });
       if (s.users.some((u) => u.email === email)) return send(res, 409, { detail: 'That address already has an account' });
-      const row = { id: `inv-${s.invites.length + 1}`, email, invited_by: 'u1', created_at: STAMP, expires_at: '2026-12-01T08:00:00Z', accepted_at: null, status: 'pending' };
+      const row = { id: `inv-${s.invites.length + 1}`, email, invitedBy: 'u1', createdAt: STAMP, expiresAt: '2026-12-01T08:00:00Z', acceptedAt: null, status: 'pending' };
       s.invites = [row, ...s.invites];
       return send(res, 201, row);
     }

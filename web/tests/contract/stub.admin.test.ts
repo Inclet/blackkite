@@ -1,28 +1,23 @@
 // @vitest-environment node
 /**
- * The e2e stub's source and admin routes (tests/e2e/stubApi.ts) answer with the
- * keys of the API's models. These models are not in api-schemas.json yet (the
- * dump covers the member API); the key lists below are copied from
- * api/blackkite/routes/source_schemas.py and routes/schemas.py, and the catalogue
- * from routes/catalogue.py. When the dump gains them, check against it instead.
+ * The e2e stub's source and admin routes (tests/e2e/stubApi.ts) answer in the
+ * API's real shapes (docs/api-contract.md section 4.1), checked against the
+ * models dumped into api-schemas.json; and what the screens send is what the API
+ * accepts (SourceIn, SourcePatch, PreviewIn, StatusIn, SuggestionIn, UserPatch).
+ * The bodies below are the ones src/screens/admin/sourceForm.test.ts pins for
+ * `validate()` (this file runs under the node tsconfig, without the app's JSX).
  */
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { startStubApi, STUB_COOKIE } from '../e2e/stubApi';
+import dump from './api-schemas.json' with { type: 'json' };
+import { check, type Schema } from './schemaCheck';
 
-const KEYS = {
-  SourceOut: 'id name home_url publisher streams kind collector_type config schedule effective_schedule rate_limit access_note status added_by created_at updated_at config_changed_at health last_success_at last_run_at items_30d promotion_runs',
-  MemberSourceOut: 'id name home_url publisher kind streams last_success_at items_30d health muted',
-  RunOut: 'id started_at finished_at status items_found items_new items_failed error',
-  PreviewOut: 'ok error items total_parsed requests_made elapsed_seconds',
-  PreviewItemOut: 'url title organisation listed_published listed_deadline snippet detail_url extra',
-  SuggestionOut: 'id url note status created_at reviewed_at source_id',
-  AdminSuggestionOut: 'id url note status created_at reviewed_at source_id user_id reviewed_by',
-  UserOut: 'id email name role status created_at',
-  InviteOut: 'id email invited_by created_at expires_at accepted_at status',
-  CatalogueItem: 'id stream title organisation status verification trust needsReview reviewReasons deadline memberVisible sources createdAt updatedAt',
-} as const;
-const keys = (o: unknown) => Object.keys(o as object).sort();
-const expected = (m: keyof typeof KEYS) => KEYS[m].split(' ').sort();
+const schemas = dump.schemas as unknown as Record<string, Schema>;
+const opts = { omitIfNone: dump.omitIfNone as Record<string, string[]> };
+const fits = (value: unknown, model: string) => {
+  expect(schemas[model], model).toBeDefined();
+  return check(value, schemas[model]!, opts);
+};
 
 let base = '';
 let close: () => Promise<void>;
@@ -43,43 +38,90 @@ async function call(session: string, method: string, path: string, body?: unknow
   return { status: res.status, json: text ? (JSON.parse(text) as unknown) : undefined };
 }
 
-test('member source routes: the API models\' keys', async () => {
+test('the schema file has the admin models', () => {
+  for (const m of ['SourceOut', 'SourceDetailOut', 'MemberSourceOut', 'RunPage', 'PreviewOut', 'CollectorTypeOut', 'SuggestionOut', 'AdminSuggestionOut', 'AdminUserOut', 'InviteOut', 'CataloguePage', 'SourceIn', 'SourcePatch', 'PreviewIn', 'StatusIn', 'SuggestionIn', 'UserPatch']) {
+    expect(schemas[m], m).toBeDefined();
+  }
+});
+
+test('member source routes', async () => {
   const sources = (await call('c1', 'GET', '/api/sources')).json as unknown[];
   expect(sources.length).toBeGreaterThan(0);
-  for (const s of sources) expect(keys(s)).toEqual(expected('MemberSourceOut'));
-  const sent = await call('c1', 'POST', '/api/source-suggestions', { url: 'https://www.rdb.rw/', note: null });
+  for (const s of sources) expect(fits(s, 'MemberSourceOut')).toEqual([]);
+  const body = { url: 'https://www.rdb.rw/', note: 'Covers: RDB calls\nWhy it is useful: Funding' };
+  expect(fits(body, 'SuggestionIn')).toEqual([]);
+  const sent = await call('c1', 'POST', '/api/source-suggestions', body);
   expect(sent.status).toBe(201);
-  expect(keys(sent.json)).toEqual(expected('SuggestionOut'));
+  expect(fits(sent.json, 'SuggestionOut')).toEqual([]);
+  for (const s of (await call('c1', 'GET', '/api/source-suggestions')).json as unknown[]) expect(fits(s, 'SuggestionOut')).toEqual([]);
   expect((await call('c1', 'POST', '/api/source-suggestions', { url: 'https://www.rdb.rw/', why: 'x' })).status).toBe(422);
 });
 
-test('admin routes: the API models\' keys', async () => {
-  const list = (await call('c2', 'GET', '/api/admin/sources')).json as unknown[];
-  for (const s of list) expect(keys(s)).toEqual(expected('SourceOut'));
-  const created = await call('c2', 'POST', '/api/admin/sources', { name: 'New', home_url: 'https://n.rw/', streams: ['event'], kind: 'news', collector_type: 'rss', config: { feed_url: 'https://n.rw/feed' } });
-  expect(created.status).toBe(201);
-  expect(keys(created.json)).toEqual(expected('SourceOut'));
-  expect((created.json as { status: string }).status).toBe('testing');
-  const runs = (await call('c2', 'GET', '/api/admin/sources/src-umucyo/runs')).json as unknown[];
-  for (const r of runs) expect(keys(r)).toEqual(expected('RunOut'));
-  const preview = (await call('c2', 'POST', '/api/admin/sources/test-run', { collector_type: 'rss', config: { feed_url: 'https://n.rw/feed' }, home_url: null, streams: ['tender'], rate_limit: null })).json as { items: unknown[] };
-  expect(keys(preview)).toEqual(expected('PreviewOut'));
-  for (const i of preview.items) expect(keys(i)).toEqual(expected('PreviewItemOut'));
-  for (const s of (await call('c2', 'GET', '/api/admin/source-suggestions')).json as unknown[]) expect(keys(s)).toEqual(expected('AdminSuggestionOut'));
-  for (const u of (await call('c2', 'GET', '/api/admin/users')).json as unknown[]) expect(keys(u)).toEqual(expected('UserOut'));
-  const invite = await call('c2', 'POST', '/api/admin/invites', { email: 'grace@example.rw' });
-  expect(keys(invite.json)).toEqual(expected('InviteOut'));
-  const page = (await call('c2', 'GET', '/api/admin/catalogue?needsReview=true')).json as { total: number; items: unknown[] };
-  for (const i of page.items) expect(keys(i)).toEqual(expected('CatalogueItem'));
-  const types = (await call('c2', 'GET', '/api/admin/collector-types')).json as { type: string; fields: { name: string; type: string; required: boolean; help: string | null }[] }[];
+test('admin source routes, with the bodies the editor builds', async () => {
+  for (const s of (await call('c2', 'GET', '/api/admin/sources')).json as unknown[]) expect(fits(s, 'SourceOut')).toEqual([]);
+  const types = (await call('c2', 'GET', '/api/admin/collector-types')).json as { type: string }[];
   expect(types.map((t) => t.type)).toEqual(['rss', 'html_list', 'browser_list', 'json_api', 'search_query', 'email_ingest', 'custom']);
-  for (const t of types) for (const f of t.fields) expect(Object.keys(f).sort()).toEqual(['help', 'name', 'required', 'type']);
+  for (const t of types) expect(fits(t, 'CollectorTypeOut')).toEqual([]);
+
+  const body = {
+    name: 'New',
+    homeUrl: 'https://n.rw/',
+    publisher: null,
+    streams: ['event'],
+    kind: 'news',
+    collectorType: 'rss',
+    config: { feed_url: 'https://n.rw/feed' },
+    schedule: null,
+    rateLimit: 2,
+    accessNote: null,
+  };
+  expect(fits(body, 'SourceIn')).toEqual([]);
+  expect(fits({ ...body, suggestionId: 'sg-1' }, 'SourceIn')).toEqual([]);
+  expect(fits(body, 'SourcePatch')).toEqual([]);
+  const preview = { collectorType: 'rss', config: { feed_url: 'https://n.rw/feed' }, homeUrl: null, streams: ['tender'], rateLimit: null };
+  expect(fits(preview, 'PreviewIn')).toEqual([]);
+  const ran = await call('c2', 'POST', '/api/admin/sources/test-run', preview);
+  expect(fits(ran.json, 'PreviewOut')).toEqual([]);
+  expect(fits((await call('c2', 'POST', '/api/admin/sources/src-umucyo/test-run')).json, 'PreviewOut')).toEqual([]);
+
+  const created = await call('c2', 'POST', '/api/admin/sources', body);
+  expect(created.status).toBe(201);
+  expect(fits(created.json, 'SourceDetailOut')).toEqual([]);
+  const id = (created.json as { id: string }).id;
+  expect((created.json as { status: string }).status).toBe('testing');
+  expect(fits((await call('c2', 'GET', `/api/admin/sources/${id}`)).json, 'SourceDetailOut')).toEqual([]);
+  expect(fits((await call('c2', 'PATCH', `/api/admin/sources/${id}`, { config: { feed_url: 'https://n.rw/rss' } })).json, 'SourceDetailOut')).toEqual([]);
+  expect(fits({ status: 'paused' }, 'StatusIn')).toEqual([]);
+  const paused = await call('c2', 'POST', `/api/admin/sources/${id}/status`, { status: 'paused' });
+  expect(fits(paused.json, 'SourceDetailOut')).toEqual([]);
+  expect((paused.json as { statusHistory: unknown[] }).statusHistory).toHaveLength(2);
+
+  const runs = (await call('c2', 'GET', '/api/admin/sources/src-umucyo/runs?limit=20')).json as { total: number };
+  expect(fits(runs, 'RunPage')).toEqual([]);
+  expect(runs.total).toBe(2);
+  const failed = (await call('c2', 'GET', '/api/admin/sources/src-umucyo/runs?status=failed&limit=20')).json as { items: { status: string }[] };
+  expect(failed.items.map((r) => r.status)).toEqual(['failed']);
 });
 
-test('the promotion gate and the old /admin paths', async () => {
+test('the promotion gate refuses; old /admin API paths are gone', async () => {
   const refused = await call('c3', 'POST', '/api/admin/sources/src-umucyo/status', { status: 'active' });
   expect(refused.status).toBe(409);
   expect((await call('c3', 'GET', '/admin/sources')).status).toBe(404);
+});
+
+test('suggestions, review, users and invites', async () => {
+  for (const s of (await call('c4', 'GET', '/api/admin/source-suggestions')).json as unknown[]) expect(fits(s, 'AdminSuggestionOut')).toEqual([]);
+  expect(fits((await call('c4', 'POST', '/api/admin/source-suggestions/sg-1/accept')).json, 'AdminSuggestionOut')).toEqual([]);
+  expect(fits((await call('c4', 'GET', '/api/admin/catalogue?needsReview=true')).json, 'CataloguePage')).toEqual([]);
+  const users = (await call('c4', 'GET', '/api/admin/users')).json as unknown[];
+  for (const u of users) expect(fits(u, 'AdminUserOut')).toEqual([]);
+  expect(fits({ role: 'admin' }, 'UserPatch')).toEqual([]);
+  expect(fits((await call('c4', 'PATCH', '/api/admin/users/u2', { role: 'admin' })).json, 'AdminUserOut')).toEqual([]);
+  expect((await call('c4', 'PATCH', '/api/admin/users/u1', { role: 'member' })).status).toBe(400);
+  const invite = await call('c4', 'POST', '/api/admin/invites', { email: 'grace@example.rw' });
+  expect(fits(invite.json, 'InviteOut')).toEqual([]);
+  for (const i of (await call('c4', 'GET', '/api/admin/invites')).json as unknown[]) expect(fits(i, 'InviteOut')).toEqual([]);
+  expect(fits((await call('c4', 'POST', '/api/admin/users/u2/deactivate')).json, 'AdminUserOut')).toEqual([]);
 });
 
 test('a member gets 403 from every admin route', async () => {

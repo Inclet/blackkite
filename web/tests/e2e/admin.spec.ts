@@ -82,21 +82,21 @@ test('admin: create a source, test run preview (nothing saved), save as testing'
   expect(posts).toEqual([
     [
       '/api/admin/sources/test-run',
-      { collector_type: 'html_list', config: { list_url: 'https://www.ncst.gov.rw/calls', selectors: { item: 'article', title: 'h2 a' } }, home_url: 'https://www.ncst.gov.rw/', streams: ['funding'], rate_limit: null },
+      { collectorType: 'html_list', config: { list_url: 'https://www.ncst.gov.rw/calls', selectors: { item: 'article', title: 'h2 a' } }, homeUrl: 'https://www.ncst.gov.rw/', streams: ['funding'], rateLimit: null },
     ],
     [
       '/api/admin/sources',
       {
         name: 'NCST calls',
-        home_url: 'https://www.ncst.gov.rw/',
+        homeUrl: 'https://www.ncst.gov.rw/',
         publisher: null,
         streams: ['funding'],
         kind: 'original',
-        collector_type: 'html_list',
+        collectorType: 'html_list',
         config: { list_url: 'https://www.ncst.gov.rw/calls', selectors: { item: 'article', title: 'h2 a' } },
         schedule: null,
-        rate_limit: null,
-        access_note: null,
+        rateLimit: null,
+        accessNote: null,
       },
     ],
   ]);
@@ -112,6 +112,11 @@ test('admin: promotion is refused with the gate explained; run history and error
   await expect(status.getByText('Not changed: it stays testing. Needs 2 good runs since the last config change: 1 so far.')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Error log' }).getByText('HTTP 503 from www.umucyo.gov.rw')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Run history' }).getByText('9 found · 2 new')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Status history' }).getByText('Created as testing')).toBeVisible();
+  // A collector not built yet says so, and its declared fields still render.
+  await page.getByRole('form', { name: 'Umucyo e-procurement' }).getByRole('button', { name: 'JSON API' }).click();
+  await expect(page.getByText(/This collector is not built yet/)).toBeVisible();
+  await expect(page.getByLabel('Field mapping')).toBeVisible();
 });
 
 test('admin: accept a suggestion, then create a source from it, prefilled', async ({ page }, testInfo) => {
@@ -135,7 +140,7 @@ test('admin: accept a suggestion, then create a source from it, prefilled', asyn
   await form.getByRole('button', { name: 'Save as testing' }).click();
   await expect(page).toHaveURL(/\/admin\/sources\/src-\d+$/);
   const created = (await api.seen()).find((r) => r.method === 'POST' && r.url === '/api/admin/sources')!;
-  expect(JSON.parse(created.body)).toMatchObject({ suggestion_id: 'sg-1', home_url: 'https://www.rdb.rw/calls', collector_type: 'rss', config: { feed_url: 'https://www.rdb.rw/feed' } });
+  expect(JSON.parse(created.body)).toMatchObject({ suggestionId: 'sg-1', homeUrl: 'https://www.rdb.rw/calls', collectorType: 'rss', config: { feed_url: 'https://www.rdb.rw/feed' } });
 });
 
 test('admin: mark a needs-review item reviewed', async ({ page }, testInfo) => {
@@ -169,6 +174,18 @@ test('admin: invite a user, then deactivate one with a confirm step', async ({ p
   await accounts.getByRole('button', { name: 'Deactivate this account' }).click();
   await expect(page.getByText('amina@example.rw is deactivated.')).toBeVisible();
   expect((await api.seen()).filter((r) => r.method === 'POST').map((r) => r.url)).toEqual(['/api/admin/invites', '/api/admin/invites', '/api/admin/users/u2/deactivate']);
+});
+
+test('admin: change a member to admin', async ({ page }, testInfo) => {
+  const api = await stubSession(page, testInfo.testId);
+  await page.setViewportSize(PHONE);
+  await open(page, '/admin/users');
+  const accounts = page.getByRole('region', { name: 'Accounts' });
+  await expect(accounts.getByText('clet@example.rw · Joined 1 Nov 2026 · Last signed in 24 Nov 2026')).toBeVisible();
+  await accounts.getByRole('button', { name: 'Make admin: amina@example.rw' }).click();
+  await expect(page.getByText('amina@example.rw is now an admin.')).toBeVisible();
+  const patch = (await api.seen()).find((r) => r.method === 'PATCH')!;
+  expect([patch.url, JSON.parse(patch.body)]).toEqual(['/api/admin/users/u2', { role: 'admin' }]);
 });
 
 for (const route of ['/admin', '/admin/sources', '/admin/sources/new', '/admin/sources/src-umucyo', '/admin/suggestions', '/admin/review', '/admin/users']) {
