@@ -24,6 +24,8 @@ export type ApiErrorKind =
   | 'not-found'
   /** 400 / 422: the server refused the input. */
   | 'invalid'
+  /** 409: the request clashes with the current state (a name in use, a refused status change). */
+  | 'conflict'
   | 'too-many'
   /** 5xx, an unexpected answer, or the network. Worded "We could not reach Blackkite just now". */
   | 'unreachable';
@@ -45,6 +47,7 @@ function kindFor(status: number): ApiErrorKind {
   if (status === 403) return 'forbidden';
   if (status === 404) return 'not-found';
   if (status === 400 || status === 422) return 'invalid';
+  if (status === 409) return 'conflict';
   if (status === 429) return 'too-many';
   return 'unreachable';
 }

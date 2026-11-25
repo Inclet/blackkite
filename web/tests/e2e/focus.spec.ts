@@ -22,6 +22,15 @@ for (const [name, size, route, minStops] of [
   ['account', { width: 390, height: 844 }, '/account', 5],
   ['more', { width: 390, height: 844 }, '/more', 5],
   ['sign-in', { width: 390, height: 844 }, '/sign-in', 2],
+  ['sources', { width: 1440, height: 900 }, '/sources', 10],
+  ['sources, phone', { width: 390, height: 844 }, '/sources', 8],
+  ['admin', { width: 390, height: 844 }, '/admin', 8],
+  ['admin sources', { width: 1440, height: 900 }, '/admin/sources', 10],
+  ['new source', { width: 1440, height: 900 }, '/admin/sources/new', 20],
+  ['source editor', { width: 390, height: 844 }, '/admin/sources/src-umucyo', 20],
+  ['suggestions', { width: 1440, height: 900 }, '/admin/suggestions', 8],
+  ['review', { width: 390, height: 844 }, '/admin/review', 6],
+  ['users', { width: 1440, height: 900 }, '/admin/users', 9],
 ] as const) {
   test(`${name}: every Tab stop shows the double focus ring`, async ({ page }, testInfo) => {
     await stubSession(page, testInfo.testId);

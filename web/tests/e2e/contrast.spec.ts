@@ -26,6 +26,14 @@ const checks: [string, { width: number; height: number }, string, string, number
   ['account body (slate on white)', { width: 390, height: 844 }, '/account', 'text=Download everything', 4.5],
   ['live detail label (graphite on white)', { width: 1440, height: 900 }, '/', 'text=Your progress', 4.5],
   ['tab bar on a new screen (slate on white)', { width: 390, height: 844 }, '/more', 'nav[aria-label="Main"] >> text=Calendar', 4.5],
+  ['source health tag (graphite on stone)', { width: 1440, height: 900 }, '/sources', 'text=Health: Working >> nth=0', 4.5],
+  ['source meta (slate on white)', { width: 390, height: 844 }, '/sources', 'text=Job in Rwanda · Notice board · Tenders', 4.5],
+  ['mute label (graphite on white)', { width: 1440, height: 900 }, '/sources', 'text=Mute >> nth=0', 4.5],
+  ['field hint (slate on white)', { width: 1440, height: 900 }, '/admin/sources/new', 'text=Robots and terms position', 4.5],
+  ['promotion gate (slate on white)', { width: 1440, height: 900 }, '/admin/sources/src-umucyo', 'text=Needs 2 good runs since the last config change: 1 so far. >> nth=0', 4.5],
+  ['error log text (graphite on white)', { width: 390, height: 844 }, '/admin/sources/src-umucyo', 'text=HTTP 503 from www.umucyo.gov.rw', 4.5],
+  ['review reason (graphite on white)', { width: 390, height: 844 }, '/admin/review', 'text=Job in Rwanda says 3 Dec 2026', 4.5],
+  ['admin back link (graphite on mist)', { width: 1440, height: 900 }, '/admin/users', 'a:has-text("Admin") >> nth=1', 4.5],
 ];
 
 for (const [name, size, route, selector, min] of checks) {

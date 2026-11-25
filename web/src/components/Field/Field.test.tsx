@@ -24,3 +24,13 @@ test('callers cannot override aria-invalid or aria-describedby', () => {
   expect(input).toHaveAttribute('aria-invalid', 'true');
   expect(input).toHaveAttribute('aria-describedby', 't-error');
 });
+
+test('a hint sits under the input and is read with it, before any error', () => {
+  render(<Field id="u" label="List page" hint="The page that lists the notices." error="Use the full address." />);
+  const input = screen.getByLabelText('List page');
+  expect(input).toHaveAttribute('aria-describedby', 'u-hint u-error');
+  expect(input).toHaveAccessibleDescription('The page that lists the notices. Use the full address.');
+  render(<Field id="v" label="Feed" hint="The feed address." />);
+  expect(screen.getByLabelText('Feed')).toHaveAccessibleDescription('The feed address.');
+  expect(screen.getByLabelText('Feed')).not.toHaveAttribute('aria-invalid');
+});

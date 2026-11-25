@@ -36,3 +36,10 @@
   font-weight: 500;
   color: var(--bk-alert-text);
 }
+
+/* Not on the Components board (design review): the card label's type and colour. */
+.hint {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bk-slate);
+}

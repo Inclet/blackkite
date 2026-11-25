@@ -30,17 +30,21 @@ test('/api and the earlier API paths go to the API origin', () => {
     '/auth/logout',
     '/me',
     '/me?x=1',
-    '/admin',
-    '/admin/',
-    '/admin/sources/3',
-    '/admin/source-suggestions',
-    '/admin?q=1',
+    '/api/admin/sources',
+    '/api/admin/sources/3',
+    '/api/admin/sources/3/test-run',
+    '/api/admin/sources/test-run',
+    '/api/admin/source-suggestions?status=accepted',
+    '/api/admin/users',
+    '/api/admin/invites',
+    '/api/admin/collector-types',
+    '/api/admin/catalogue?needsReview=true',
   ]) {
     expect(proxied(url), url).toBe(true);
   }
 });
 
-test('web routes, including the confirm page, /shortlist, /profiles and /sources, stay on the web server', () => {
+test('web routes, including the confirm page, /shortlist, /profiles, /sources and the admin screens, stay on the web server', () => {
   for (const url of [
     '/',
     '/shortlist',
@@ -67,6 +71,18 @@ test('web routes, including the confirm page, /shortlist, /profiles and /sources
     '/digest-settings',
     '/opportunities/a',
     '/apiary',
+    // The admin screens (the admin API is under /api/admin).
+    '/admin',
+    '/admin/',
+    '/admin?q=1',
+    '/admin/sources',
+    '/admin/sources/new',
+    '/admin/sources/3',
+    '/admin/sources/3?x=1',
+    '/admin/suggestions',
+    '/admin/source-suggestions',
+    '/admin/review',
+    '/admin/users',
     '/administrator',
     '/o/wfp-logistics',
     '/settings/digest',
