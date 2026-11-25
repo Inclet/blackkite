@@ -155,6 +155,7 @@ def world(monkeypatch):
         ),
     )
     box = FakeMailbox()
+    monkeypatch.setenv("BK_INGEST_AUTHSERV_ID", "mx")
     monkeypatch.setattr(browser_list, "default_renderer", lambda client: FakeRenderer())
     monkeypatch.setattr(email_ingest, "mailbox_from_env", lambda: box)
     return web, box
@@ -249,9 +250,20 @@ def test_email_run_without_a_configured_inbox_fails_cleanly(db, recorded, monkey
     )
     for k in ("HOST", "USER", "PASSWORD"):
         monkeypatch.delenv(f"BK_INGEST_IMAP_{k}", raising=False)
+    monkeypatch.setenv("BK_INGEST_AUTHSERV_ID", "mx")
     s = add(db, "email_ingest")
     run = runner.run_source(db, s, client=make_client(FakeWeb()), now=lambda: NOW)
     assert run.status == "failed" and "no ingest mailbox configured" in run.error
+    assert recorded == []
+
+
+def test_email_run_without_an_authserv_id_fails_cleanly(
+    db, world, recorded, monkeypatch
+):
+    monkeypatch.delenv("BK_INGEST_AUTHSERV_ID")
+    s = add(db, "email_ingest")
+    run = runner.run_source(db, s, client=make_client(FakeWeb()), now=lambda: NOW)
+    assert run.status == "failed" and "BK_INGEST_AUTHSERV_ID" in run.error
     assert recorded == []
 
 

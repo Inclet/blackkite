@@ -801,7 +801,7 @@
         "name": "require_authenticated",
         "kind": "boolean",
         "required": false,
-        "help": "Only trust emails the receiving server marked dmarc=pass or dkim=pass for the sender's domain (guards against forged senders).",
+        "help": "Only trust emails the receiving server marked dmarc=pass or dkim=pass for the sender's domain (guards against forged senders). The server is identified by BK_INGEST_AUTHSERV_ID; without it the source does not run.",
         "default": true,
         "options": null,
         "min": null,

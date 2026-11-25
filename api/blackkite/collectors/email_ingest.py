@@ -40,11 +40,14 @@ mail is read again on the next run. If the folder's UIDVALIDITY changed in
 between (the mailbox was rebuilt), nothing is flagged: re-reading is harmless,
 the ingest dedupes, but flagging the wrong messages would hide mail.
 
-Spoofing. Anyone can send mail to the shared inbox with any From. With
-``require_authenticated`` (default) a message counts only if the receiving
-server's topmost ``Authentication-Results`` header reports ``dmarc=pass`` for the
-From domain, or ``dkim=pass`` with ``header.d`` equal to (or a parent of) the
-From domain.
+Spoofing. Anyone can send mail to the shared inbox with any From, and can put
+any ``Authentication-Results`` header in it. With ``require_authenticated``
+(default) a message counts only if the topmost ``Authentication-Results`` header
+whose authserv-id equals ``BK_INGEST_AUTHSERV_ID`` (the receiving server's own
+id, RFC 8601) reports ``dmarc=pass`` for the From domain, or ``dkim=pass`` with
+``header.d`` equal to (or a parent of) the From domain. Headers with any other
+authserv-id are ignored. Without ``BK_INGEST_AUTHSERV_ID`` such a source refuses
+to run (CollectorError) rather than trust a header anyone could have written.
 
 Links found in mail pass ``check_url`` (http/https, no credentials, no internal
 addresses) before they become items; nothing in a message is fetched here.
@@ -220,6 +223,28 @@ def mailbox_from_env() -> Mailbox:
     return ImapMailbox(ImapSettings())
 
 
+class IngestSettings(BaseSettings):
+    """Ingest settings other than the mailbox (BK_INGEST_*)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="BK_INGEST_", env_file=".env", extra="ignore"
+    )
+    # authserv-id of the receiving mail server's Authentication-Results header.
+    authserv_id: str | None = None
+
+
+def authserv_id_from_env() -> str | None:
+    value = (IngestSettings().authserv_id or "").strip()
+    return value or None
+
+
+NO_AUTHSERV_ID = (
+    "email_ingest needs BK_INGEST_AUTHSERV_ID (the authserv-id the receiving mail "
+    "server writes in Authentication-Results) to check senders; set it, or turn "
+    "off require_authenticated for this source"
+)
+
+
 # --- config -------------------------------------------------------------------------
 
 
@@ -264,7 +289,9 @@ class EmailIngestConfig(BaseModel):
     require_authenticated: bool = Field(
         default=True,
         description="Only trust emails the receiving server marked dmarc=pass or "
-        "dkim=pass for the sender's domain (guards against forged senders).",
+        "dkim=pass for the sender's domain (guards against forged senders). The "
+        "server is identified by BK_INGEST_AUTHSERV_ID; without it the source "
+        "does not run.",
     )
 
     @field_validator("sender")
@@ -297,15 +324,32 @@ def _domain(addr: str) -> str:
     return addr.rsplit("@", 1)[-1].lower().strip(".")
 
 
-def authenticated(msg: EmailMessage, from_addr: str) -> bool:
+def _authserv_id(header: str) -> str:
+    """The authserv-id of one Authentication-Results value (RFC 8601): the first
+    token before the first ';', comments removed, optional version dropped."""
+    head = re.sub(r"\([^)]*\)", " ", header.split(";", 1)[0])
+    parts = head.split()
+    return parts[0].lower().strip(".") if parts else ""
+
+
+def authenticated(msg: EmailMessage, from_addr: str, authserv_id: str) -> bool:
     """dmarc=pass for the From domain, or dkim=pass with header.d covering it,
-    in the topmost Authentication-Results header (the receiving server's)."""
-    headers = msg.get_all("Authentication-Results") or []
-    if not headers:
+    in the topmost Authentication-Results header written by ``authserv_id`` (the
+    receiving server). Headers from any other authserv-id, and any lower header
+    with the same id, are ignored: the sender can write those."""
+    wanted = authserv_id.strip().lower().strip(".")
+    if not wanted:
         return False
-    top = str(headers[0]).lower()
+    ours = [
+        str(h)
+        for h in msg.get_all("Authentication-Results") or []
+        if _authserv_id(str(h)) == wanted
+    ]
+    if not ours:
+        return False
+    top = ours[0].lower()
     domain = _domain(from_addr)
-    for clause in re.split(r";", top):
+    for clause in re.split(r";", top)[1:]:
         clause = clause.strip()
         if clause.startswith("dmarc=pass"):
             m = re.search(r"header\.from=([a-z0-9.-]+)", clause)
@@ -388,7 +432,11 @@ def text_links(text: str) -> list[tuple[str, str, str | None]]:
 
 
 def message_items(
-    raw: bytes, cfg: EmailIngestConfig, source_id, fetched_at: datetime
+    raw: bytes,
+    cfg: EmailIngestConfig,
+    source_id,
+    fetched_at: datetime,
+    authserv_id: str | None = None,
 ) -> list[RawItem] | None:
     """Items from one email, or None when the email is not this source's (sender,
     subject or authentication do not match)."""
@@ -400,8 +448,11 @@ def message_items(
         return None
     if not _match(cfg.subject_pattern, subject):
         return None
-    if cfg.require_authenticated and not authenticated(msg, from_addr):
-        return None
+    if cfg.require_authenticated:
+        if not authserv_id:
+            raise CollectorError(NO_AUTHSERV_ID)
+        if not authenticated(msg, from_addr, authserv_id):
+            return None
     html, plain = _bodies(msg)
     links = html_links(html) if html else text_links(plain or "")
     published = rfc822_to_iso(str(msg.get("Date", ""))) or None
@@ -470,15 +521,21 @@ class EmailIngestCollector:
         *,
         preview: bool = False,
         now=utc_now,
+        authserv_id: Callable[[], str | None] = authserv_id_from_env,
     ) -> None:
         self.mailbox_factory = mailbox_factory
         self.preview = preview
         self.now = now
+        self.authserv_id = authserv_id
+        self._authserv: str | None = None
         # (folder, uids, flag, uid validity) read by fetch, flagged by after_commit.
         self._pending: tuple[str, list[str], str, str | None] | None = None
 
     def fetch(self, source) -> list[RawItem]:
         cfg = parse_config(source.config or {})
+        self._authserv = self.authserv_id()
+        if cfg.require_authenticated and not self._authserv:
+            raise CollectorError(NO_AUTHSERV_ID)  # before opening the mailbox
         box = self.mailbox_factory()
         try:
             return self._collect(box, source, cfg)
@@ -506,7 +563,7 @@ class EmailIngestCollector:
             raw = box.fetch(uid)
             if len(raw) > MAX_MESSAGE_BYTES:
                 continue
-            found = message_items(raw, cfg, source.id, fetched_at)
+            found = message_items(raw, cfg, source.id, fetched_at, self._authserv)
             if found is None:
                 continue  # not this source's mail: leave it for others
             done.append(uid)

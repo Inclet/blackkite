@@ -30,8 +30,8 @@ def mail(
     m["To"] = "ingest@inbox.example"
     m["Subject"] = subject
     m["Date"] = date
-    if auth:
-        m["Authentication-Results"] = auth
+    for a in [auth] if isinstance(auth, str) else auth or []:
+        m["Authentication-Results"] = a
     m.set_content(text or "See the HTML version.")
     if html:
         m.add_alternative(html, subtype="html")
@@ -173,13 +173,17 @@ def test_sender_subject_and_authentication_filters():
             "1": mail(html=HTML, sender="news@other.example"),
             "2": mail(html=HTML, subject="Weekly newsletter"),
             "3": mail(html=HTML, auth=None),
-            "4": mail(html=HTML, auth="mx; dkim=pass header.d=evil.example"),
-            "5": mail(html=HTML, auth="mx; dkim=fail header.d=board.example"),
+            "4": mail(
+                html=HTML, auth="mx.inbox.example; dkim=pass header.d=evil.example"
+            ),
+            "5": mail(
+                html=HTML, auth="mx.inbox.example; dkim=fail header.d=board.example"
+            ),
             "6": mail(
                 html=HTML,
                 subject="New TENDERS posted",
                 sender="jobs@board.example",
-                auth="mx; dmarc=pass header.from=board.example",
+                auth="mx.inbox.example; dmarc=pass header.from=board.example",
             ),
         }
     )
@@ -195,15 +199,92 @@ def test_sender_subject_and_authentication_filters():
     assert collect(box2, {"sender": SENDER, "require_authenticated": False})
 
 
-def test_authentication_uses_topmost_header_only():
+AUTHSERV = "mx.inbox.example"
+
+
+@pytest.fixture(autouse=True)
+def _authserv_id(monkeypatch):
+    monkeypatch.setenv("BK_INGEST_AUTHSERV_ID", AUTHSERV)
+
+
+def with_results(*headers: str) -> EmailMessage:
     m = EmailMessage()
     m["From"] = SENDER
-    m["Authentication-Results"] = "mx.inbox.example; dkim=fail"
-    m["Authentication-Results"] = "forged; dkim=pass header.d=board.example"
-    assert not ei.authenticated(m, SENDER)
-    m2 = EmailMessage()
-    m2["Authentication-Results"] = "mx; dkim=pass header.d=example"  # parent domain
-    assert ei.authenticated(m2, "a@board.example")
+    for h in headers:
+        m["Authentication-Results"] = h
+    return m
+
+
+def test_authentication_uses_topmost_header_only():
+    m = with_results(
+        "mx.inbox.example; dkim=fail",
+        "mx.inbox.example; dkim=pass header.d=board.example",
+    )
+    assert not ei.authenticated(m, SENDER, AUTHSERV)
+    m2 = with_results("mx.inbox.example; dkim=pass header.d=example")  # parent
+    assert ei.authenticated(m2, "a@board.example", AUTHSERV)
+
+
+def test_forged_header_above_the_real_one_is_ignored():
+    # Another authserv-id on top (written by the sender or an outside hop).
+    m = with_results(
+        "forged.example; dmarc=pass header.from=board.example",
+        "mx.inbox.example; dmarc=fail header.from=board.example",
+    )
+    assert not ei.authenticated(m, SENDER, AUTHSERV)
+    # The real pass is found under a forged fail with another id.
+    m = with_results(
+        "forged.example; dmarc=fail",
+        "MX.Inbox.Example 1; dmarc=pass header.from=board.example",
+    )
+    assert ei.authenticated(m, SENDER, AUTHSERV)
+
+
+def test_forged_header_below_the_real_one_is_ignored():
+    # The sender put a pass with our own id in the message; our server's
+    # header is the topmost with that id and says fail.
+    m = with_results(
+        "mx.inbox.example; dmarc=fail header.from=board.example; dkim=none",
+        "mx.inbox.example; dmarc=pass header.from=board.example",
+    )
+    assert not ei.authenticated(m, SENDER, AUTHSERV)
+    # Only headers with other ids: nothing to trust.
+    m = with_results("mx.other.example; dmarc=pass header.from=board.example")
+    assert not ei.authenticated(m, SENDER, AUTHSERV)
+    # The authserv-id must be the whole first token, not a prefix or suffix.
+    m = with_results("mx.inbox.example.evil; dmarc=pass header.from=board.example")
+    assert not ei.authenticated(m, SENDER, AUTHSERV)
+
+
+def test_forged_headers_in_a_collected_message():
+    forged_below = mail(
+        html=HTML,
+        auth=[
+            "mx.inbox.example; dmarc=fail header.from=board.example",
+            "mx.inbox.example; dmarc=pass header.from=board.example",
+        ],
+    )
+    forged_other = mail(
+        html=HTML, auth="relay.example; dmarc=pass header.from=board.example"
+    )
+    box = FakeMailbox({"1": forged_below, "2": forged_other, "3": mail(html=HTML)})
+    items = collect(box, {"sender": SENDER})
+    flagged = [c for c in box.calls if c[0] == "flag"]
+    assert flagged == [("flag", ("3",), "BkDone123456781234")]
+    assert items
+
+
+def test_without_authserv_id_the_source_refuses_to_run(monkeypatch):
+    monkeypatch.delenv("BK_INGEST_AUTHSERV_ID")
+    box = FakeMailbox({"1": mail(html=HTML)})
+    with pytest.raises(CollectorError, match="BK_INGEST_AUTHSERV_ID"):
+        collect(box, {"sender": SENDER}, commit=False)
+    assert box.calls == []  # the mailbox was never opened
+    monkeypatch.setenv("BK_INGEST_AUTHSERV_ID", "  ")
+    with pytest.raises(CollectorError, match="BK_INGEST_AUTHSERV_ID"):
+        collect(box, {"sender": SENDER}, preview=True, commit=False)
+    # Not needed when the source opts out of the check.
+    assert collect(box, {"sender": SENDER, "require_authenticated": False})
 
 
 def test_preview_is_read_only_and_seen_fallback():
