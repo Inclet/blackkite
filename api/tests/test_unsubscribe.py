@@ -340,10 +340,44 @@ def test_get_changes_nothing(db, ana, settings, anon):
     assert _setting(db, ana).frequency == "weekly"
 
 
-def test_rate_limited_per_client(db, ana, settings, anon, app):
-    token = U.make_token(settings, ana, "digest")
-    limit = settings.link_rate_per_ip_per_hour
-    for _ in range(limit):
+def test_rate_limited_per_token_not_per_shared_address(db, settings, anon):
+    """Many users' one-click POSTs from one provider address all go through; one
+    token repeated past its limit is refused, and others are not affected."""
+    assert settings.unsubscribe_rate_per_token_per_hour == 10
+    users = [make_user(db, f"u{i}@example.com") for i in range(25)]
+    for u in users:  # 25 > the old per-IP limit of 20, all from one address
+        url = f"/api/unsubscribe?token={U.make_token(settings, u, 'digest')}"
+        r = anon.post(url, data={"List-Unsubscribe": "One-Click"})
+        assert r.status_code == 200, r.text
+    token = U.make_token(settings, users[0], "alert")
+    for _ in range(10):
         assert anon.post("/api/unsubscribe", json={"token": token}).status_code == 200
     r = anon.post("/api/unsubscribe", json={"token": token})
     assert r.status_code == 429
+    other = U.make_token(settings, users[1], "alert")
+    assert anon.post("/api/unsubscribe", json={"token": other}).status_code == 200
+
+
+def test_per_address_flood_ceiling(db, ana, settings, app):
+    from blackkite.auth.ratelimit import UnsubscribeLimiter
+
+    app.state.unsubscribe_limiter = UnsubscribeLimiter(per_token=100, per_ip=3)
+    with TestClient(app, base_url="https://testserver") as c:
+        for _ in range(3):
+            assert (
+                c.post("/api/unsubscribe", json={"token": "A" * 67}).status_code == 400
+            )
+        r = c.post(
+            "/api/unsubscribe", json={"token": U.make_token(settings, ana, "digest")}
+        )
+        assert r.status_code == 429
+    assert _setting(db, ana).frequency == "weekly"
+
+
+def test_limiter_keeps_token_hashes_not_tokens():
+    from blackkite.auth.ratelimit import UnsubscribeLimiter
+
+    lim = UnsubscribeLimiter(per_token=1, per_ip=10)
+    assert lim.allow_token("secret-token") and not lim.allow_token("secret-token")
+    assert "secret-token" not in lim.token._hits
+    assert lim.allow_token("another")

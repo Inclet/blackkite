@@ -84,22 +84,19 @@ def test_selected_by_setting_and_needs_key_and_sender(monkeypatch):
     assert FAKE_KEY not in repr(s)
 
 
-def test_safety_switch_off_refuses_and_logs(caplog):
+def test_safety_switch_off_refuses_with_what_it_would_have_sent():
     rec = Recorder()
     t = ResendTransport(_settings(), client=rec.client())
-    with (
-        caplog.at_level(logging.WARNING, "blackkite.mail"),
-        pytest.raises(RealSendDisabled),
-    ):
+    with pytest.raises(RealSendDisabled) as info:
         t.send(_mail())
     assert rec.requests == []
-    logged = caplog.text
-    assert "would have sent" in logged
-    assert "ana@example.com" in logged and "Two things this week" in logged
-    assert "List-Unsubscribe" in logged
+    said = str(info.value)
+    assert "would have sent" in said
+    assert "ana@example.com" in said and "Two things this week" in said
+    assert "List-Unsubscribe" in said
     # Never the body, the header values or the key.
     for secret in ("plain body", "html body", "token=T", FAKE_KEY):
-        assert secret not in logged
+        assert secret not in said
 
 
 def test_sends_the_documented_payload_when_allowed(caplog):

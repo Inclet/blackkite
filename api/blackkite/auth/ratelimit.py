@@ -10,6 +10,7 @@ The limit is applied before we look the email up, so a limited response says
 nothing about whether an account exists.
 """
 
+import hashlib
 import threading
 import time
 from collections import deque
@@ -72,6 +73,28 @@ class SlidingWindowLimiter:
         """Number of keys currently held (for tests and monitoring)."""
         with self._lock:
             return len(self._hits)
+
+
+class UnsubscribeLimiter:
+    """POST /api/unsubscribe: a per-address flood ceiling, checked first, and a
+    per-token limit keyed by the token's hash (the raw token is not kept)."""
+
+    def __init__(self, per_token: int, per_ip: int, window: float = 3600.0) -> None:
+        self.token = SlidingWindowLimiter(per_token, window)
+        self.ip = SlidingWindowLimiter(per_ip, window)
+
+    def allow_ip(self, ip: str) -> bool:
+        if not self.ip.would_allow(ip):
+            return False
+        self.ip.hit(ip)
+        return True
+
+    def allow_token(self, token: str) -> bool:
+        key = hashlib.sha256(token.encode("utf-8", "replace")).hexdigest()
+        if not self.token.would_allow(key):
+            return False
+        self.token.hit(key)
+        return True
 
 
 class LinkRequestLimiter:

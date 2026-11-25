@@ -3,10 +3,10 @@
 Selected with ``BK_MAIL_TRANSPORT=resend``. Needs ``RESEND_API_KEY`` (from the
 environment only) and an explicit ``BK_MAIL_FROM``. No real email goes out
 until the owner gives the go-ahead: while ``BK_MAIL_ALLOW_REAL_SEND`` is false
-(the default) the transport refuses every send, logs what it would have sent
-(sender, recipient, subject, sizes, header names; never the body, the header
-values or the key) and raises ``RealSendDisabled``, so callers do not record
-the mail as sent.
+(the default) the transport refuses every send and raises ``RealSendDisabled``
+carrying what it would have sent (sender, recipient, subject, sizes, header
+names; never the body, the header values or the key), so callers do not record
+the mail as sent and log it (the worker once per user per kind per day).
 
 Request, as understood from Resend's public API documentation (field names NOT
 verified against the live API; check before the first real send)::
@@ -99,12 +99,12 @@ class ResendTransport:
 
     def send(self, mail: Mail) -> None:
         if not self.allow_real_send:
-            log.warning(
-                "resend: real sending is off (BK_MAIL_ALLOW_REAL_SEND=false); "
-                "would have sent %s",
-                self._describe(mail),
+            # The description travels in the exception; the worker logs it once
+            # per user per kind per day (delivery/jobs.py), other callers log it.
+            raise RealSendDisabled(
+                "BK_MAIL_ALLOW_REAL_SEND is false; nothing sent; would have sent "
+                + self._describe(mail)
             )
-            raise RealSendDisabled("BK_MAIL_ALLOW_REAL_SEND is false; nothing sent")
         client = self._client or httpx.Client(timeout=TIMEOUT_SECONDS)
         try:
             r = client.post(

@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     # Rate limits on POST /auth/request-link (sliding one-hour window, per process)
     link_rate_per_email_per_hour: int = 5
     link_rate_per_ip_per_hour: int = 20
+    # Rate limits on POST /api/unsubscribe (decision 43): per token, so one-click
+    # POSTs from a mail provider's shared addresses are not blocked, plus a
+    # generous per-address ceiling against floods.
+    unsubscribe_rate_per_token_per_hour: int = Field(default=10, ge=1)
+    unsubscribe_rate_per_ip_per_hour: int = Field(default=300, ge=1)
 
     # Mail
     mail_transport: Literal["console", "smtp", "resend"] = "console"

@@ -12,7 +12,9 @@
 A digest token sets the digest frequency to "off"; an alert token turns alerts
 off (alert_min_fit null). Repeating it changes nothing more. ``GET`` changes
 nothing (link scanners open URLs): it only says to use POST. Requests are
-rate-limited per client address, like sign-in link requests.
+rate-limited per token (keyed by its hash), so one-click POSTs from a mail
+provider's shared addresses are not blocked, with a generous per-address
+ceiling against floods.
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from blackkite.auth.deps import DbDep, SettingsDep
-from blackkite.auth.ratelimit import SlidingWindowLimiter
+from blackkite.auth.ratelimit import UnsubscribeLimiter
 from blackkite.delivery import unsubscribe as U
 from blackkite.member.schemas import CamelModel
 
@@ -38,6 +40,7 @@ DONE = "You won't get these emails any more."
 INVALID = "This unsubscribe link is not valid. Change your emails in settings."
 USE_POST = "Use POST to unsubscribe. Opening this link changes nothing."
 MAX_BODY = 4096
+TOO_MANY = "Too many requests. Try again later."
 NO_STORE = {"Cache-Control": "no-store"}
 
 
@@ -46,7 +49,7 @@ class UnsubscribeOut(CamelModel):
     detail: str
 
 
-def get_unsubscribe_limiter(request: Request) -> SlidingWindowLimiter:
+def get_unsubscribe_limiter(request: Request) -> UnsubscribeLimiter:
     return request.app.state.unsubscribe_limiter
 
 
@@ -96,14 +99,15 @@ async def post_unsubscribe(
     request: Request,
     db: DbDep,
     settings: SettingsDep,
-    limiter: Annotated[SlidingWindowLimiter, Depends(get_unsubscribe_limiter)],
+    limiter: Annotated[UnsubscribeLimiter, Depends(get_unsubscribe_limiter)],
     token: Annotated[str | None, Query(max_length=200)] = None,
 ) -> JSONResponse:
     ip = request.client.host if request.client else "unknown"
-    if not limiter.would_allow(ip):
-        raise HTTPException(429, "Too many requests. Try again later.")
-    limiter.hit(ip)
+    if not limiter.allow_ip(ip):
+        raise HTTPException(429, TOO_MANY)
     value = await _token(request, token)
+    if not limiter.allow_token(value):
+        raise HTTPException(429, TOO_MANY)
 
     def apply() -> str | None:
         kind = U.unsubscribe(db, settings, value)
