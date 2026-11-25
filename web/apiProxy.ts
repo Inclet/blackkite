@@ -4,7 +4,7 @@ import type { ProxyOptions } from 'vite';
  * The API lives on its own origin in dev and preview. Member routes are all under
  * /api (docs/api-contract.md section 2), so no API path is also a web page; the
  * earlier routes below keep their paths. Everything else (including the
- * /auth/confirm page, /shortlist, /profiles and /sources) stays a web route, so the visual
+ * /auth/confirm and /unsubscribe pages, /shortlist, /profiles and /sources) stays a web route, so the visual
  * harness's preview server works with no API running.
  */
 export const API_PATHS = ['/auth/verify', '/auth/request-link', '/auth/logout', '/me'] as const;
