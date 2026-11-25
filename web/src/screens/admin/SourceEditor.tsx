@@ -33,6 +33,7 @@ import {
   COLLECTOR_WORDS,
   formatWhen,
   GATE_HELP,
+  gateText,
   HISTORY_REASONS,
   sourceGate,
   HEALTH_WORDS,
@@ -120,7 +121,7 @@ export const EDITOR_COPY = {
   status: 'Status',
   statusRegion: 'Source status',
   gateRefused: (status: string, gate: string) => `Not changed: it stays ${status.toLowerCase()}. ${gate}`,
-  moveRefused: (why: string | null) => `Not changed${why ? `: ${why}` : '.'}`,
+  moveRefused: (why: string | null) => `Not changed.${why ? ` ${why.charAt(0).toUpperCase()}${why.slice(1)}${/[.!?]$/.test(why) ? '' : '.'}` : ''}`,
   moveUnreachable: `${COPY.unreachableTitle}. The status did not change; try again.`,
   runs: 'Run history',
   noRuns: 'No runs yet. It runs on its schedule once saved.',
@@ -579,6 +580,9 @@ function TestResult({ test }: { test: TestState }) {
 function StatusCard({ source, onChanged, onStart }: { source: SourceDetail; onChanged: (s: SourceDetail) => void; onStart: () => void }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; alert: boolean } | null>(null);
+  /** The server's gate numbers from the last refused promotion (409 goodRuns/needed), newer than the loaded source's. */
+  const [refusedGate, setRefusedGate] = useState<{ goodRuns: number; needed: number } | null>(null);
+  const gate = refusedGate ? gateText(refusedGate.goodRuns, refusedGate.needed) : sourceGate(source);
   const moves = STATUS_MOVES[source.status] ?? [];
   const canPromote = moves.includes('active');
 
@@ -588,14 +592,20 @@ function StatusCard({ source, onChanged, onStart }: { source: SourceDetail; onCh
     onStart();
     try {
       const s = await sourcesApi.setStatus(source.id, to);
+      setRefusedGate(null);
       onChanged(s);
       setMessage({ text: MOVE_DONE[s.status] ?? '', alert: false });
     } catch (err) {
       if (err instanceof ApiError && err.kind === 'conflict') {
-        setMessage({
-          text: to === 'active' ? EDITOR_COPY.gateRefused(STATUS_WORDS[source.status], sourceGate(source)) : EDITOR_COPY.moveRefused(detailText(err.detail)),
-          alert: true,
-        });
+        const numbers = gateNumbers(err.body);
+        const detail = refusalOf(err).detail ?? detailText(err.detail);
+        if (numbers) {
+          setRefusedGate(numbers);
+          setMessage({ text: EDITOR_COPY.gateRefused(STATUS_WORDS[source.status], gateText(numbers.goodRuns, numbers.needed)), alert: true });
+        } else {
+          // A status-graph refusal (or an older answer without the numbers): the server's own sentence.
+          setMessage({ text: EDITOR_COPY.moveRefused(detail), alert: true });
+        }
       } else {
         setMessage({ text: EDITOR_COPY.moveUnreachable, alert: true });
       }
@@ -613,7 +623,7 @@ function StatusCard({ source, onChanged, onStart }: { source: SourceDetail; onCh
       <div className={styles.status}>{STATUS_HELP[source.status]}</div>
       {canPromote && (
         <div className={styles.status}>
-          {sourceGate(source)} {GATE_HELP}
+          {gate} {GATE_HELP}
         </div>
       )}
       <div className={styles.actions}>
@@ -628,6 +638,13 @@ function StatusCard({ source, onChanged, onStart }: { source: SourceDetail; onCh
       </div>
     </Card>
   );
+}
+
+/** The promotion refusal's numbers (409 {detail, errors, goodRuns, needed}), when sent. */
+function gateNumbers(body: unknown): { goodRuns: number; needed: number } | null {
+  if (body === null || typeof body !== 'object') return null;
+  const { goodRuns, needed } = body as { goodRuns?: unknown; needed?: unknown };
+  return typeof goodRuns === 'number' && typeof needed === 'number' ? { goodRuns, needed } : null;
 }
 
 function Runs({ runs, errorLog }: { runs: RunPage | undefined; errorLog: RunPage | undefined }) {

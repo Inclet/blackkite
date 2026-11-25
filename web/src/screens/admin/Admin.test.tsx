@@ -229,7 +229,14 @@ test('test runs: a refused config puts the messages on its fields; a preview wit
 });
 
 test('existing source: record and config filled in; status with the promotion gate; a refused promotion explains the gate', async () => {
-  const api = editorRoutes({ 'POST /api/admin/sources/src-1/status': status(409, { detail: 'needs 2 successful runs that found items since its config last changed; has 1' }) });
+  const api = editorRoutes({
+    'POST /api/admin/sources/src-1/status': status(409, {
+      detail: 'This source needs 2 successful runs that found items since its config last changed before it can be made active; it has 0.',
+      errors: [],
+      goodRuns: 0,
+      needed: 2,
+    }),
+  });
   renderAt('/admin/sources/src-1');
   const form = within(await screen.findByRole('form', { name: 'Umucyo e-procurement' }));
   expect(form.getByLabelText(EDITOR_COPY.name)).toHaveValue('Umucyo e-procurement');
@@ -241,8 +248,41 @@ test('existing source: record and config filled in; status with the promotion ga
   expect(card.getByText(/Needs 2 good runs since the last config change: 1 so far\./)).toBeInTheDocument();
   expect(card.getAllByRole('button').map((b) => b.textContent)).toEqual(['Make active', 'Pause', 'Retire']);
   fireEvent.click(card.getByRole('button', { name: 'Make active' }));
-  expect(await card.findByText('Not changed: it stays testing. Needs 2 good runs since the last config change: 1 so far.')).toBeInTheDocument();
+  // The server's numbers (0), not the loaded page's (1).
+  expect(await card.findByText('Not changed: it stays testing. Needs 2 good runs since the last config change: 0 so far.')).toBeInTheDocument();
+  expect(card.getByText(/^Needs 2 good runs since the last config change: 0 so far\. A good run/)).toBeInTheDocument();
   expect(api.calls.find((c) => c.key === 'POST /api/admin/sources/src-1/status')!.body).toEqual({ status: 'active' });
+
+  // A status-graph refusal: the server's sentence.
+  api.on('POST /api/admin/sources/src-1/status', status(409, { detail: 'cannot move a source from testing to paused' }));
+  fireEvent.click(card.getByRole('button', { name: 'Pause' }));
+  expect(await card.findByText('Not changed. Cannot move a source from testing to paused.')).toBeInTheDocument();
+});
+
+test('a new action clears the last status line: "Saved as testing…" does not stay next to a refused promotion or a test run', async () => {
+  const api = editorRoutes({
+    'POST /api/admin/sources': (body: Record<string, unknown>) => adminSource({ ...body, id: 'src-9', status: 'testing', promotionRuns: 0 }),
+    'GET /api/admin/sources/src-9': adminSource({ id: 'src-9', name: 'NCST calls', status: 'testing', promotionRuns: 0 }),
+    'GET /api/admin/sources/src-9/runs': { total: 0, items: [] },
+    'POST /api/admin/sources/src-9/status': status(409, { detail: 'Needs runs.', errors: [], goodRuns: 0, needed: 2 }),
+    'POST /api/admin/sources/test-run': PREVIEW,
+  });
+  renderAt('/admin/sources/new');
+  const form = within(await screen.findByRole('form', { name: EDITOR_COPY.newTitle }));
+  fireEvent.change(form.getByLabelText(EDITOR_COPY.name), { target: { value: 'NCST calls' } });
+  fireEvent.change(form.getByLabelText(EDITOR_COPY.homeUrl), { target: { value: 'https://www.ncst.gov.rw/' } });
+  fireEvent.click(form.getByRole('button', { name: 'Funding' }));
+  fireEvent.click(form.getByRole('button', { name: 'The issuer itself' }));
+  fireEvent.click(form.getByRole('button', { name: 'RSS feed' }));
+  fireEvent.change(await form.findByLabelText('Feed url'), { target: { value: 'https://www.ncst.gov.rw/feed' } });
+  fireEvent.click(form.getByRole('button', { name: EDITOR_COPY.create }));
+  expect(await screen.findByText(EDITOR_COPY.created)).toBeInTheDocument();
+
+  const card = within(screen.getByRole('region', { name: EDITOR_COPY.statusRegion }));
+  fireEvent.click(card.getByRole('button', { name: 'Make active' }));
+  expect(await card.findByText(/^Not changed: it stays testing\./)).toBeInTheDocument();
+  expect(screen.queryByText(EDITOR_COPY.created)).toBeNull();
+  expect(api.calls.filter((c) => c.key === 'POST /api/admin/sources/src-9/status')).toHaveLength(1);
 });
 
 test('status change: pause, and the buttons follow the new status', async () => {
