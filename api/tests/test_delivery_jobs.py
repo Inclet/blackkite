@@ -182,3 +182,78 @@ def test_bk_digest_errors(bk, db):
     assert bk("digest", "--user", "nobody@example.com", "--dry-run").exit_code == 1
     r = bk("digest", "--user", "empty@example.com", "--dry-run")
     assert r.exit_code == 2 and "nothing to send" in r.output
+
+
+def test_refused_sends_are_logged_once_per_user_kind_and_day(
+    Sessions, db, settings, caplog, monkeypatch
+):
+    """Real sending off: every tick retries, but each refusal is logged once per
+    user per kind per Kigali day; nothing is recorded as sent."""
+    import logging
+
+    from blackkite.delivery import jobs
+    from blackkite.delivery.resend import ResendTransport
+
+    monkeypatch.setattr(jobs, "refusals", jobs.RefusalLog())
+    ana = _seed(db, "ana@example.com", min_fit="good")
+    ben = _seed(db, "ben@example.com", min_fit="good")
+    resend = ResendTransport(
+        settings.model_copy(
+            update={"mail_from": "B <b@example.com>", "resend_api_key": "re_fake"}
+        )
+    )
+
+    def refusal_lines():
+        return [
+            r.getMessage()
+            for r in caplog.records
+            if "not sent" in r.getMessage() and r.levelno == logging.WARNING
+        ]
+
+    with caplog.at_level(logging.WARNING, "blackkite.delivery"):
+        for minutes in (0, 5, 10):  # three worker ticks on Monday
+            at = MONDAY_7 + timedelta(minutes=minutes)
+            assert weekly_digest_job(Sessions, settings, resend, lambda at=at: at) == {
+                "refused": 2
+            }
+            assert alerts_job(Sessions, settings, resend, lambda at=at: at) == 0
+        lines = refusal_lines()
+        assert len(lines) == 4
+        for user in (ana, ben):
+            for kind in ("digest", "alert"):
+                assert sum(f"{kind} for user {user.id}" in ln for ln in lines) == 1
+        assert all("RealSendDisabled" in ln for ln in lines)
+        assert not any("failed" in r.getMessage() for r in caplog.records)
+    assert db.scalar(sa.select(sa.func.count()).select_from(DigestLog)) == 0
+    assert db.scalar(sa.select(sa.func.count()).select_from(AlertLog)) == 0
+
+
+def test_missing_unsubscribe_secret_is_a_refusal(Sessions, db, settings, monkeypatch):
+    from blackkite.delivery import jobs
+
+    log = jobs.RefusalLog()
+    monkeypatch.setattr(jobs, "refusals", log)
+    _seed(db)
+    bare = settings.model_copy(update={"unsubscribe_secret": None})
+    out = MemoryTransport()
+    assert weekly_digest_job(Sessions, bare, out, lambda: MONDAY_7) == {"refused": 1}
+    assert weekly_digest_job(Sessions, bare, out, lambda: MONDAY_7) == {"refused": 1}
+    assert out.outbox == [] and len(log._seen) == 1
+
+
+def test_refusal_log_resets_each_kigali_day():
+    import uuid
+
+    from blackkite.delivery.jobs import RefusalLog
+
+    log, uid, exc = RefusalLog(), uuid.uuid4(), RuntimeError("off")
+    late_monday = datetime(2026, 11, 30, 23, 30, tzinfo=KIGALI)
+    assert log.note(uid, "digest", late_monday, exc)
+    assert not log.note(uid, "digest", late_monday, exc)
+    assert log.note(uid, "alert", late_monday, exc)
+    assert log.note(uuid.uuid4(), "digest", late_monday, exc)
+    # 22:30 UTC Monday is 00:30 Tuesday in Kigali: a new day, logged again,
+    # and Monday's keys are dropped.
+    tuesday = datetime(2026, 11, 30, 22, 30, tzinfo=UTC)
+    assert log.note(uid, "digest", tuesday, exc)
+    assert len(log._seen) == 1
