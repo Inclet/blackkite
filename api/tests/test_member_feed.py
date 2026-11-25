@@ -156,6 +156,7 @@ def test_wfp_item_matches_the_reference_fixture(db, ana, login):
         "organisation": "World Food Programme",
         "organisationShort": "WFP",
         "fit": "strong",
+        "provisional": False,
         "deadline": "2026-11-30",
         "detail": {
             "profile": "Ironji-Trade",
@@ -230,6 +231,7 @@ def test_developpp_item_matches_the_reference_fixture(db, ana, login):
         "title": "develoPPP Ventures, cohort 6",
         "organisation": "develoPPP",
         "fit": "good",
+        "provisional": False,
         "topFlag": "Needs matching funds",
         "deadline": "2026-12-31",
         "detail": {
@@ -305,6 +307,7 @@ def test_event_item_matches_the_reference_fixture(db, ana, login):
         "title": "ABH Summit and Grand Finale",
         "organisation": "Africa's Business Heroes",
         "fit": None,
+        "provisional": False,
         "topic": "Startups and investors",
         "venue": "Kigali Convention Centre",
         "deadline": None,
@@ -434,6 +437,36 @@ def test_best_profile_and_hard_filtered_rows(db, ana, login):
     # The detail page still opens a filtered item, with no fit shown.
     r = c.get(f"/api/opportunities/{gone.id}")
     assert r.status_code == 200 and r.json()["fit"] is None
+
+
+def test_provisional_follows_the_matched_profile(db, ana, login):
+    """Spec 7.1: AI lab matches are labelled provisional; the flag comes from the
+    best profile's score row, on the feed and on the opportunity page."""
+    src = f.source(db, "Src")
+    ironji = f.profile(db, ana, "Ironji-Trade")
+    lab = f.profile(db, ana, "AI lab", provisional=True)
+    ai = f.opportunity(db, "Data platform", deadline_at=kigali(2026, 12, 10))
+    f.link(db, ai, src)
+    f.score(db, ana, ai, lab, 80, fit_word="good", provisional=True)
+    f.score(db, ana, ai, ironji, 30, fit_word="possible")
+    trucks = f.opportunity(db, "Trucks", deadline_at=kigali(2026, 12, 11))
+    f.link(db, trucks, src)
+    f.score(db, ana, trucks, ironji, 90, fit_word="strong")
+    f.score(db, ana, trucks, lab, 20, fit_word="possible", provisional=True)
+    db.commit()
+    c = login(ana.email)
+    items = {i["title"]: i for i in _items(c)}
+    assert items["Data platform"]["provisional"] is True
+    assert items["Data platform"]["detail"]["profile"] == "AI lab"
+    assert items["Trucks"]["provisional"] is False
+    detail = c.get(f"/api/opportunities/{ai.id}").json()
+    assert detail["provisional"] is True
+    assert c.get(f"/api/opportunities/{trucks.id}").json()["provisional"] is False
+    # Not scored: never provisional.
+    bare = f.opportunity(db, "Bare", deadline_at=kigali(2026, 12, 12))
+    f.link(db, bare, src)
+    db.commit()
+    assert {i["title"]: i for i in _items(c)}["Bare"]["provisional"] is False
 
 
 def test_inactive_profile_scores_are_ignored(db, ana, login):

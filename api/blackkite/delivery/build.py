@@ -139,6 +139,7 @@ def digest_item(row: Row, web_base_url: str) -> DigestItem:
     return DigestItem(
         stream=o.stream,
         profile_label=row.best.profile_name if row.best else None,
+        provisional=bool(row.best and row.best.provisional),
         title=o.title,
         url=item_url(row, web_base_url),
         summary=summary(row),

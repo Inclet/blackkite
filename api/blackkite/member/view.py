@@ -97,6 +97,11 @@ class ScoreView:
         return [f for f in self.breakdown.get("flags") or [] if isinstance(f, dict)]
 
     @property
+    def provisional(self) -> bool:
+        """The profile was scored as provisional (spec 7.1: AI lab's default set)."""
+        return self.breakdown.get("provisional") is True
+
+    @property
     def one_line_reason(self) -> str | None:
         return self.reason or (self.reasons[0] if self.reasons else None)
 
@@ -403,6 +408,7 @@ def _item_fields(row: Row, now: datetime) -> dict[str, Any]:
         "organisation": o.organisation or "",
         "organisation_short": o.organisation_short,
         "fit": fit,
+        "provisional": bool(best and best.provisional),
         "top_flag": _top_flag(best, fit),
         "topic": _topic(o) if o.stream == "event" else None,
         "venue": o.location if o.stream == "event" else None,

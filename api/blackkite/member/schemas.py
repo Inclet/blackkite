@@ -100,6 +100,8 @@ class FeedItem(CamelModel):
     organisation: str
     organisation_short: str | None = None
     fit: Fit | None
+    # The matched (best) profile is provisional (spec 7.1); the web labels it.
+    provisional: bool
     top_flag: str | None = None
     topic: str | None = None
     venue: str | None = None

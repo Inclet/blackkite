@@ -254,3 +254,21 @@ def test_best_profile_is_the_one_the_feed_shows(db, ana, w, settings):
     f.score(db, ana, o, other, 40, fit_word="strong")
     db.commit()
     assert send_alerts(db, ana, settings, MemoryTransport(), NOW) == 0
+
+
+def test_provisional_profile_label_in_alerts(db, ana, w, settings):
+    lab = f.profile(db, ana, "AI lab", provisional=True)
+    o = f.opportunity(
+        db,
+        "Data platform",
+        deadline_at=NOW + timedelta(days=2),
+        created_at=TODAY_9AM,
+    )
+    f.link(db, o, w.src, "https://example.org/data-platform")
+    f.score(db, ana, o, lab, 85, fit_word="strong", provisional=True)
+    db.commit()
+    out = MemoryTransport()
+    assert send_alerts(db, ana, settings, out, NOW) == 1
+    [mail] = out.outbox
+    assert "TENDER · FOR AI LAB (PROVISIONAL)" in mail.text
+    assert "TENDER · FOR AI LAB (PROVISIONAL)" in mail.html

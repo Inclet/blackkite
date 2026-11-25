@@ -127,6 +127,31 @@ def test_items_fields_and_full_dates(db, ana, world, settings):
     assert v.more_count == 0 and v.closing_soon == []
 
 
+def test_provisional_profile_label(db, ana, world, settings):
+    """Spec 7.1: "TENDER · FOR AI LAB (PROVISIONAL)" in the digest, HTML and text."""
+    lab = f.profile(db, ana, "AI lab", provisional=True)
+    o = item(db, ana, world, "Data platform", 90, prof=lab)
+    db.execute(
+        sa.text(
+            "UPDATE user_opportunity_score SET score_breakdown = "
+            "jsonb_set(score_breakdown, '{provisional}', 'true') "
+            "WHERE opportunity_id = :o"
+        ),
+        {"o": o.id},
+    )
+    item(db, ana, world, "Trucks", 80)
+    db.commit()
+    v = build_digest(db, ana, settings, MONDAY).view
+    labels = [i.label for i in v.items]
+    assert labels == ["TENDER · FOR AI LAB (PROVISIONAL)", "TENDER · FOR IRONJI-TRADE"]
+    out = MemoryTransport()
+    assert send_digest(db, ana, settings, out, MONDAY).status == "sent"
+    [mail] = out.outbox
+    assert "TENDER · FOR AI LAB (PROVISIONAL)" in mail.text
+    assert "TENDER · FOR AI LAB (PROVISIONAL)" in mail.html
+    assert "IRONJI-TRADE (PROVISIONAL)" not in mail.text
+
+
 def test_wording_helpers():
     assert (
         W.deadline_line(kigali(2026, 12, 7, 23, 59)) == "Closes Monday 7 December 2026"

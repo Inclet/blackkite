@@ -92,6 +92,8 @@ class DigestItem(_Model):
     stream: Stream
     # Profile name shown as "FOR <NAME>"; None when the item is not tied to one profile.
     profile_label: str | None = None
+    # The matched profile is provisional (spec 7.1): "FOR AI LAB (PROVISIONAL)".
+    provisional: bool = False
     title: str
     url: LinkUrl
     # One line in our own words: organisation and the reason it matched.
@@ -108,7 +110,10 @@ class DigestItem(_Model):
     def label(self) -> str:
         label = self.stream.upper()
         if self.profile_label:
-            label += f" · FOR {self.profile_label.upper()}"
+            profile = self.profile_label
+            if self.provisional:
+                profile += " (provisional)"
+            label += f" · FOR {profile.upper()}"
         return label
 
     @property
