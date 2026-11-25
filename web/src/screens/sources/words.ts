@@ -104,3 +104,27 @@ export function gateText(runs: number): string {
 }
 
 export const GATE_HELP = 'A good run finished without an error and found at least one item.';
+
+/** The status graph (api sources/service.py ALLOWED), in the order the buttons appear. */
+export const STATUS_MOVES: Record<SourceStatus, readonly SourceStatus[]> = {
+  suggested: ['testing', 'retired'],
+  testing: ['active', 'paused', 'retired'],
+  active: ['paused', 'retired', 'testing'],
+  paused: ['active', 'testing', 'retired'],
+  retired: ['testing'],
+};
+
+export function moveLabel(from: SourceStatus, to: SourceStatus): string {
+  if (to === 'active') return from === 'paused' ? 'Make active again' : 'Make active';
+  if (to === 'paused') return 'Pause';
+  if (to === 'retired') return 'Retire';
+  return from === 'suggested' ? 'Start testing' : 'Back to testing';
+}
+
+export const MOVE_DONE: Record<SourceStatus, string> = {
+  active: 'Now active. Members see its items.',
+  testing: 'Now testing. It runs on schedule; its items stay hidden from members.',
+  paused: 'Paused. It is not checked until you make it active or send it back to testing.',
+  retired: 'Retired. It is not checked, and its items are hidden unless another source carries them.',
+  suggested: 'Now suggested.',
+};

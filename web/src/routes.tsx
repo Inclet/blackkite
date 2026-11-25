@@ -1,4 +1,10 @@
 import type { RouteObject } from 'react-router';
+import { AdminHome } from './screens/admin/AdminHome';
+import { AdminReview } from './screens/admin/AdminReview';
+import { AdminSources } from './screens/admin/AdminSources';
+import { AdminSuggestions } from './screens/admin/AdminSuggestions';
+import { AdminUsers } from './screens/admin/AdminUsers';
+import { SourceEditor } from './screens/admin/SourceEditor';
 import { AuthConfirm } from './screens/AuthConfirm';
 import { FeedRoute } from './screens/feed/FeedRoute';
 import { Placeholder } from './screens/Placeholder';
@@ -39,6 +45,14 @@ export const routes: RouteObject[] = [
   { path: '/account', element: <Account /> },
   { path: '/more', element: <More /> },
   { path: '/sources', element: <Sources /> },
+  // Admins only (the server enforces roles regardless); not designed yet (design review).
+  { path: '/admin', element: <AdminHome /> },
+  { path: '/admin/sources', element: <AdminSources /> },
+  { path: '/admin/sources/new', element: <SourceEditor /> },
+  { path: '/admin/sources/:id', element: <SourceEditor /> },
+  { path: '/admin/suggestions', element: <AdminSuggestions /> },
+  { path: '/admin/review', element: <AdminReview /> },
+  { path: '/admin/users', element: <AdminUsers /> },
   { path: '/digest/preview', element: <Placeholder name="Digest preview" /> },
   { path: '/styleguide/foundations', element: <StyleguideFoundations /> },
   { path: '/styleguide/components', element: <StyleguideComponents /> },
