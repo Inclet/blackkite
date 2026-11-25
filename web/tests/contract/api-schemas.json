@@ -2112,6 +2112,7 @@
       "type": "object"
     },
     "UserOut": {
+      "description": "``GET /me`` (kept as it was: snake_case keys, read by the web app).",
       "properties": {
         "created_at": {
           "format": "date-time",
