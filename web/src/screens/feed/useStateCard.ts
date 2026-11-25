@@ -1,4 +1,6 @@
+import type { MouseEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router';
+import { isModifiedClick } from '../../lib/useAppLink';
 import type { StateCardProps, StateKind } from '../../components/StateCard/StateCard';
 import type { FeedModel } from './model';
 
@@ -28,7 +30,12 @@ export function useStateCard(model: FeedModel): StateCardProps | null {
     action: {
       label: card.action.label,
       href,
-      onClick: () => navigate(href),
+      // StateCard hands the link's click event through; without preventDefault the browser would also load the page.
+      onClick: ((event?: MouseEvent) => {
+        if (event && (event.defaultPrevented || isModifiedClick(event))) return;
+        event?.preventDefault();
+        navigate(href);
+      }) as () => void,
     },
   };
 }
