@@ -39,7 +39,7 @@ Answers to the Phase 0 questions, 2026-11-24. Conflict numbers refer to `PLAN.md
 | 33 | Row subtitle top flag (orchestrator) | The top flag replaces the organisation only on Good items (develoPPP on the boards); Strong items show the organisation. Refines 24. |
 | 34 | Urgent alert level (orchestrator, **owner to confirm**) | Chosen as a fit word ("Strong fits only" / "Strong and good fits"), compared against the best active profile's fit word, never the numeric score. Replaces spec 6 `alert_threshold` with `alert_min_fit`. Default: off until the owner chooses. Events and investments carry no fit word, so they never alert (open question). |
 | 35 | Feed order | Closing soonest first, score as tie-break (feed boards: "Closing soonest first"). Ranking by score applies to the digest. |
-| 36 | Re-scoring off the request path | Profile edits and mutes queue a backfill for the worker (debounced 60 s). Renames and pauses re-judge nothing; reactivating always catches up. |
+| 36 | Re-scoring off the request path | Profile edits and mutes queue a backfill for the worker (debounced 60 s; an unmute is due on the next tick). Renames and pauses re-judge nothing; reactivating always catches up. Failed backfills back off (1, 5, 15, 60 min, then hourly) and stop after 6 attempts until the next edit; at most 5 profiles per worker tick, after collection. |
 | 37 | NGO-only calls | A business profile with no organisation type is treated as not an NGO, so an explicit NGO-only call is filtered. |
 | 38 | Dismiss reasons | Optional, one of: not my sector, too small, can't meet the requirements, already knew about it, other. |
 | 39 | Member API paths | Phase 4 member routes and member source routes live under `/api`; `/auth/*`, `GET /me` and `/admin/sources*` stay. |
