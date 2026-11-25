@@ -59,6 +59,16 @@ class Settings(BaseSettings):
     # Bootstrap
     first_admin_email: str | None = None
 
+    # Collectors (spec 10: identify honestly, rate-limit, cache, never retry hard)
+    # Page that says who runs the bot and how to reach them; goes in the User-Agent.
+    bot_contact_url: str | None = None
+    fetch_timeout_seconds: float = 20.0
+    fetch_max_bytes: int = 5_000_000
+    # Seconds between two requests to one host when the source sets no rate_limit.
+    default_rate_limit: float = 5.0
+    # Cron (UTC) for sources whose schedule is NULL: 04:00 UTC = 06:00 Africa/Kigali.
+    default_source_schedule: str = "0 4 * * *"
+
     # Models (decision 14)
     model_extract: str = "claude-haiku-5-5"
     model_score: str = "claude-haiku-5-5"
@@ -94,6 +104,13 @@ def warn_ignored_env(env_file: str | Path | None = ".env") -> list[str]:
     for name in found:
         log.warning("%s is set but ignored; use %s", name, IGNORED_ENV[name])
     return found
+
+
+def user_agent(settings: Settings) -> str:
+    """Honest User-Agent for every collector request."""
+    if settings.bot_contact_url:
+        return f"BlackkiteBot/0.1 (+{settings.bot_contact_url})"
+    return "BlackkiteBot/0.1"
 
 
 @lru_cache

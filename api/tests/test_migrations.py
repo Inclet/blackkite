@@ -67,6 +67,7 @@ def test_schema_has_every_spec_table():
         "user_opportunity_score",  # decision 19: scores per profile, state per user
         "session",
         "login_token",
+        "http_cache",  # conditional GET cache for collectors (not per user)
     }
     assert spec == set(Base.metadata.tables)
 
