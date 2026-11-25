@@ -47,6 +47,17 @@ def test_admin_routes_exist(app):
         ("DELETE", "/admin/invites/{invite_id}"),
         ("GET", "/admin/users"),
         ("POST", "/admin/users/{user_id}/deactivate"),
+        ("GET", "/admin/sources"),
+        ("POST", "/admin/sources"),
+        ("GET", "/admin/sources/{source_id}"),
+        ("PATCH", "/admin/sources/{source_id}"),
+        ("POST", "/admin/sources/{source_id}/status"),
+        ("GET", "/admin/sources/{source_id}/runs"),
+        ("POST", "/admin/sources/test-run"),
+        ("POST", "/admin/sources/{source_id}/test-run"),
+        ("GET", "/admin/source-suggestions"),
+        ("POST", "/admin/source-suggestions/{suggestion_id}/accept"),
+        ("POST", "/admin/source-suggestions/{suggestion_id}/reject"),
     }
 
 

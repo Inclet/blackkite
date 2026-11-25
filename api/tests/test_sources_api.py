@@ -1,0 +1,596 @@
+"""Source registry: admin CRUD, status graph, promotion gate, health, member sources
+page, mutes, suggestions, sandboxed test runs, member visibility (spec 3, 4, 10)."""
+
+from __future__ import annotations
+
+import itertools
+from datetime import UTC, datetime, timedelta
+
+import pytest
+import sqlalchemy as sa
+from fastapi.testclient import TestClient
+
+from blackkite.db.models import (
+    SOURCE_STATUSES,
+    HttpCache,
+    Opportunity,
+    OpportunitySource,
+    Source,
+    SourceRun,
+    SourceSuggestion,
+    UserSourceMute,
+)
+from blackkite.routes.sources import get_preview_client_factory
+from blackkite.sources import service
+from tests.conftest import make_user, sign_in
+from tests.fakes import FakeWeb, make_client
+
+ADMIN = "admin@example.com"
+MEMBER = "member@example.com"
+OTHER = "other@example.com"
+H = "notices.example"
+
+HTML_CONFIG = {
+    "list_url": f"https://{H}/tenders",
+    "selectors": {"item": "li", "title": "a", "deadline": ".dl"},
+}
+LIST_HTML = """<ul>
+<li><a href="/n/1">Invitation for Bids: cold rooms</a> <span class="dl">30 Nov 2026</span></li>
+<li><a href="/n/2">EOI: freight forwarding</a></li>
+</ul>"""
+
+
+def new_client(app) -> TestClient:
+    return TestClient(app, base_url="https://testserver")
+
+
+@pytest.fixture
+def web(app) -> FakeWeb:
+    w = FakeWeb()
+    w.html(H, "/tenders", LIST_HTML)
+    app.dependency_overrides[get_preview_client_factory] = lambda: (
+        lambda: make_client(w)
+    )
+    return w
+
+
+@pytest.fixture
+def admin(app, db, outbox):
+    user = make_user(db, ADMIN, role="admin")
+    c = sign_in(new_client(app), outbox, ADMIN)
+    c.user = user
+    return c
+
+
+@pytest.fixture
+def member(app, db, outbox):
+    user = make_user(db, MEMBER)
+    c = sign_in(new_client(app), outbox, MEMBER)
+    c.user = user
+    return c
+
+
+def body(**over):
+    b = {
+        "name": "Notices Example",
+        "home_url": f"https://{H}",
+        "publisher": "Example Authority",
+        "streams": ["tender"],
+        "kind": "original",
+        "collector_type": "html_list",
+        "config": HTML_CONFIG,
+        "rate_limit": 5,
+        "access_note": "robots allows /tenders (synthetic test)",
+    }
+    b.update(over)
+    return b
+
+
+def add_source(db, name="S", status="testing", **kw) -> Source:
+    s = Source(
+        name=name,
+        home_url=f"https://{name.lower()}.example",
+        streams=kw.pop("streams", ["tender"]),
+        kind=kw.pop("kind", "original"),
+        collector_type=kw.pop("collector_type", "html_list"),
+        config=kw.pop("config", HTML_CONFIG),
+        status=status,
+        **kw,
+    )
+    db.add(s)
+    db.commit()
+    return s
+
+
+def add_run(db, source, status="succeeded", found=3, ago_hours=1.0, new=0):
+    started = datetime.now(UTC) - timedelta(hours=ago_hours)
+    r = SourceRun(
+        source_id=source.id,
+        status=status,
+        items_found=found,
+        items_new=new,
+        started_at=started,
+        finished_at=None if status == "running" else started + timedelta(minutes=1),
+        error="boom" if status == "failed" else None,
+    )
+    db.add(r)
+    db.commit()
+    return r
+
+
+def count(db, model) -> int:
+    return db.scalar(sa.select(sa.func.count()).select_from(model))
+
+
+# --- create / edit --------------------------------------------------------------------
+
+
+def test_admin_creates_source_as_testing(admin, db):
+    r = admin.post("/admin/sources", json=body(status="active"))
+    assert r.status_code == 422  # status is not settable on create
+    r = admin.post("/admin/sources", json=body())
+    assert r.status_code == 201, r.text
+    out = r.json()
+    assert out["status"] == "testing"
+    assert out["added_by"] == str(admin.user.id)
+    assert out["health"] == "unknown" and out["promotion_runs"] == 0
+    assert out["effective_schedule"] == "0 4 * * *"
+    assert out["config"]["selectors"]["title"] == {"css": "a"}
+    assert admin.post("/admin/sources", json=body()).status_code == 409
+
+
+@pytest.mark.parametrize(
+    "over",
+    [
+        {"home_url": "http://169.254.169.254/"},
+        {"home_url": "https://u:p@notices.example/"},
+        {"config": {**HTML_CONFIG, "list_url": "http://localhost:8000/"}},
+        {
+            "config": {
+                "list_url": f"https://{H}/",
+                "selectors": {"item": "[[", "title": "a"},
+            }
+        },
+        {"schedule": "every day"},
+        {"schedule": "0 25 * * *"},
+        {"streams": []},
+        {"streams": ["tender", "tender"]},
+        {"streams": ["jobs"]},
+        {"kind": "blog"},
+        {"collector_type": "selenium"},
+        {"rate_limit": 0},
+        {"collector_type": "search_query", "config": {"queries": []}},
+    ],
+)
+def test_create_rejects_bad_input(admin, over):
+    r = admin.post("/admin/sources", json=body(**over))
+    assert r.status_code == 422, r.text
+
+
+def test_unimplemented_type_config_stored_as_given(admin):
+    r = admin.post(
+        "/admin/sources",
+        json=body(collector_type="rss", config={"feed_url": f"https://{H}/feed"}),
+    )
+    assert r.status_code == 201 and r.json()["config"] == {
+        "feed_url": f"https://{H}/feed"
+    }
+
+
+def test_edit_tracks_config_changes(admin, db):
+    sid = admin.post("/admin/sources", json=body()).json()["id"]
+    r = admin.patch(f"/admin/sources/{sid}", json={"access_note": "rechecked"})
+    assert r.status_code == 200 and r.json()["config_changed_at"] is None
+    r = admin.patch(f"/admin/sources/{sid}", json={"config": HTML_CONFIG})
+    assert r.json()["config_changed_at"] is None  # same config: not a change
+    new_cfg = {**HTML_CONFIG, "max_pages": 2}
+    r = admin.patch(f"/admin/sources/{sid}", json={"config": new_cfg})
+    assert r.status_code == 200 and r.json()["config_changed_at"] is not None
+    assert (
+        admin.patch(f"/admin/sources/{sid}", json={"status": "active"}).status_code
+        == 422
+    )
+    bad = admin.patch(
+        f"/admin/sources/{sid}", json={"config": {"list_url": "ftp://x/"}}
+    )
+    assert bad.status_code == 422
+    # switching type re-validates the stored config against the new type
+    assert (
+        admin.patch(
+            f"/admin/sources/{sid}", json={"collector_type": "search_query"}
+        ).status_code
+        == 422
+    )
+    assert admin.patch(f"/admin/sources/{sid}", json={"name": None}).status_code == 422
+
+
+def test_member_cannot_manage_sources(member, db):
+    s = add_source(db)
+    assert member.post("/admin/sources", json=body()).status_code == 403
+    assert member.patch(f"/admin/sources/{s.id}", json={"name": "x"}).status_code == 403
+    assert (
+        member.post(
+            f"/admin/sources/{s.id}/status", json={"status": "paused"}
+        ).status_code
+        == 403
+    )
+    assert member.post(f"/admin/sources/{s.id}/test-run").status_code == 403
+
+
+# --- status graph and promotion -----------------------------------------------------------
+
+EXPECTED_EDGES = {
+    ("suggested", "testing"),
+    ("suggested", "retired"),
+    ("testing", "active"),
+    ("testing", "paused"),
+    ("testing", "retired"),
+    ("active", "paused"),
+    ("active", "retired"),
+    ("active", "testing"),
+    ("paused", "active"),
+    ("paused", "testing"),
+    ("paused", "retired"),
+    ("retired", "testing"),
+}
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [(a, b) for a, b in itertools.product(SOURCE_STATUSES, repeat=2) if a != b],
+)
+def test_status_graph(db, old, new):
+    s = add_source(db, status=old)
+    add_run(db, s)
+    add_run(db, s)
+    if (old, new) in EXPECTED_EDGES:
+        service.change_status(db, s, new)
+        assert s.status == new
+    else:
+        with pytest.raises(service.TransitionError):
+            service.change_status(db, s, new)
+        db.rollback()
+
+
+def test_promotion_needs_two_successful_runs_with_items(admin, db):
+    s = add_source(db)
+    promote = lambda: admin.post(
+        f"/admin/sources/{s.id}/status", json={"status": "active"}
+    )
+    r = promote()
+    assert r.status_code == 409 and "has 0" in r.json()["detail"]
+    add_run(db, s, "succeeded", found=4, ago_hours=5)
+    add_run(db, s, "failed", found=0, ago_hours=4)
+    add_run(db, s, "succeeded", found=0, ago_hours=3)  # ran, but found nothing
+    add_run(db, s, "running", found=9, ago_hours=0.1)
+    assert promote().status_code == 409
+    add_run(db, s, "succeeded", found=2, ago_hours=2)
+    r = promote()
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "active"
+
+
+def test_promotion_counts_only_runs_after_config_change(admin, db):
+    s = add_source(db)
+    add_run(db, s, ago_hours=3)
+    add_run(db, s, ago_hours=2)
+    admin.patch(
+        f"/admin/sources/{s.id}", json={"config": {**HTML_CONFIG, "max_pages": 3}}
+    )
+    r = admin.post(f"/admin/sources/{s.id}/status", json={"status": "active"})
+    assert r.status_code == 409
+    db.expire_all()
+    s = db.get(Source, s.id)
+    r1 = add_run(db, s, ago_hours=0)
+    r1.started_at = s.config_changed_at + timedelta(seconds=1)
+    r2 = add_run(db, s, ago_hours=0)
+    r2.started_at = s.config_changed_at + timedelta(seconds=2)
+    db.commit()
+    r = admin.post(f"/admin/sources/{s.id}/status", json={"status": "active"})
+    assert r.status_code == 200, r.text
+
+
+def test_pause_retire_and_invalid_transition(admin, db):
+    s = add_source(db)
+    ok = admin.post(f"/admin/sources/{s.id}/status", json={"status": "paused"})
+    assert ok.status_code == 200 and ok.json()["status"] == "paused"
+    ok = admin.post(f"/admin/sources/{s.id}/status", json={"status": "retired"})
+    assert ok.status_code == 200
+    bad = admin.post(f"/admin/sources/{s.id}/status", json={"status": "paused"})
+    assert bad.status_code == 409 and "retired to paused" in bad.json()["detail"]
+    assert (
+        admin.post(f"/admin/sources/{s.id}/status", json={"status": "gone"}).status_code
+        == 422
+    )
+
+
+# --- health ---------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("runs", "health"),
+    [
+        ([], "unknown"),
+        ([("succeeded", 3)], "ok"),
+        ([("succeeded", 3), ("succeeded", 1), ("succeeded", 2)], "ok"),
+        ([("succeeded", 3), ("succeeded", 1), ("succeeded", 2), ("failed", 0)], "ok"),
+        ([("succeeded", 0)], "degraded"),
+        ([("succeeded", 3), ("failed", 0)], "degraded"),
+        ([("succeeded", 3), ("succeeded", 3), ("failed", 0)], "degraded"),
+        ([("failed", 0), ("succeeded", 3)], "degraded"),
+        ([("failed", 0)], "failing"),
+        ([("failed", 0), ("failed", 0), ("succeeded", 5)], "failing"),
+    ],
+)
+def test_health_rule(runs, health):
+    assert service.health_from_runs(runs) == health
+
+
+def test_health_ignores_running_runs(db):
+    s = add_source(db, status="active")
+    add_run(db, s, "succeeded", found=2, ago_hours=2)
+    add_run(db, s, "running", found=0, ago_hours=0.1)
+    assert service.source_stats(db, [s.id])[s.id].health == "ok"
+
+
+# --- member sources page ------------------------------------------------------------------------
+
+
+def _carry(db, source, n, *, ago_days=1.0):
+    for i in range(n):
+        o = Opportunity(stream="tender", title=f"{source.name} item {i}")
+        db.add(o)
+        db.flush()
+        seen = datetime.now(UTC) - timedelta(days=ago_days)
+        db.add(
+            OpportunitySource(
+                opportunity_id=o.id,
+                source_id=source.id,
+                url=f"https://x.example/{source.name}/{i}/{ago_days}",
+                first_seen=seen,
+                last_seen=seen,
+            )
+        )
+    db.commit()
+
+
+def test_members_see_only_active_sources_with_stats(member, db):
+    a = add_source(
+        db, "Alpha", "active", publisher="Alpha Org", streams=["tender", "event"]
+    )
+    add_source(db, "Testing", "testing")
+    add_source(db, "Paused", "paused")
+    add_source(db, "Retired", "retired")
+    add_run(db, a, "succeeded", found=5, ago_hours=30)
+    add_run(db, a, "failed", found=0, ago_hours=2)
+    _carry(db, a, 3, ago_days=2)
+    _carry(db, a, 2, ago_days=45)  # outside the 30-day window
+    r = member.get("/sources")
+    assert r.status_code == 200
+    (row,) = r.json()
+    assert row["name"] == "Alpha" and row["publisher"] == "Alpha Org"
+    assert row["kind"] == "original" and row["streams"] == ["tender", "event"]
+    assert row["items_30d"] == 3
+    assert row["health"] == "degraded"
+    assert row["last_success_at"] is not None and row["muted"] is False
+    assert "config" not in row and "access_note" not in row
+
+
+def test_sources_page_needs_sign_in(app):
+    assert new_client(app).get("/sources").status_code == 401
+
+
+def test_mute_is_per_user(app, member, db, outbox):
+    a = add_source(db, "Alpha", "active")
+    t = add_source(db, "Hidden", "testing")
+    assert member.post(f"/sources/{a.id}/mute").status_code == 204
+    assert member.post(f"/sources/{a.id}/mute").status_code == 204  # idempotent
+    assert member.post(f"/sources/{t.id}/mute").status_code == 404
+    assert member.get("/sources").json()[0]["muted"] is True
+
+    make_user(db, OTHER)
+    other = sign_in(new_client(app), outbox, OTHER)
+    assert other.get("/sources").json()[0]["muted"] is False
+
+    a.status = "paused"
+    db.commit()
+    assert member.delete(f"/sources/{a.id}/mute").status_code == 204
+    assert count(db, UserSourceMute) == 0
+
+
+# --- suggestions --------------------------------------------------------------------------------
+
+
+def test_suggestion_flow(app, admin, member, db, outbox):
+    r = member.post(
+        "/source-suggestions",
+        json={
+            "url": "https://calls.example/rw",
+            "note": "Monthly grant calls for Rwanda",
+        },
+    )
+    assert r.status_code == 201, r.text
+    sid = r.json()["id"]
+    assert r.json()["status"] == "suggested"
+    assert (
+        member.post("/source-suggestions", json={"url": "http://10.0.0.1/"}).status_code
+        == 422
+    )
+    assert (
+        member.post("/source-suggestions", json={"url": "notaurl"}).status_code == 422
+    )
+
+    make_user(db, OTHER)
+    other = sign_in(new_client(app), outbox, OTHER)
+    assert other.get("/source-suggestions").json() == []
+    assert [s["id"] for s in member.get("/source-suggestions").json()] == [sid]
+    assert member.get("/admin/source-suggestions").status_code == 403
+
+    queue = admin.get("/admin/source-suggestions").json()
+    assert [q["id"] for q in queue] == [sid] and queue[0]["user_id"] == str(
+        member.user.id
+    )
+
+    # Creating from a suggestion that is not accepted yet is refused.
+    assert admin.post("/admin/sources", json=body(suggestion_id=sid)).status_code == 409
+    r = admin.post(f"/admin/source-suggestions/{sid}/accept")
+    assert r.status_code == 200
+    out = r.json()
+    assert out["status"] == "accepted" and out["reviewed_by"] == str(admin.user.id)
+    assert out["reviewed_at"] is not None
+    assert admin.post(f"/admin/source-suggestions/{sid}/reject").status_code == 409
+    assert admin.get("/admin/source-suggestions").json() == []
+
+    created = admin.post("/admin/sources", json=body(suggestion_id=sid))
+    assert created.status_code == 201 and created.json()["status"] == "testing"
+    db.expire_all()
+    assert str(db.get(SourceSuggestion, sid).source_id) == created.json()["id"]
+    again = admin.post("/admin/sources", json=body(name="Other", suggestion_id=sid))
+    assert again.status_code == 409
+
+
+def test_reject_suggestion(admin, member):
+    sid = member.post("/source-suggestions", json={"url": "https://x.example/"}).json()[
+        "id"
+    ]
+    r = admin.post(f"/admin/source-suggestions/{sid}/reject")
+    assert r.status_code == 200 and r.json()["status"] == "rejected"
+    assert [
+        s["id"] for s in admin.get("/admin/source-suggestions?status=rejected").json()
+    ] == [sid]
+
+
+# --- test runs -----------------------------------------------------------------------------------
+
+
+def test_saved_test_run_previews_and_writes_nothing(admin, db, web):
+    s = add_source(db, "Notices", "testing")
+    before = (db.get(Source, s.id).updated_at, db.get(Source, s.id).status)
+    r = admin.post(f"/admin/sources/{s.id}/test-run")
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["ok"] is True and out["error"] is None
+    assert [(i["title"], i["url"], i["listed_deadline"]) for i in out["items"]] == [
+        ("Invitation for Bids: cold rooms", f"https://{H}/n/1", "30 Nov 2026"),
+        ("EOI: freight forwarding", f"https://{H}/n/2", None),
+    ]
+    assert out["requests_made"] == 2  # robots.txt + list page
+    assert count(db, SourceRun) == 0
+    assert count(db, Opportunity) == 0 and count(db, OpportunitySource) == 0
+    assert count(db, HttpCache) == 0
+    db.expire_all()
+    assert (db.get(Source, s.id).updated_at, db.get(Source, s.id).status) == before
+
+
+def test_unsaved_test_run(admin, db, web):
+    r = admin.post(
+        "/admin/sources/test-run",
+        json={"collector_type": "html_list", "config": HTML_CONFIG, "rate_limit": 2},
+    )
+    assert r.status_code == 200 and r.json()["ok"] and len(r.json()["items"]) == 2
+    assert count(db, Source) == 0 and count(db, SourceRun) == 0
+
+
+def test_test_run_failure_is_reported_not_raised(admin, db, web):
+    seed = add_source(db, "Seed", config={"placeholder": True})
+    r = admin.post(f"/admin/sources/{seed.id}/test-run").json()
+    assert r["ok"] is False and "placeholder" in r["error"]
+    rss = add_source(db, "Feed", collector_type="rss", config={"feed_url": "x"})
+    r = admin.post(f"/admin/sources/{rss.id}/test-run").json()
+    assert r["ok"] is False and "not implemented yet" in r["error"]
+    r = admin.post(
+        "/admin/sources/test-run",
+        json={"collector_type": "search_query", "config": {"queries": ["x"]}},
+    ).json()
+    assert r["ok"] is False and r["error"] == "no search key configured"
+    assert web.requests == []
+    assert count(db, SourceRun) == 0
+
+
+def test_test_run_uses_the_url_guard(app, admin, db):
+    """Sandboxed: a hostname that resolves to an internal address is never fetched."""
+    w = FakeWeb()
+    app.dependency_overrides[get_preview_client_factory] = lambda: (
+        lambda: make_client(w, resolver=lambda h, p: ["10.0.0.7"])
+    )
+    r = admin.post(
+        "/admin/sources/test-run",
+        json={"collector_type": "html_list", "config": HTML_CONFIG},
+    )
+    assert r.status_code == 200 and r.json()["ok"] is False
+    assert "non-public" in r.json()["error"]
+    assert w.requests == []
+    r = admin.post(
+        "/admin/sources/test-run",
+        json={
+            "collector_type": "html_list",
+            "config": {**HTML_CONFIG, "list_url": "http://[::1]/"},
+        },
+    )
+    assert r.status_code == 422
+
+
+def test_run_history(admin, db):
+    s = add_source(db)
+    add_run(db, s, "failed", ago_hours=2)
+    add_run(db, s, "succeeded", ago_hours=1, found=7, new=2)
+    runs = admin.get(f"/admin/sources/{s.id}/runs").json()
+    assert [(r["status"], r["items_found"], r["items_new"]) for r in runs] == [
+        ("succeeded", 7, 2),
+        ("failed", 3, 0),
+    ]
+    assert runs[1]["error"] == "boom"
+    assert admin.get(f"/admin/sources/{s.id}").json()["health"] == "degraded"
+
+
+# --- member visibility of catalogue items -----------------------------------------------------------
+
+
+def test_member_visibility_hides_testing_only_items(db):
+    owner = make_user(db, MEMBER)
+    other = make_user(db, OTHER)
+    active = add_source(db, "Active", "active")
+    testing = add_source(db, "Testing", "testing")
+
+    def opp(title, sources, **kw):
+        o = Opportunity(stream="tender", title=title, **kw)
+        db.add(o)
+        db.flush()
+        for s in sources:
+            db.add(
+                OpportunitySource(
+                    opportunity_id=o.id, source_id=s.id, url=f"https://x/{title}"
+                )
+            )
+        return o
+
+    opp("from active", [active])
+    opp("from testing only", [testing])
+    opp("from both", [active, testing])
+    opp("no source", [])
+    opp("private mine", [], visibility="private", owner_user_id=owner.id)
+    opp("private theirs", [], visibility="private", owner_user_id=other.id)
+    db.commit()
+
+    titles = set(
+        db.scalars(
+            sa.select(Opportunity.title).where(
+                service.member_visible_opportunity(owner.id)
+            )
+        )
+    )
+    assert titles == {"from active", "from both", "no source", "private mine"}
+
+    links = (
+        db.execute(
+            sa.select(Source.name)
+            .join(OpportunitySource, OpportunitySource.source_id == Source.id)
+            .join(Opportunity, Opportunity.id == OpportunitySource.opportunity_id)
+            .where(
+                Opportunity.title == "from both", service.member_visible_source_link()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert links == ["Active"]

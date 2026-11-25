@@ -4,7 +4,7 @@ from fastapi import FastAPI
 
 from blackkite.auth.ratelimit import LinkRequestLimiter
 from blackkite.config import Settings, get_settings, warn_ignored_env
-from blackkite.routes import admin, auth
+from blackkite.routes import admin, auth, sources
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -19,6 +19,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(auth.router)
     app.include_router(admin.router)
+    app.include_router(sources.member_router)
+    app.include_router(sources.admin_router)
 
     @app.get("/healthz", include_in_schema=False)
     def healthz() -> dict[str, str]:
