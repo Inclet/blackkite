@@ -93,7 +93,11 @@ def test_tokens_are_signed_per_kind_and_user(db, ana, settings):
         forged = base64.urlsafe_b64encode(bytes(bad)).rstrip(b"=").decode()
         assert U.read_token(settings, forged) is None
     other = settings.model_copy(
-        update={"unsubscribe_secret": type(settings.unsubscribe_secret)("x" * 40)}
+        update={
+            "unsubscribe_secret": type(settings.unsubscribe_secret)(
+                "other-secret-0123456789abcdefghij"
+            )
+        }
     )
     assert U.read_token(other, t) is None
     for junk in ("", "abc", "!" * 67, t + "A", t[:-1]):

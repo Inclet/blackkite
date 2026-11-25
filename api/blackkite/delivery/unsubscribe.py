@@ -33,7 +33,7 @@ from urllib.parse import quote
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-from blackkite.config import Settings
+from blackkite.config import GENERATE_HINT, Settings, secret_problem
 from blackkite.db.models import DigestSetting, User, new_unsubscribe_nonce
 
 Kind = Literal["digest", "alert"]
@@ -58,7 +58,15 @@ def _secret(settings: Settings) -> bytes:
             "BK_UNSUBSCRIBE_SECRET is not set; digests and alerts need it for "
             "their unsubscribe links"
         )
-    return settings.unsubscribe_secret.get_secret_value().encode()
+    value = settings.unsubscribe_secret.get_secret_value()
+    # Checked again here: Settings built without validation (model_copy,
+    # model_construct) must not sign links with an example value either.
+    if problem := secret_problem(value):
+        raise UnsubscribeNotConfigured(
+            f"BK_UNSUBSCRIBE_SECRET {problem}; {GENERATE_HINT}; digests and "
+            "alerts are not sent until it is set"
+        )
+    return value.encode()
 
 
 def _mac(secret: bytes, data: bytes) -> bytes:

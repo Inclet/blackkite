@@ -14,6 +14,67 @@ from dotenv import dotenv_values
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Secrets (spec 10): values copied from .env.example or docs, and strings with
+# too little variety, are refused rather than trusted as keys or passwords.
+# Known example values, compared case-insensitively after trimming.
+KNOWN_PLACEHOLDERS = frozenset(
+    {
+        "change-me",
+        "changeme",
+        "change_me",
+        "password",
+        "secret",
+        "replace-me",
+        "replace_me",
+        "placeholder",
+        "replace-with-a-random-secret-of-at-least-32-chars",
+    }
+)
+# Words that mark a value as an example rather than a generated secret.
+PLACEHOLDER_MARKERS = (
+    "replace-with",
+    "replace_with",
+    "change-me",
+    "changeme",
+    "placeholder",
+    "example",
+    "your-",
+    "your_",
+    "xxxxxxxx",
+)
+# Fewest distinct characters a signing secret may have. 12, not 16: a
+# `openssl rand -hex 32` value (64 hex digits) lacks at least one of the 16
+# digits about one time in four, but almost never has fewer than 12.
+MIN_SECRET_DISTINCT_CHARS = 12
+
+
+def placeholder_problem(value: str) -> str | None:
+    """Why ``value`` looks like an example value, or None."""
+    v = value.strip().lower()
+    if v in KNOWN_PLACEHOLDERS:
+        return "is an example value"
+    if any(m in v for m in PLACEHOLDER_MARKERS):
+        return "looks like an example value"
+    return None
+
+
+def secret_problem(value: str, *, min_length: int = 32) -> str | None:
+    """Why ``value`` cannot be used as a signing secret, or None."""
+    if problem := placeholder_problem(value):
+        return problem
+    if len(value) < min_length:
+        return f"must be at least {min_length} characters"
+    if len(set(value)) < MIN_SECRET_DISTINCT_CHARS:
+        return (
+            f"has fewer than {MIN_SECRET_DISTINCT_CHARS} different characters; "
+            "use a random value"
+        )
+    return None
+
+
+GENERATE_HINT = "generate one with `openssl rand -hex 32`"
+
+
 # Dimension of opportunity.embedding. Voyage AI embedding models (decision 12)
 # return 1024-dimensional vectors by default. Changing this needs a migration
 # that alters the column type, and every stored embedding must be recomputed.
@@ -21,7 +82,10 @@ EMBEDDING_DIM = 1024
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="BK_", env_file=".env", extra="ignore")
+    # Errors never echo the value: it may be a secret.
+    model_config = SettingsConfigDict(
+        env_prefix="BK_", env_file=".env", extra="ignore", hide_input_in_errors=True
+    )
 
     # Where this runs: "dev" on a developer's machine, "prod" on the VPS (set
     # BK_ENV=prod in the deploy .env). Dev-only commands (bk demo-seed) refuse
@@ -74,7 +138,7 @@ class Settings(BaseSettings):
     # One-click unsubscribe (decision 43). Links in every digest and alert are
     # HMAC-signed with this secret (at least 32 characters; required to send
     # digests and alerts). Changing it revokes every link already sent.
-    unsubscribe_secret: SecretStr | None = Field(default=None, min_length=32)
+    unsubscribe_secret: SecretStr | None = None
     # Public origin of the API, for the List-Unsubscribe one-click URL
     # ({api_public_url}/api/unsubscribe?token=...). Unset: the web origin, which
     # proxies /api/* to the API.
@@ -124,6 +188,33 @@ class Settings(BaseSettings):
     resend_api_key: SecretStr | None = Field(
         default=None, validation_alias=AliasChoices("RESEND_API_KEY")
     )
+
+    @field_validator("unsubscribe_secret")
+    @classmethod
+    def _real_secret(cls, v: SecretStr | None) -> SecretStr | None:
+        """Refuse example values and weak strings at startup (not only when a
+        digest is sent)."""
+        if v is not None and (problem := secret_problem(v.get_secret_value())):
+            raise ValueError(f"BK_UNSUBSCRIBE_SECRET {problem}; {GENERATE_HINT}")
+        return v
+
+    @field_validator("database_url")
+    @classmethod
+    def _real_database_password(cls, v: str) -> str:
+        """Refuse a database URL that still carries the example password."""
+        from sqlalchemy.engine import make_url
+        from sqlalchemy.exc import ArgumentError
+
+        try:
+            password = make_url(v).password
+        except ArgumentError:
+            return v  # not a URL; the engine reports it when connecting
+        if password and (problem := placeholder_problem(str(password))):
+            raise ValueError(
+                f"BK_DATABASE_URL: the password {problem}; set POSTGRES_PASSWORD "
+                "to a real password and use it here"
+            )
+        return v
 
     @field_validator(
         "unsubscribe_secret",
