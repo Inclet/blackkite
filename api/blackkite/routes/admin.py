@@ -1,10 +1,10 @@
 """Admin endpoints: invites and users (spec 3). Every route requires an admin."""
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 import sqlalchemy as sa
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 
 from blackkite.auth import service
 from blackkite.auth.deps import AdminUser, DbDep, SettingsDep, require_admin
@@ -47,9 +47,14 @@ def create_invite(
 
 
 @router.get("/invites", response_model=list[InviteOut])
-def list_invites(db: DbDep) -> list[InviteOut]:
+def list_invites(
+    db: DbDep,
+    status: Annotated[Literal["pending", "expired", "accepted"] | None, Query()] = None,
+) -> list[InviteOut]:
+    """Newest first, each with its status (pending, expired, accepted)."""
     rows = db.scalars(sa.select(Invite).order_by(Invite.created_at.desc())).all()
-    return [_invite_out(i) for i in rows]
+    out = [_invite_out(i) for i in rows]
+    return [i for i in out if status is None or i.status == status]
 
 
 @router.delete("/invites/{invite_id}", status_code=204)
@@ -66,6 +71,7 @@ def delete_invite(invite_id: uuid.UUID, db: DbDep) -> Response:
 
 @router.get("/users", response_model=list[AdminUserOut])
 def list_users(db: DbDep) -> list[AdminUserOut]:
+    """Every account, oldest first: role, status, created, last sign-in."""
     rows = db.scalars(sa.select(User).order_by(User.created_at)).all()
     return [AdminUserOut.model_validate(u) for u in rows]
 

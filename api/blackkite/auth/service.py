@@ -222,6 +222,7 @@ def invite_status(invite: Invite) -> str:
 def create_session(db: DB, settings: Settings, user: User) -> str:
     """Store a new session for `user`; return the raw id for the cookie."""
     raw = new_token()
+    user.last_sign_in_at = now()
     db.add(
         Session(
             token_hash=hash_token(raw),

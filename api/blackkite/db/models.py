@@ -106,6 +106,9 @@ class User(Base):
         default=new_unsubscribe_nonce,
         server_default=sa.text(UNSUBSCRIBE_NONCE_SQL),
     )
+    # When a session was last started (magic link spent). For the admin users
+    # screen; NULL = never signed in.
+    last_sign_in_at: Mapped[datetime | None] = _ts()
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 

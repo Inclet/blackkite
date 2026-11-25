@@ -49,6 +49,7 @@ class AdminUserOut(CamelModel):
     role: str
     status: str
     created_at: datetime
+    last_sign_in_at: datetime | None  # None: never signed in
 
 
 class InviteOut(CamelModel):

@@ -202,8 +202,67 @@ def test_reinvite_replaces_pending_invite(admin_client, db, outbox):
 
 def test_list_users(admin_client, db):
     make_user(db, MEMBER)
-    emails = [u["email"] for u in admin_client.get("/api/admin/users").json()]
-    assert emails == [ADMIN, MEMBER]
+    users = admin_client.get("/api/admin/users").json()
+    assert [u["email"] for u in users] == [ADMIN, MEMBER]
+    assert set(users[0]) == {
+        "id",
+        "email",
+        "name",
+        "role",
+        "status",
+        "createdAt",
+        "lastSignInAt",
+    }
+    assert [(u["role"], u["status"]) for u in users] == [
+        ("admin", "active"),
+        ("member", "active"),
+    ]
+    # The admin signed in (fixture); the member never has.
+    assert users[0]["lastSignInAt"] is not None
+    assert users[1]["lastSignInAt"] is None
+
+
+def test_last_sign_in_moves_on_each_sign_in(app, admin_client, db, outbox):
+    member = make_user(db, MEMBER)
+    sign_in(_new_client(app), outbox, MEMBER)
+    db.refresh(member)
+    first = member.last_sign_in_at
+    assert first is not None
+    sign_in(_new_client(app), outbox, MEMBER)
+    db.refresh(member)
+    assert member.last_sign_in_at > first
+    row = [
+        u for u in admin_client.get("/api/admin/users").json() if u["email"] == MEMBER
+    ]
+    assert row[0]["lastSignInAt"] is not None
+
+
+def test_invites_list_filters_by_status(app, admin_client, db, outbox):
+    for e in ("a@example.com", "b@example.com", "c@example.com"):
+        admin_client.post("/api/admin/invites", json={"email": e})
+    sign_in(_new_client(app), outbox, "a@example.com")
+    db.execute(
+        sa.update(Invite)
+        .where(Invite.email == "b@example.com")
+        .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+    )
+    db.commit()
+    url = "/api/admin/invites"
+    assert {i["email"]: i["status"] for i in admin_client.get(url).json()} == {
+        "a@example.com": "accepted",
+        "b@example.com": "expired",
+        "c@example.com": "pending",
+    }
+    for status, email in [
+        ("accepted", "a@example.com"),
+        ("expired", "b@example.com"),
+        ("pending", "c@example.com"),
+    ]:
+        got = admin_client.get(url, params={"status": status}).json()
+        assert [i["email"] for i in got] == [email]
+    inv = admin_client.get(url).json()[0]
+    assert {"invitedBy", "createdAt", "expiresAt", "acceptedAt"} <= inv.keys()
+    assert admin_client.get(url, params={"status": "bogus"}).status_code == 422
 
 
 def test_deactivation_kills_sessions_and_links(app, admin_client, db, outbox):
