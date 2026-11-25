@@ -23,7 +23,7 @@ from blackkite.member.view import load_rows
 from blackkite.seed.demo import DEMO_ITEMS, DemoRefused, demo_seed
 from blackkite.sources.service import source_stats
 from tests import factories as f
-from tests.conftest import make_user
+from tests.conftest import TEST_UNSUBSCRIBE_SECRET, make_user
 
 ADMIN = "owner@example.com"
 NOW = datetime(2026, 11, 25, 10, 0, tzinfo=UTC)
@@ -147,6 +147,7 @@ def cli_env(db_url, engine, monkeypatch, tmp_path):
     monkeypatch.setenv("BK_DATABASE_URL", db_url)
     monkeypatch.setenv("BK_FIRST_ADMIN_EMAIL", ADMIN)
     monkeypatch.setenv("BK_MAIL_TRANSPORT", "console")
+    monkeypatch.setenv("BK_UNSUBSCRIBE_SECRET", TEST_UNSUBSCRIBE_SECRET)
     for fn in (get_settings, get_engine, get_sessionmaker):
         fn.cache_clear()
     yield monkeypatch

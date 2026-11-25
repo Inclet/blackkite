@@ -52,6 +52,7 @@ from blackkite.delivery.digest import (
 )
 from blackkite.delivery.logo import kite_png
 from blackkite.delivery.mail import InlineImage, Mail, MailTransport
+from blackkite.delivery.unsubscribe import links as unsubscribe_links
 from blackkite.member.view import (
     CLOSED_STATUSES,
     SCORED_STREAMS,
@@ -73,8 +74,9 @@ DIGEST_CAP = 12
 STREAM_CAPS = {"investment": 3, "event": 3}
 CLOSING_DAYS = 7
 FREQUENCY_PHRASE = "every Monday"
-# The web's digest settings screen: "Change how often", "Stop these emails" and
-# the alert email's settings link all go there.
+# The web's digest settings screen: "Change how often" and the alert email's
+# settings link go there. "Stop these emails" is a signed one-click link
+# (decision 43, delivery/unsubscribe.py).
 SETTINGS_PATH = "/settings/digest"
 EXCLUDED_STATES = ("dismissed", "done")
 
@@ -255,6 +257,8 @@ class BuiltDigest:
     items: list[Row] = field(default_factory=list)
     closing: list[Row] = field(default_factory=list)
     more_count: int = 0
+    # List-Unsubscribe headers for the mail (decision 43).
+    headers: tuple[tuple[str, str], ...] = ()
 
     @property
     def opportunity_ids(self) -> list[uuid.UUID]:
@@ -359,6 +363,8 @@ def build_digest(
     if not shown and not closing:
         return built
     total = len(shown) + more
+    unsub = unsubscribe_links(settings, user, "digest")
+    built.headers = unsub.headers
     built.view = DigestView(
         subject=_subject(shown, closing, total, now),
         first_name=first_name(user),
@@ -373,15 +379,24 @@ def build_digest(
             source_count=active_sources_checked(db, now),
             frequency=FREQUENCY_PHRASE,
             change_frequency_url=f"{web}{SETTINGS_PATH}",
-            unsubscribe_url=f"{web}{SETTINGS_PATH}",
+            unsubscribe_url=unsub.page_url,
         ),
     )
     return built
 
 
-def digest_mail(view: DigestView, to: str) -> Mail:
+def digest_mail(
+    view: DigestView, to: str, headers: tuple[tuple[str, str], ...] = ()
+) -> Mail:
     subject, html, text = render_digest(view)
-    return Mail(to=to, subject=subject, text=text, html=html, inline=(kite_image(),))
+    return Mail(
+        to=to,
+        subject=subject,
+        text=text,
+        html=html,
+        inline=(kite_image(),),
+        headers=headers,
+    )
 
 
 @dataclass(frozen=True)
@@ -433,7 +448,7 @@ def send_digest(
         return SendOutcome("already_sent")
     address = setting.address if setting is not None else user.email
     try:
-        transport.send(digest_mail(built.view, address))
+        transport.send(digest_mail(built.view, address, built.headers))
     except Exception:
         db.rollback()
         raise

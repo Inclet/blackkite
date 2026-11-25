@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import dotenv_values
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Dimension of opportunity.embedding. Voyage AI embedding models (decision 12)
@@ -61,6 +61,17 @@ class Settings(BaseSettings):
     smtp_password: SecretStr | None = None
     smtp_starttls: bool = False
 
+    # One-click unsubscribe (decision 43). Links in every digest and alert are
+    # HMAC-signed with this secret (at least 32 characters; required to send
+    # digests and alerts). Changing it revokes every link already sent.
+    unsubscribe_secret: SecretStr | None = Field(default=None, min_length=32)
+    # Public origin of the API, for the List-Unsubscribe one-click URL
+    # ({api_public_url}/api/unsubscribe?token=...). Unset: the web origin, which
+    # proxies /api/* to the API.
+    api_public_url: str | None = None
+    # Optional address for a List-Unsubscribe mailto: link. Unset: no mailto.
+    unsubscribe_mailto: str | None = None
+
     # Weekly digest: Mondays at this hour, Africa/Kigali (decision 18).
     digest_hour: int = Field(default=7, ge=0, le=23)
 
@@ -100,6 +111,14 @@ class Settings(BaseSettings):
     brave_api_key: SecretStr | None = Field(
         default=None, validation_alias=AliasChoices("BRAVE_API_KEY")
     )
+
+    @field_validator(
+        "unsubscribe_secret", "api_public_url", "unsubscribe_mailto", mode="before"
+    )
+    @classmethod
+    def _empty_is_unset(cls, v: object) -> object:
+        """An empty variable in .env means "not set"."""
+        return None if isinstance(v, str) and not v.strip() else v
 
 
 # Variables that no longer set anything, with what to use instead.

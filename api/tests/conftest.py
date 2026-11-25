@@ -30,6 +30,9 @@ from blackkite.db.session import get_db
 from blackkite.delivery.mail import MemoryTransport, get_mail_transport
 from tests.pgcluster import ThrowawayCluster
 
+# Test-only signing key for unsubscribe links (never a real secret).
+TEST_UNSUBSCRIBE_SECRET = "test-unsubscribe-secret-0123456789abcdef"
+
 API_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -150,6 +153,7 @@ def settings(db_url: str) -> Settings:
         web_base_url="https://testserver",
         cookie_secure=True,
         mail_transport="console",
+        unsubscribe_secret=TEST_UNSUBSCRIBE_SECRET,
         _env_file=None,
     )
 

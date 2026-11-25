@@ -45,6 +45,7 @@ from blackkite.delivery.build import (
     kite_image,
 )
 from blackkite.delivery.mail import Mail, MailTransport
+from blackkite.delivery.unsubscribe import links as unsubscribe_links
 from blackkite.member.view import (
     CLOSED_STATUSES,
     FIT_RANK,
@@ -123,6 +124,8 @@ def alert_view(
     settings: Settings,
     now: datetime,
     min_fit: str | None = None,
+    *,
+    unsubscribe_url: str,
 ) -> AlertView:
     web = settings.web_base_url.rstrip("/")
     if len(rows) == 1:
@@ -146,6 +149,7 @@ def alert_view(
         items=[digest_item(r, web) for r in rows],
         cta_url=f"{web}/",
         settings_url=f"{web}{SETTINGS_PATH}",
+        unsubscribe_url=unsubscribe_url,
         **({"footer_line": footer_line(min_fit)} if min_fit in FIT_PHRASES else {}),
     )
 
@@ -174,6 +178,8 @@ def send_alerts(
     rows = alert_rows(db, user, setting, now)
     if not rows:
         return 0
+    # Before claiming anything: no alert goes out without its unsubscribe link.
+    unsub = unsubscribe_links(settings, user, "alert")
     claimed = set(
         db.scalars(
             insert(AlertLog)
@@ -197,7 +203,9 @@ def send_alerts(
         db.rollback()
         return 0
     subject, html, text = render_alert(
-        alert_view(rows, settings, now, setting.alert_min_fit)
+        alert_view(
+            rows, settings, now, setting.alert_min_fit, unsubscribe_url=unsub.page_url
+        )
     )
     try:
         transport.send(
@@ -207,6 +215,7 @@ def send_alerts(
                 text=text,
                 html=html,
                 inline=(kite_image(),),
+                headers=unsub.headers,
             )
         )
     except Exception:
