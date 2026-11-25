@@ -99,7 +99,7 @@ def feed_rows(db: Session, user: User, f: FeedFilters, now: datetime) -> list[Ro
             o for o in opps if (d := sort_date(o)) is not None and today <= d <= last
         ]
     rows = load_rows(db, user, opps, profile_id=f.profile_id)
-    rows = [r for r in rows if not _hidden_without_fit_word(r)]
+    rows = [r for r in rows if not _hidden_without_fit_word(r, user.id)]
     return closing_soonest(rows, now)[:FEED_LIMIT]
 
 
@@ -107,12 +107,15 @@ def feed_rows(db: Session, user: User, f: FeedFilters, now: datetime) -> list[Ro
 KEPT_STATES = ("saved", "acting", "done")
 
 
-def _hidden_without_fit_word(row: Row) -> bool:
+def _hidden_without_fit_word(row: Row, user_id: uuid.UUID) -> bool:
     """Decision 41: a tender or funding item whose best active-profile row has no
     fit word (scored below "possible", or not scored yet) stays out of the feed,
-    unless the caller has saved it, is acting on it or has done it. Events and
-    investments never carry a fit word and are unaffected."""
+    unless the caller has saved it, is acting on it or has done it, or it is
+    the caller's own private item. Events and investments never carry a fit
+    word and are unaffected."""
     if row.opp.stream not in SCORED_STREAMS:
+        return False
+    if row.opp.visibility == "private" and row.opp.owner_user_id == user_id:
         return False
     if row.state in KEPT_STATES:
         return False

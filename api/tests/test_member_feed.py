@@ -1068,3 +1068,31 @@ def test_profile_filter_uses_that_profiles_fit_word(db, ana, login):
     assert _ids(c) == [str(opp.id)]
     assert _ids(c, profile=str(a.id)) == [str(opp.id)]
     assert _ids(c, profile=str(b.id)) == []
+
+
+def test_own_private_items_stay_without_a_fit_word(db, ana, login):
+    """Decision 41 follow-up: the caller's own private items are exempt."""
+    ben = make_user(db, "ben@example.com")
+    prof = f.profile(db, ana, "P")
+    unscored = f.opportunity(
+        db, "Mine unscored", visibility="private", owner_user_id=ana.id
+    )
+    low = f.opportunity(
+        db, "Mine low", stream="funding", visibility="private", owner_user_id=ana.id
+    )
+    f.score(db, ana, low, prof, 10, fit_word=None)
+    theirs = f.opportunity(
+        db, "Ben's unscored", visibility="private", owner_user_id=ben.id
+    )
+    src = f.source(db, "Src")
+    public = f.opportunity(db, "Public unscored")
+    f.link(db, public, src)
+    db.commit()
+    c = login(ana.email)
+    by_title = {i["title"]: i for i in _items(c)}
+    assert set(by_title) == {"Mine unscored", "Mine low"}
+    assert by_title["Mine unscored"]["fit"] == "not-scored"
+    assert by_title["Mine low"]["fit"] is None
+    # Ben sees his own, never Ana's.
+    assert [i["title"] for i in _items(login(ben.email))] == ["Ben's unscored"]
+    assert theirs.id and unscored.id
