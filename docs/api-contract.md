@@ -1,0 +1,46 @@
+# Phase 4 contracts
+
+Fixed before Phase 4 work starts so three tracks can build in parallel. Change only through the orchestrator.
+
+## 1. Scoring output (scoring track writes, member API reads)
+
+One `user_opportunity_score` row per (user, opportunity, profile). Columns: `score` (0–100, internal, never shown), `score_reason` (one sentence), `score_breakdown` (jsonb):
+
+```json
+{
+  "version": 1,
+  "components": {"fit": 0-40, "eligibility": 0-20, "value": 0-15, "time": 0-15, "source": 0-10},
+  "fit_confidence": 0.0-1.0,
+  "eligibility_confidence": 0.0-1.0,
+  "fit_word": "strong" | "good" | "possible" | null,
+  "reasons": ["It asks for transport, warehousing and logistics support, which you offer."],
+  "flags": [{"code": "owned_fleet", "label": "May require owned fleet", "quote": "copies of vehicle logbooks", "to_check": "WFP's transport call asks for vehicle logbooks, so this one may require an owned fleet."}],
+  "provisional": false,
+  "hard_filtered": null | "outside_rwanda" | "deadline_passed" | "stream_not_selected" | "muted_source_only" | "ineligible" | "below_min_value",
+  "model": "claude-haiku-5-5", "prompt_version": "score-v1", "scored_at": "ISO-8601"
+}
+```
+
+- `fit_word` rule (proposal, owner to confirm): **strong** when fit_confidence ≥ 0.7, eligibility_confidence ≥ 0.7 and no flags; **good** when fit_confidence ≥ 0.6 and eligibility_confidence ≥ 0.5 with at least one flag; **possible** when fit_confidence ≥ 0.4 (eligibility unclear); otherwise null (not shown). Investments and events: fit_word null (decision 24 / boards), ranked on time, verification and source kind (spec 7.1).
+- Hard-filtered pairs are stored with `hard_filtered` set and never shown or sent.
+- A user's best profile for an item = highest score among non-filtered rows; that profile's name is the item's `profile`.
+
+## 2. Member API (member-API track builds, web track consumes)
+
+All JSON in camelCase. Every route requires a session; every query filters by the caller (spec 6) and by `pipeline/visibility.py`.
+
+| Route | Returns |
+|---|---|
+| `GET /feed?stream=&profile=&window=&verification=&source=&state=` | `FeedContent` exactly as `web/src/fixtures/types.ts` (user, sources, digest, items: `FeedItem[]`). Default order: closing soonest first (feed boards). Excludes dismissed, hard-filtered and not-visible items. |
+| `GET /opportunities/{id}` | `FeedItem` plus `detail.fields` (extracted fields with their snippets), `detail.sources` (visible sources: name, url, isOriginal, firstSeen, lastSeen), `detail.documents` (names only, never content), `detail.changes`, `detail.note`. 404 for items the caller can't see, including other users' private items. |
+| `PUT /opportunities/{id}/state` | body `{state: "saved"\|"dismissed"\|"acting"\|"done"\|"unseen", dismissReason?}`; per (user, opportunity) (decision 19). |
+| `PUT /opportunities/{id}/note` | body `{note}` |
+| `GET/POST/PATCH/DELETE /profiles` | the caller's profiles; editing triggers a backfill (spec 5). |
+| `GET/PUT /digest-settings` | channel email, frequency weekly\|off, day mon, alertThreshold, streams (decision 18). |
+| `GET /shortlist` | saved/acting items, `FeedItem[]`, soonest first. |
+
+Field mapping for `FeedItem`: `fit` = fit_word, or `"not-scored"` when no score row exists for a scorable stream, or null for events/investments/closed; `topFlag` = first flag label; `detail.reasons` = reasons; `detail.toCheck` = first flag's `to_check`; `detail.trust.state` = `evidence._trust` (confirmed/unconfirmed/conflict); `detail.trust.desktop` / `.phone` = the two copy templates the web fixtures already use, filled from the source names and dates; `deadline` = Kigali date of deadline_at.
+
+## 3. Digest (member-API track)
+
+`DigestView` from `api/blackkite/delivery/digest.py` is built from scores: top items across the user's profiles, capped at 12, each stream capped (investments and events at 3 each, spec 7.1), plus a "closing in 7 days" block for saved items and the value line (spec 8). Weekly on Monday; urgent alert for items above the user's threshold closing within 5 days, the day they are found. Delivery is Mailpit/console only; nothing real is sent without the owner's go-ahead.
