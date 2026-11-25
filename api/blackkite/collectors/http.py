@@ -25,7 +25,8 @@ from __future__ import annotations
 import json
 import time
 import zlib
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -278,6 +279,8 @@ class FetchClient:
         self._host_delay: dict[str, float] = {}
         self._robots: dict[str, _Robots] = {}
         self.requests_made = 0
+        # Set by ClientFetcher.remembering(): sees every successful response.
+        self.on_response: Callable[[str, FetchResponse], None] | None = None
 
     # public -----------------------------------------------------------------------
 
@@ -295,6 +298,19 @@ class FetchClient:
         ``robots=False`` only for documented APIs called with a key (not crawling)."""
         if params:
             url = str(httpx.URL(url, params=params))
+        resp = self._get(url, headers, delay, robots, use_cache)
+        if self.on_response is not None:
+            self.on_response(url, resp)
+        return resp
+
+    def _get(
+        self,
+        url: str,
+        headers: dict[str, str] | None,
+        delay: float | None,
+        robots: bool,
+        use_cache: bool,
+    ) -> FetchResponse:
         for _ in range(self.max_redirects + 1):
             check_url(url)
             if robots and not self._robots_allow(url, delay):
@@ -452,17 +468,60 @@ class FetchClient:
 
 class ClientFetcher:
     """Adapts a ``FetchClient`` to the pipeline's ``Fetcher`` protocol
-    (``get(url) -> (content_type, bytes)``), so the enrich stage's detail pages and
-    PDFs go through the same URL guard, robots.txt, per-host delay, User-Agent, size
-    cap and cache as the source's listing pages."""
+    (``get(url) -> (content_type, bytes, final_url)``), so the enrich stage's detail
+    pages and PDFs go through the same URL guard, robots.txt, per-host delay,
+    User-Agent, size cap and cache as the source's listing pages.
+
+    Per-run memo: inside ``with fetcher.remembering():`` every page the collector
+    fetches through the client is kept in memory (by requested, final and
+    canonical URL), and ``get`` answers from it instead of requesting the page
+    again, e.g. an html_list detail page that enrich would otherwise fetch twice.
+    One ClientFetcher lives for one run; the memo is bounded (MEMO_MAX_ENTRIES,
+    MEMO_MAX_BYTES) and dropped with it.
+    """
+
+    MEMO_MAX_ENTRIES = 500
+    MEMO_MAX_BYTES = 50_000_000
 
     def __init__(self, client: FetchClient, delay: float | None = None) -> None:
         self.client = client
         self.delay = delay
+        self.memo: dict[str, FetchResponse] = {}
+        self._memo_bytes = 0
+        self.memo_hits = 0
+
+    @staticmethod
+    def _keys(url: str) -> set[str]:
+        from blackkite.pipeline.normalise import canonical_url
+
+        return {url, canonical_url(url)}
+
+    def _remember(self, requested: str, resp: FetchResponse) -> None:
+        if (
+            len(self.memo) >= self.MEMO_MAX_ENTRIES
+            or self._memo_bytes + len(resp.content) > self.MEMO_MAX_BYTES
+        ):
+            return
+        self._memo_bytes += len(resp.content)
+        for key in self._keys(requested) | self._keys(resp.url):
+            self.memo[key] = resp
+
+    @contextmanager
+    def remembering(self) -> Iterator[ClientFetcher]:
+        previous = self.client.on_response
+        self.client.on_response = self._remember
+        try:
+            yield self
+        finally:
+            self.client.on_response = previous
 
     def get(self, url: str) -> tuple[str, bytes, str]:
         """(content type, body, final URL after redirects)."""
-        resp = self.client.get(url, delay=self.delay)
+        resp = next((self.memo[k] for k in self._keys(url) if k in self.memo), None)
+        if resp is not None:
+            self.memo_hits += 1
+        else:
+            resp = self.client.get(url, delay=self.delay)
         return resp.headers.get("content-type", ""), resp.content, resp.url
 
 

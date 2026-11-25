@@ -479,3 +479,50 @@ def test_items_failed_is_stored_and_shown(db, web, monkeypatch):
     from blackkite.routes.source_schemas import RunOut
 
     assert RunOut.model_validate(run).items_failed == 1
+
+
+def test_detail_pages_fetched_by_html_list_are_not_fetched_again(db, web, tmp_path):
+    s = add_source(
+        db,
+        "Detailed",
+        config={**CONFIG, "detail": {"selectors": {"snippet": "p"}, "max_items": 5}},
+    )
+    llm, emb = FakeLLM(extraction), FakeEmbedder()
+    make_deps = pipeline_deps(tmp_path / "data", llm=llm, embedder=emb)
+    seen = []
+
+    def deps(fetcher):
+        seen.append(fetcher)
+        return make_deps(fetcher)
+
+    run = runner.run_source(
+        db, s, client=make_client(web), make_deps=deps, now=lambda: NOW
+    )
+    assert (run.status, run.items_new) == ("succeeded", 2), run.error
+    # Each detail page requested once: by the collector; enrich used the memo.
+    assert web.paths(H) == ["/robots.txt", "/tenders", "/n/1", "/n/2"]
+    [fetcher] = seen
+    assert fetcher.memo_hits == 2
+    assert fetcher.client.on_response is None  # only while collecting
+    assert len(llm.calls) == 2 and "Closing date: 10 December 2026" in (
+        llm.calls[0]["user"] + llm.calls[1]["user"]
+    )
+
+
+def test_client_fetcher_memo_is_bounded_and_canonical():
+    from blackkite.collectors.http import ClientFetcher
+
+    web = FakeWeb()
+    web.html(H, "/a", "a")
+    web.html(H, "/b", "b")
+    client = make_client(web)
+    f = ClientFetcher(client)
+    f.MEMO_MAX_ENTRIES = 1
+    with f.remembering():
+        client.get(f"https://{H}/a?utm_source=x")
+        client.get(f"https://{H}/b")
+    # Canonical form of the first URL is a hit; the second was not kept (limit).
+    assert f.get(f"https://{H}/a")[1] == b"a"
+    assert f.get(f"https://{H}/b")[1] == b"b"
+    assert f.memo_hits == 1
+    assert web.paths(H) == ["/robots.txt", "/a?utm_source=x", "/b", "/b"]

@@ -85,8 +85,11 @@ def run_source(
         collector = build_collector(
             source.collector_type, client, brave_api_key=brave_api_key
         )
-        items = collector.fetch(source)
+        # The run's fetcher remembers what the collector fetched (detail pages),
+        # so enrich does not request the same page again.
         fetcher = ClientFetcher(client, delay=source.rate_limit)
+        with fetcher.remembering():
+            items = collector.fetch(source)
         deps = (make_deps or ingest.default_deps)(fetcher)
         result = ingest.ingest_items(session, source, items, deps=deps, now=now())
         run.status = "succeeded"
