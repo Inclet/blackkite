@@ -177,6 +177,33 @@ class SourceOut(CamelModel):
     promotion_runs: int  # qualifying runs toward the 2 needed for active
 
 
+class PromotionGateOut(CamelModel):
+    """Spec 4.3 step 4: runs that succeeded and found items since the config last
+    changed, toward the ``needed`` (2) for promotion to active."""
+
+    good_runs: int
+    needed: int
+    since: datetime | None
+    met: bool
+
+
+class StatusChangeOut(CamelModel):
+    model_config = ConfigDict(from_attributes=True)
+    at: datetime
+    old_status: SourceStatus | None  # None: the source was created
+    new_status: SourceStatus
+    changed_by: uuid.UUID | None  # None: a system change, or a deleted account
+    reason: str | None  # e.g. "config changed" (decision 27)
+
+
+class SourceDetailOut(SourceOut):
+    """GET /api/admin/sources/{id}: the full record, the promotion gate and the
+    status history, newest first (history starts with migration 0012)."""
+
+    promotion_gate: PromotionGateOut
+    status_history: list[StatusChangeOut]
+
+
 class MemberSourceOut(CamelModel):
     """Sources page (spec 4.4)."""
 
@@ -202,6 +229,11 @@ class RunOut(CamelModel):
     items_new: int
     items_failed: int
     error: str | None
+
+
+class RunPage(CamelModel):
+    total: int
+    items: list[RunOut]
 
 
 class PreviewItemOut(CamelModel):

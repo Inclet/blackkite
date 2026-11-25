@@ -33,10 +33,14 @@ from blackkite.routes.source_schemas import (
     PreviewIn,
     PreviewItemOut,
     PreviewOut,
+    PromotionGateOut,
     RunOut,
+    RunPage,
+    SourceDetailOut,
     SourceIn,
     SourceOut,
     SourcePatch,
+    StatusChangeOut,
     StatusIn,
     SuggestionIn,
     SuggestionOut,
@@ -185,10 +189,10 @@ def admin_list_sources(
     return _source_out(db, settings, list(db.scalars(q)))
 
 
-@admin_router.post("/sources", status_code=201, response_model=SourceOut)
+@admin_router.post("/sources", status_code=201, response_model=SourceDetailOut)
 def create_source(
     body: SourceIn, admin: AdminUser, db: DbDep, settings: SettingsDep
-) -> SourceOut:
+) -> SourceDetailOut:
     suggestion = None
     if body.suggestion_id is not None:
         suggestion = db.get(SourceSuggestion, body.suggestion_id)
@@ -208,16 +212,33 @@ def create_source(
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "A source with that name already exists") from None
+    service.record_status(db, source, None, admin, "created")
     if suggestion is not None:
         suggestion.source_id = source.id
     db.commit()
     db.refresh(source)
-    return _source_out(db, settings, [source])[0]
+    return _detail_out(db, settings, source)
 
 
-@admin_router.get("/sources/{source_id}", response_model=SourceOut)
-def get_source(source_id: uuid.UUID, db: DbDep, settings: SettingsDep) -> SourceOut:
-    return _source_out(db, settings, [_get_source(db, source_id)])[0]
+def _detail_out(db, settings, source: Source) -> SourceDetailOut:
+    base = _source_out(db, settings, [source])[0]
+    return SourceDetailOut(
+        **dict(base),
+        promotion_gate=PromotionGateOut(**asdict(service.promotion_gate(db, source))),
+        status_history=[
+            StatusChangeOut.model_validate(c)
+            for c in service.status_history(db, source)
+        ],
+    )
+
+
+@admin_router.get("/sources/{source_id}", response_model=SourceDetailOut)
+def get_source(
+    source_id: uuid.UUID, db: DbDep, settings: SettingsDep
+) -> SourceDetailOut:
+    """The full record for the admin source screen (spec 4.4): config,
+    access_note, run stats, promotion-gate progress and status history."""
+    return _detail_out(db, settings, _get_source(db, source_id))
 
 
 def _normalised_config(source: Source) -> dict | None:
@@ -229,10 +250,14 @@ def _normalised_config(source: Source) -> dict | None:
         return None
 
 
-@admin_router.patch("/sources/{source_id}", response_model=SourceOut)
+@admin_router.patch("/sources/{source_id}", response_model=SourceDetailOut)
 def edit_source(
-    source_id: uuid.UUID, body: SourcePatch, db: DbDep, settings: SettingsDep
-) -> SourceOut:
+    source_id: uuid.UUID,
+    body: SourcePatch,
+    admin: AdminUser,
+    db: DbDep,
+    settings: SettingsDep,
+) -> SourceDetailOut:
     """Edit a source. Changing ``collector_type`` or ``config`` of an ``active``
     source sends it back to ``testing`` in the same request (owner's ruling,
     2026-11-25): promotion then needs two good runs of the new config again, and
@@ -269,44 +294,57 @@ def edit_source(
         raise HTTPException(409, "A source with that name already exists") from None
     if config_changed and source.status == "active":
         # Also recomputes verification for the source's items.
-        service.change_status(db, source, "testing")
+        service.change_status(db, source, "testing", admin, "config changed")
     elif kind_changed:
         refresh_verification_for_source(db, source.id)
     db.commit()
     db.refresh(source)
-    return _source_out(db, settings, [source])[0]
+    return _detail_out(db, settings, source)
 
 
-@admin_router.post("/sources/{source_id}/status", response_model=SourceOut)
+@admin_router.post("/sources/{source_id}/status", response_model=SourceDetailOut)
 def set_status(
-    source_id: uuid.UUID, body: StatusIn, db: DbDep, settings: SettingsDep
-) -> SourceOut:
+    source_id: uuid.UUID,
+    body: StatusIn,
+    admin: AdminUser,
+    db: DbDep,
+    settings: SettingsDep,
+) -> SourceDetailOut:
     """Promote (active), pause, retire, or send back to testing. See the graph in
     sources/service.py."""
     source = _get_source(db, source_id)
     try:
-        service.change_status(db, source, body.status)
+        service.change_status(db, source, body.status, admin)
     except service.TransitionError as e:
         raise HTTPException(409, str(e)) from None
     db.commit()
     db.refresh(source)
-    return _source_out(db, settings, [source])[0]
+    return _detail_out(db, settings, source)
 
 
-@admin_router.get("/sources/{source_id}/runs", response_model=list[RunOut])
+@admin_router.get("/sources/{source_id}/runs", response_model=RunPage)
 def source_runs(
     source_id: uuid.UUID,
     db: DbDep,
+    status: Annotated[Literal["running", "succeeded", "failed"] | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
-) -> list[RunOut]:
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> RunPage:
+    """Run history, newest first, with each failed run's error text (the error
+    log is ``status=failed``)."""
     _get_source(db, source_id)
+    where = [SourceRun.source_id == source_id]
+    if status:
+        where.append(SourceRun.status == status)
+    total = db.scalar(sa.select(sa.func.count()).select_from(SourceRun).where(*where))
     rows = db.scalars(
         sa.select(SourceRun)
-        .where(SourceRun.source_id == source_id)
-        .order_by(SourceRun.started_at.desc())
+        .where(*where)
+        .order_by(SourceRun.started_at.desc(), SourceRun.id)
         .limit(limit)
+        .offset(offset)
     )
-    return [RunOut.model_validate(r) for r in rows]
+    return RunPage(total=total or 0, items=[RunOut.model_validate(r) for r in rows])
 
 
 # --- admin: test runs ------------------------------------------------------------------

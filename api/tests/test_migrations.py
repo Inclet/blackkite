@@ -70,6 +70,7 @@ def test_schema_has_every_spec_table():
         "login_token",
         "http_cache",  # conditional GET cache for collectors (not per user)
         "alert_log",  # urgent alerts sent, one per (user, opportunity)
+        "source_status_change",  # admin audit: source status history (spec 4.4)
     }
     assert spec == set(Base.metadata.tables)
 

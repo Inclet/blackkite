@@ -560,7 +560,9 @@ def test_run_history(admin, db):
     s = add_source(db)
     add_run(db, s, "failed", ago_hours=2)
     add_run(db, s, "succeeded", ago_hours=1, found=7, new=2)
-    runs = admin.get(f"/api/admin/sources/{s.id}/runs").json()
+    page = admin.get(f"/api/admin/sources/{s.id}/runs").json()
+    assert page["total"] == 2
+    runs = page["items"]
     assert [(r["status"], r["itemsFound"], r["itemsNew"]) for r in runs] == [
         ("succeeded", 7, 2),
         ("failed", 3, 0),
@@ -571,8 +573,84 @@ def test_run_history(admin, db):
     partly = add_run(db, s, "succeeded", ago_hours=0.5, found=4, new=1)
     partly.items_failed = 2
     db.commit()
-    latest = admin.get(f"/api/admin/sources/{s.id}/runs").json()[0]
+    latest = admin.get(f"/api/admin/sources/{s.id}/runs").json()["items"][0]
     assert (latest["itemsFound"], latest["itemsFailed"]) == (4, 2)
+
+
+def test_runs_are_paginated_and_filter_the_error_log(admin, db):
+    s = add_source(db)
+    for h in range(5):
+        add_run(db, s, "failed" if h % 2 else "succeeded", ago_hours=h + 1)
+    url = f"/api/admin/sources/{s.id}/runs"
+    first = admin.get(url, params={"limit": 2}).json()
+    rest = admin.get(url, params={"limit": 2, "offset": 2}).json()
+    assert first["total"] == rest["total"] == 5
+    assert len(first["items"]) == 2 and len(rest["items"]) == 2
+    times = [r["startedAt"] for r in first["items"] + rest["items"]]
+    assert times == sorted(times, reverse=True) and len(set(times)) == 4
+    errors = admin.get(url, params={"status": "failed"}).json()
+    assert errors["total"] == 2
+    assert {r["error"] for r in errors["items"]} == {"boom"}
+    assert admin.get(url, params={"limit": 0}).status_code == 422
+    other = add_source(db, "Other")
+    assert admin.get(f"/api/admin/sources/{other.id}/runs").json() == {
+        "total": 0,
+        "items": [],
+    }
+
+
+def test_source_detail_has_gate_and_status_history(admin, db):
+    r = admin.post("/api/admin/sources", json=body())
+    assert r.status_code == 201, r.text
+    sid = r.json()["id"]
+    detail = admin.get(f"/api/admin/sources/{sid}").json()
+    assert detail["config"]["list_url"] == HTML_CONFIG["list_url"]
+    assert detail["accessNote"] == body()["access_note"]
+    assert detail["promotionGate"] == {
+        "goodRuns": 0,
+        "needed": 2,
+        "since": None,
+        "met": False,
+    }
+    assert [
+        (h["oldStatus"], h["newStatus"], h["reason"]) for h in detail["statusHistory"]
+    ] == [(None, "testing", "created")]
+    assert detail["statusHistory"][0]["changedBy"] == str(admin.user.id)
+
+    src = db.get(Source, sid)
+    add_run(db, src, "succeeded", found=2, ago_hours=0.2)
+    add_run(db, src, "succeeded", found=0, ago_hours=0.1)  # found nothing: no count
+    gate = admin.get(f"/api/admin/sources/{sid}").json()["promotionGate"]
+    assert (gate["goodRuns"], gate["met"]) == (1, False)
+    assert (
+        admin.post(
+            f"/api/admin/sources/{sid}/status", json={"status": "active"}
+        ).status_code
+        == 409
+    )
+    add_run(db, src, "succeeded", found=1, ago_hours=0.05)
+    r = admin.post(f"/api/admin/sources/{sid}/status", json={"status": "active"})
+    assert r.status_code == 200, r.text
+    assert r.json()["promotionGate"]["met"] is True
+
+    # A config change sends it back to testing (decision 27) and restarts the gate.
+    cfg = {**HTML_CONFIG, "max_pages": 2}
+    r = admin.patch(f"/api/admin/sources/{sid}", json={"config": cfg})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["status"] == "testing"
+    assert out["promotionGate"]["goodRuns"] == 0
+    assert out["promotionGate"]["since"] == out["configChangedAt"]
+    assert [
+        (h["oldStatus"], h["newStatus"], h["reason"]) for h in out["statusHistory"]
+    ] == [
+        ("active", "testing", "config changed"),
+        ("testing", "active", None),
+        (None, "testing", "created"),
+    ]
+    # A refused change records nothing.
+    admin.post(f"/api/admin/sources/{sid}/status", json={"status": "suggested"})
+    assert len(admin.get(f"/api/admin/sources/{sid}").json()["statusHistory"]) == 3
 
 
 # --- member visibility of catalogue items -----------------------------------------------------------
