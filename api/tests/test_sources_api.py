@@ -915,3 +915,84 @@ def test_every_source_admin_route_admits_admins(app, admin, db, web):
         m, url, payload = _valid_request(method, path, src, sug)
         r = admin.request(m, url, json=payload)
         assert r.status_code < 400, (method, path, r.status_code, r.text)
+
+
+# --- mutes re-score the caller (spec 7 hard filter muted_source_only) -------------------
+
+
+def _scored_item(db, member):
+    from datetime import UTC, datetime, timedelta
+
+    from tests import factories as f
+
+    src = f.source(db, "Cold Board")
+    opp = f.opportunity(
+        db,
+        "Cold chain transport of vaccines",
+        tags=["service:cold chain"],
+        deadline_at=datetime.now(UTC) + timedelta(days=20),
+        location="Kigali, Rwanda",
+    )
+    f.link(db, opp, src)
+    f.profile(db, member.user, "Cold", services=["cold chain"])
+    db.commit()
+    return src, opp
+
+
+def _filtered(db, user, opp):
+    from blackkite.db.models import UserOpportunityScore
+
+    db.expire_all()
+    rows = db.scalars(
+        sa.select(UserOpportunityScore).where(
+            UserOpportunityScore.user_id == user.id,
+            UserOpportunityScore.opportunity_id == opp.id,
+        )
+    ).all()
+    return [r.score_breakdown["hard_filtered"] for r in rows]
+
+
+def test_mute_and_unmute_rescore_the_caller(member, db):
+    from blackkite import scoring
+
+    src, opp = _scored_item(db, member)
+    scoring.score_user(db, member.user.id)
+    db.commit()
+    assert _filtered(db, member.user, opp) == [None]
+
+    assert member.post(f"/sources/{src.id}/mute").status_code == 204
+    assert _filtered(db, member.user, opp) == ["muted_source_only"]
+    assert member.get("/feed").json()["items"] == []
+
+    assert member.delete(f"/sources/{src.id}/mute").status_code == 204
+    assert _filtered(db, member.user, opp) == [None]
+    assert [i["id"] for i in member.get("/feed").json()["items"]] == [str(opp.id)]
+
+
+def test_mute_rescores_only_the_caller(app, member, db, outbox, monkeypatch):
+    from blackkite import scoring
+
+    calls = []
+    monkeypatch.setattr(scoring, "score_user", lambda s, uid: calls.append(uid))
+    a = add_source(db, "Alpha", "active")
+    member.post(f"/sources/{a.id}/mute")
+    member.delete(f"/sources/{a.id}/mute")
+    assert calls == [member.user.id, member.user.id]
+
+
+def test_rescoring_failure_keeps_the_mute(member, db, monkeypatch, caplog):
+    from blackkite import scoring
+
+    def broken(session, user_id):
+        session.execute(sa.text("SELECT 1"))
+        raise RuntimeError("scoring blew up")
+
+    monkeypatch.setattr(scoring, "score_user", broken)
+    a = add_source(db, "Alpha", "active")
+    with caplog.at_level("ERROR", logger="blackkite.sources"):
+        assert member.post(f"/sources/{a.id}/mute").status_code == 204
+    assert count(db, UserSourceMute) == 1
+    assert "re-scoring after a mute change failed" in caplog.text
+    with caplog.at_level("ERROR", logger="blackkite.sources"):
+        assert member.delete(f"/sources/{a.id}/mute").status_code == 204
+    assert count(db, UserSourceMute) == 0
