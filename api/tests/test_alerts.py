@@ -176,7 +176,7 @@ def test_alert_html_is_email_safe():
             )
         ],
         cta_url="https://testserver/",
-        settings_url="https://testserver/profiles",
+        settings_url="https://testserver/settings/digest",
     )
     _, html, _ = render_alert(view)
     assert "<b>T</b>" not in html and "&lt;b&gt;T&lt;/b&gt;" in html
@@ -270,5 +270,7 @@ def test_provisional_profile_label_in_alerts(db, ana, w, settings):
     out = MemoryTransport()
     assert send_alerts(db, ana, settings, out, NOW) == 1
     [mail] = out.outbox
+    assert "Change alert settings: https://testserver/settings/digest" in mail.text
+    assert 'href="https://testserver/settings/digest"' in mail.html
     assert "TENDER · FOR AI LAB (PROVISIONAL)" in mail.text
     assert "TENDER · FOR AI LAB (PROVISIONAL)" in mail.html

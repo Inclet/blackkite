@@ -123,7 +123,8 @@ def test_items_fields_and_full_dates(db, ana, world, settings):
     assert second.date_line == "Tuesday 1 to Wednesday 2 December 2026"
     assert second.trust_note is None and second.value_line is None
     assert v.cta_url == "https://testserver/"
-    assert v.footer.change_frequency_url == "https://testserver/profiles"
+    assert v.footer.change_frequency_url == "https://testserver/settings/digest"
+    assert v.footer.unsubscribe_url == "https://testserver/settings/digest"
     assert v.more_count == 0 and v.closing_soon == []
 
 
@@ -150,6 +151,8 @@ def test_provisional_profile_label(db, ana, world, settings):
     assert "TENDER · FOR AI LAB (PROVISIONAL)" in mail.text
     assert "TENDER · FOR AI LAB (PROVISIONAL)" in mail.html
     assert "IRONJI-TRADE (PROVISIONAL)" not in mail.text
+    assert "Change how often: https://testserver/settings/digest" in mail.text
+    assert "Stop these emails: https://testserver/settings/digest" in mail.text
 
 
 def test_wording_helpers():

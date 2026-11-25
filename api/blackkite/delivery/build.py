@@ -73,8 +73,9 @@ DIGEST_CAP = 12
 STREAM_CAPS = {"investment": 3, "event": 3}
 CLOSING_DAYS = 7
 FREQUENCY_PHRASE = "every Monday"
-# The web's profiles and digest settings screen (spec 8 puts them together).
-SETTINGS_PATH = "/profiles"
+# The web's digest settings screen: "Change how often", "Stop these emails" and
+# the alert email's settings link all go there.
+SETTINGS_PATH = "/settings/digest"
 EXCLUDED_STATES = ("dismissed", "done")
 
 
