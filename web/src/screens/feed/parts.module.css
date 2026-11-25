@@ -84,3 +84,9 @@
 .saved svg {
   flex-shrink: 0;
 }
+
+/* "Why not? (optional)": the progress label's type (13px, 500). Design review. */
+.whyLabel {
+  font-size: 13px;
+  font-weight: 500;
+}

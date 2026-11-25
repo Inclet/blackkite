@@ -2,6 +2,7 @@ import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { reference } from '../../fixtures/reference';
 import { setNowForTests } from '../../lib/now';
+import { DISMISS_NAV } from './model';
 import { renderAt, setViewport } from './testUtils';
 
 beforeEach(() => {
@@ -52,12 +53,13 @@ test('the focus hint is used once: back and forward do not refocus that row', as
   // The navigation state is cleared once used, on the same history entry.
   expect(router.state.location.pathname).toBe('/');
   expect(router.state.location.search).toBe('?fixture=reference');
-  expect(router.state.location.state).toBeNull();
+  // Only the dismissal tag stays (it keeps the "Why not?" prompt); the focus hint is gone.
+  expect(router.state.location.state).toEqual(DISMISS_NAV);
   await act(() => router.navigate(-1));
   expect(router.state.location.pathname).toBe('/o/wfp-logistics');
   await act(() => router.navigate(1));
   expect(router.state.location.pathname).toBe('/');
-  expect(router.state.location.state).toBeNull();
+  expect(router.state.location.state).toEqual(DISMISS_NAV);
   expect(document.activeElement).toBe(document.body);
 });
 

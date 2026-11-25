@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ItemState } from '../../api/types';
+import type { DismissReason, ItemState } from '../../api/types';
 import type { StateCardProps, StateKind } from '../../components/StateCard/StateCard';
 import type { FeedContent, FeedItem } from '../../fixtures/types';
 import { sortClosingSoonest } from '../../lib/feed';
@@ -25,6 +25,28 @@ export interface FeedPersist {
   /** States known from the server (each feed item's `state`). */
   initial: Readonly<Record<string, ItemState>>;
   setState: (item: FeedItem, state: ItemState) => Promise<unknown>;
+  /** The optional reason after a dismissal: PUT state dismissed with the code. */
+  setDismissReason: (item: FeedItem, reason: DismissReason) => Promise<unknown>;
+}
+
+/** "Why not? (optional)" after a dismissal, until a reason is chosen or the user navigates. */
+export interface DismissPrompt {
+  id: string;
+  title: string;
+  /** Kept here: a live feed drops the dismissed item once the server has it. */
+  item: FeedItem;
+  /** Distinguishes two dismissals of the same item. */
+  seq: number;
+}
+
+/**
+ * Navigation state on a move the dismissal itself makes (to the next item, back
+ * to the feed): that move keeps the prompt; any other navigation closes it.
+ */
+export const DISMISS_NAV = { dismissNav: true } as const;
+
+export function isDismissNav(state: unknown): boolean {
+  return (state as { dismissNav?: unknown } | null)?.dismissNav === true;
 }
 
 /** Only on live data: the extra detail controls and the status card above the list. */
@@ -49,11 +71,30 @@ export interface FeedModel extends FeedSource {
   byId: (id: string) => FeedItem | undefined;
   saved: ReadonlySet<string>;
   toggleSaved: (id: string) => void;
-  dismiss: (id: string) => void;
+  /** Mark not for me. With `ask`, the optional reason prompt follows. */
+  dismiss: (id: string, ask?: boolean) => void;
+  /** The optional reason prompt after the last "Not for me" / X. */
+  dismissPrompt: DismissPrompt | null;
+  chooseDismissReason: (reason: DismissReason) => void;
+  closeDismissPrompt: () => void;
   /** Polite announcement of the last action (visually hidden). */
   announcement: string;
   live?: LiveExtras;
 }
+
+/** The dismiss reason prompt's wording. Not on any board (design review). */
+export const DISMISS_COPY = {
+  question: 'Why not? (optional)',
+  reasons: {
+    not_my_sector: 'Not my sector',
+    too_small: 'Too small',
+    cant_meet_requirements: "Can't meet the requirements",
+    already_knew: 'Already knew about it',
+    other: 'Other',
+  } satisfies Record<DismissReason, string>,
+  noted: 'Thanks, noted.',
+  reasonFailed: 'We could not reach Blackkite just now, so the reason was not saved.',
+} as const;
 
 const SAVED: ReadonlySet<ItemState> = new Set(['saved', 'acting']);
 
@@ -80,6 +121,8 @@ export function useFeedModel(
   const [states, setStates] = useState<Readonly<Record<string, ItemState>>>(() => persist?.initial ?? {});
   const [announcement, setAnnouncement] = useState('');
   const [failed, setFailed] = useState(false);
+  const [dismissPrompt, setDismissPrompt] = useState<DismissPrompt | null>(null);
+  const promptSeq = useRef(0);
 
   // States the server reports later (a reloaded feed) fill in, never overwrite a local change.
   const touched = useRef(new Set<string>());
@@ -142,7 +185,29 @@ export function useFeedModel(
   );
 
   const toggleSaved = useCallback((id: string) => change(id, SAVED.has(statesRef.current[id]!) ? 'unseen' : 'saved'), [change]);
-  const dismiss = useCallback((id: string) => change(id, 'dismissed'), [change]);
+  const dismiss = useCallback(
+    (id: string, ask = false) => {
+      change(id, 'dismissed');
+      const item = all.find((i) => i.id === id);
+      setDismissPrompt(ask && item ? { id, title: item.title, item, seq: ++promptSeq.current } : null);
+    },
+    [change, all],
+  );
+
+  const closeDismissPrompt = useCallback(() => setDismissPrompt(null), []);
+
+  const chooseDismissReason = useCallback(
+    (reason: DismissReason) => {
+      const prompt = dismissPrompt;
+      if (!prompt) return;
+      setDismissPrompt(null);
+      setAnnouncement(DISMISS_COPY.noted);
+      const p = persistRef.current;
+      if (!p) return;
+      p.setDismissReason(prompt.item, reason).catch(() => setAnnouncement(DISMISS_COPY.reasonFailed));
+    },
+    [dismissPrompt],
+  );
 
   const stateCard = state ? (source.states.find((s) => s.kind === state) ?? null) : null;
 
@@ -150,5 +215,21 @@ export function useFeedModel(
     ? { stateOf: (id) => states[id] ?? 'unseen', setState: change, status, failed }
     : undefined;
 
-  return { ...source, state, stateCard, filter, setFilter, items, byId, saved, toggleSaved, dismiss, announcement, live };
+  return {
+    ...source,
+    state,
+    stateCard,
+    filter,
+    setFilter,
+    items,
+    byId,
+    saved,
+    toggleSaved,
+    dismiss,
+    dismissPrompt,
+    chooseDismissReason,
+    closeDismissPrompt,
+    announcement,
+    live,
+  };
 }

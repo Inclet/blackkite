@@ -13,8 +13,8 @@ import { rowSubtitle } from '../../lib/subtitle';
 import { httpUrl } from '../../lib/externalUrl';
 import { useAppLink } from '../../lib/useAppLink';
 import { Sidebar } from '../shell/Sidebar';
-import type { FeedModel } from './model';
-import { DetailTop, FilterChips, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus, SaveButton } from './parts';
+import { DISMISS_NAV, type FeedModel } from './model';
+import { DetailTop, DismissReasonPrompt, FilterChips, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus, SaveButton } from './parts';
 import { HEADING, rowId } from './focus';
 import { useLiveList, useLiveSelection } from './liveList';
 import { useFeedKeys } from './useFeedKeys';
@@ -45,7 +45,7 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
     return liveItems.current().find((i) => i.id === id);
   };
 
-  const select = (id: string) => navigate(`/o/${id}${search}`, { replace: true, state: liveSelection.select(id) });
+  const select = (id: string, extra?: object) => navigate(`/o/${id}${search}`, { replace: true, state: { ...liveSelection.select(id), ...extra } });
 
   // Where focus goes once a dismissal has re-rendered: a row id, or the heading when the list is empty.
   const pendingFocus = useRef<string | null>(null);
@@ -62,9 +62,10 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
     const row = document.getElementById(rowId(current.id));
     if (!active || active === document.body || row?.contains(active)) pendingFocus.current = next ? next.id : HEADING;
     liveItems.markDismissed(current.id);
-    model.dismiss(current.id);
-    if (next) select(next.id);
-    else navigate(`/${search}`, { replace: true, state: liveSelection.select(null) });
+    // The optional "Why not?" prompt follows; this move to the next item keeps it.
+    model.dismiss(current.id, true);
+    if (next) select(next.id, DISMISS_NAV);
+    else navigate(`/${search}`, { replace: true, state: { ...liveSelection.select(null), ...DISMISS_NAV } });
   };
 
   useEffect(() => {
@@ -133,6 +134,13 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
         <div className={styles.grid}>
           <div className={styles.column}>
             <LiveStatus model={model} />
+            <DismissReasonPrompt
+              model={model}
+              focusAfter={() => {
+                const id = liveSelection.current();
+                (id ? document.getElementById(rowId(id)) : headingRef.current)?.focus();
+              }}
+            />
             {stateCard && (
               <Card gap={12} aria-label="Feed status">
                 <StateCard {...stateCard} />

@@ -148,3 +148,33 @@ test('no name: "Good afternoon" alone, and the phone account button shows the em
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Good afternoon');
 });
+
+test('dismiss reason: X dismisses at once, "Why not? (optional)" sends the chosen code', async ({ page }, testInfo) => {
+  const api = await stubSession(page, testInfo.testId);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, '/');
+  await expect(page.locator(rows)).toHaveCount(4);
+  await page.locator('h1').click();
+  await page.keyboard.press('x');
+  await expect(page.locator(rows)).toHaveCount(3);
+  const why = page.getByRole('group', { name: 'Why not? (optional)' });
+  await expect(why.getByRole('button')).toHaveText(['Not my sector', 'Too small', "Can't meet the requirements", 'Already knew about it', 'Other']);
+  // Reachable by keyboard: Tab from the last stream filter goes into the reasons.
+  await page.getByRole('group', { name: 'Filter by stream' }).getByRole('button', { name: 'Events' }).focus();
+  await page.keyboard.press('Tab');
+  await expect(why.getByRole('button', { name: 'Not my sector' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await expect(why.getByRole('button', { name: "Can't meet the requirements" })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(why).toHaveCount(0);
+  await expect.poll(async () => (await api.seen()).filter((r) => r.method === 'PUT').map((r) => [r.url, JSON.parse(r.body)])).toEqual([
+    ['/api/opportunities/wfp-logistics/state', { state: 'dismissed' }],
+    ['/api/opportunities/wfp-logistics/state', { state: 'dismissed', dismissReason: 'cant_meet_requirements' }],
+  ]);
+  // J/K still move afterwards; the next dismissal asks again, and J closes it.
+  await page.keyboard.press('x');
+  await expect(why).toBeVisible();
+  await page.keyboard.press('j');
+  await expect(why).toHaveCount(0);
+});
