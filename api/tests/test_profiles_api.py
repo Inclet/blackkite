@@ -201,16 +201,16 @@ def test_rename_requests_no_backfill(db, client, ana, backfills):
     backfills.scored(pid)
     assert _edit(client, pid, name="Ironji")["version"] == 2
     assert backfills.ids() == []
-    # Still up to date: activating after a rename and a pause asks for nothing.
+    # Still up to date after a rename, and a pause asks for nothing...
     assert db.get(Profile, uuid.UUID(pid)).scored_version == 2
     _edit(client, pid, active=False)
-    _edit(client, pid, active=True)
     assert backfills.ids() == []
+    # ...but reactivating catches up on items that arrived while it was off.
+    _edit(client, pid, active=True)
+    assert backfills.ids() == [uuid.UUID(pid)]
 
 
-def test_activation_backfills_only_when_not_scored_at_its_version(
-    db, client, ana, backfills
-):
+def test_activation_after_a_paused_edit_backfills(db, client, ana, backfills):
     pid = client.post(
         "/api/profiles", json={"name": "A", "type": "business", "data": IRONJI}
     ).json()["id"]

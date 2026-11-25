@@ -9,7 +9,7 @@ Every edit bumps ``version``. Match and score (spec 5) are not run here: a
 backfill is requested and the worker runs it off the request path
 (scoring/backfill.py). Only scoring-relevant changes ask for one: creating an
 active profile, changing its type or data while active, or activating a profile
-not yet scored at its version. A rename or deactivation asks for nothing; when
+(items may have arrived while it was off; judgement reuse keeps that cheap). A rename or deactivation asks for nothing; when
 the profile was up to date, it stays up to date (``scored_version`` follows).
 """
 
@@ -266,11 +266,14 @@ def update_profile(
     if content_changed:
         if p.active:
             request_backfill(p, now or _now())
-    elif up_to_date:
-        # Name and active do not change scores: still scored at this version.
-        p.scored_version = p.version
-    elif activated:
-        request_backfill(p, now or _now())
+    else:
+        if up_to_date:
+            # Name and active do not change scores: still scored at this version.
+            p.scored_version = p.version
+        if activated:
+            # Items may have arrived while the profile was off; the worker skips
+            # inactive profiles, so catch up. Judgement reuse keeps this cheap.
+            request_backfill(p, now or _now())
     db.commit()
     db.refresh(p)
     return p
