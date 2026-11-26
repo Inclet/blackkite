@@ -79,7 +79,8 @@ def demo_seed_cmd() -> None:
 
     About 10 made-up items across the four streams ("[Demo]" titles, invented
     organisations, example.com links), on two fictional active sources that are
-    never collected. Scoring is rules-only: no model, no API keys, no network,
+    never collected, plus fictional awards and procurement plan items for the
+    benchmarks and "coming up" screens. Scoring is rules-only: no model, no API keys, no network,
     so tenders and funding show at most a "Possible" fit. Re-running replaces
     the demo items with fresh dates.
 
@@ -105,6 +106,7 @@ def demo_seed_cmd() -> None:
         f"demo catalogue: {r.items} fictional items on {r.sources} demo sources"
         + (f" (replaced {r.replaced})" if r.replaced else "")
     )
+    typer.echo(f"fictional procurement data: {r.awards} awards, {r.plans} plan items")
     typer.echo(f"scored for the admin, rules only: {r.stats.summary()}")
     typer.echo("not the Phase 4 exit check; that needs real collected data")
     typer.echo('next: bk digest --user "$BK_FIRST_ADMIN_EMAIL" --dry-run')

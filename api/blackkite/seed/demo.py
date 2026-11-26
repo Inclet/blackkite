@@ -15,6 +15,10 @@ nothing: collector type ``custom`` with the allowlisted no-op ``demo_fictional``
 Scoring is rules-only (no model, no embedder, no API keys): tenders and funding
 get at most a "possible" fit word, as any rules-only score does (scoring/service.py).
 
+Also ~25 FICTIONAL awards and ~10 FICTIONAL procurement plan items on the demo
+issuer source (seed/demo_procurement.py), for the benchmarks and "coming up"
+screens.
+
 This is NOT the Phase 4 exit check, which needs real collected data.
 """
 
@@ -40,6 +44,7 @@ from blackkite.pipeline.validate import status_for, trust_state, verification_fo
 from blackkite.scoring import service as scoring
 from blackkite.scoring.backfill import clear_requests
 from blackkite.scoring.settings import get_scoring_settings
+from blackkite.seed import demo_procurement
 from blackkite.seed.loader import bootstrap
 
 DEMO_MARK = "_demo"
@@ -244,6 +249,8 @@ class DemoResult:
     replaced: int
     stats: scoring.RunStats
     admin_email: str
+    awards: int = 0
+    plans: int = 0
 
 
 def _demo_filter() -> sa.ColumnElement[bool]:
@@ -375,6 +382,7 @@ def demo_seed(
             )
         )
     db.flush()
+    awards, plans = demo_procurement.seed(db, sources["issuer"], now)
     # Real clock, not ``now``: bootstrap stamps its requests with the real time.
     started = datetime.now(UTC)
     pids = list(
@@ -400,4 +408,6 @@ def demo_seed(
         replaced=replaced,
         stats=stats,
         admin_email=admin.email,
+        awards=awards,
+        plans=plans,
     )
