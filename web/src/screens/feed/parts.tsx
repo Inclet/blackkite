@@ -20,6 +20,8 @@ import { COPY } from '../common/copy';
 import { LoadState } from '../common/LoadState';
 import { DISMISS_COPY, isDismissNav, type FeedModel } from './model';
 import { OwnItemControls } from './OwnItem';
+import { DetailSections } from './DetailSections';
+import { useIsDesktop } from '../../lib/useIsDesktop';
 import type { OwnedDetail } from '../../api/m4';
 import styles from './parts.module.css';
 
@@ -227,6 +229,7 @@ export function LiveStatus({ model, className, padding }: { model: FeedModel; cl
  */
 export function LiveDetail({ model, item }: { model: FeedModel; item: FeedItem }) {
   const live = model.live!;
+  const desktop = useIsDesktop();
   const detail = useResource<OwnedDetail>(`opportunity:${item.id}`, (s) => api.opportunity(item.id, s) as Promise<OwnedDetail>);
   const state = live.stateOf(item.id);
   const [note, setNote] = useState('');
@@ -284,6 +287,7 @@ export function LiveDetail({ model, item }: { model: FeedModel; item: FeedItem }
           </span>
         </div>
       </form>
+      {detail.data && <DetailSections detail={detail.data.detail} collapsible={!desktop} headingLevel={desktop ? 3 : 2} />}
     </div>
   );
 }
