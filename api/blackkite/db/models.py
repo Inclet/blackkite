@@ -578,7 +578,8 @@ class Award(Base):
     Shared, not per user. Collected by the ``umucyo_awards`` custom collector and
     written only by ``pipeline/awards.py`` (never into ``opportunity``). One row per
     (tender ref, procuring entity): ``ref_key`` is the normalised tender ref, or
-    ``title:<normalised title>`` when the list gave no ref; ``entity_key`` the
+    ``title:<normalised title>`` when the list gave no ref (a generic title also
+    carries a digest of winner, amount and date); ``entity_key`` the
     normalised entity name ("" when unknown).
     """
 

@@ -92,12 +92,18 @@ def test_normalise_award_keeps_listed_text_and_never_guesses():
     assert n.category == "ict" and n.tags == ["sector:ict"]
     assert n.raw["listed"]["award_date"] == "3 Nov"
     future = A.normalise_award(
-        RawAward(raw.source_id, raw.url, NOW, title="X works", award_date="1/1/2027"),
+        RawAward(
+            raw.source_id,
+            raw.url,
+            NOW,
+            title="Road works in Example District",
+            award_date="1/1/2027",
+        ),
         Formats(),
         TODAY,
     )
     assert future.awarded_on is None and "in the future" in future.problems[0]
-    assert future.ref_key == "title:x works"
+    assert future.ref_key == "title:road works in example district"
     conflict = A.normalise_award(
         RawAward(
             raw.source_id, raw.url, NOW, title="T", amount="FRW 5", currency="USD"
@@ -454,3 +460,88 @@ def test_plan_matched_on_tender_ref_when_the_description_changes(db):
     )
     assert not created and q.id == p.id
     assert q.description == "Transport of grain to regional stores (lot 2)"
+
+
+def _count_awards(db) -> int:
+    return db.scalar(sa.select(sa.func.count()).select_from(Award))
+
+
+def test_award_entity_merges_only_when_the_blank_row_is_the_only_one(db):
+    src = add_source(db, AWARDS_CFG)
+    _award(db, src, tender_ref="EX/10/2026", entity="Entity A (fictional)")
+    _award(db, src, tender_ref="EX/10/2026", entity="Entity B (fictional)")
+    blank, created = _award(db, src, tender_ref="EX/10/2026", title="Supply of desks")
+    assert created and blank.entity_key == ""
+    # Three rows share the ref, one blank: a listing from C is not guessed onto
+    # the blank row (it could be A's, B's or C's).
+    c, created = _award(db, src, tender_ref="EX/10/2026", entity="Entity C (fictional)")
+    assert created and c.id != blank.id
+    assert db.get(Award, blank.id).entity_key == ""
+    assert _count_awards(db) == 4
+
+
+def test_two_entities_with_the_same_generic_title_never_merge(db):
+    src = add_source(db, AWARDS_CFG)
+    a, _ = _award(db, src, title="Invitation for bids", entity="Entity A (fictional)")
+    b, created = _award(
+        db, src, title="Invitation for bids", entity="Entity B (fictional)"
+    )
+    assert created and b.id != a.id
+    # No entity, no ref, generic title: never merged on title alone.
+    c, created = _award(db, src, title="Invitation for bids", winner="Example Co")
+    assert created and c.id not in {a.id, b.id}
+    d, created = _award(db, src, title="Invitation for bids", winner="Other Co")
+    assert created and d.id != c.id
+    # The same listing again (title, entity, winner, amount all agree) is the
+    # same row, so re-runs do not duplicate.
+    e, created = _award(db, src, title="Invitation for bids", winner="Example Co")
+    assert not created and e.id == c.id
+    # A second, different award of the same entity under the same generic title.
+    f, created = _award(
+        db,
+        src,
+        title="Invitation for bids",
+        entity="Entity A (fictional)",
+        winner="Example Co",
+        amount="2,000,000",
+        currency="RWF",
+    )
+    assert created and f.id != a.id
+    # A ref listing never adopts a generic title-keyed row.
+    g, created = _award(
+        db,
+        src,
+        tender_ref="EX/11/2026",
+        title="Invitation for bids",
+        entity="Entity A (fictional)",
+    )
+    assert created and g.ref_key == "ex/11/2026"
+    assert _count_awards(db) == 6
+
+
+def test_title_row_without_entity_never_absorbs_an_entity_listing(db):
+    src = add_source(db, AWARDS_CFG)
+    blank, _ = _award(db, src, title="Supply of office chairs")
+    a, created = _award(
+        db, src, title="Supply of office chairs", entity="Entity A (fictional)"
+    )
+    assert created and a.id != blank.id
+    b, created = _award(
+        db,
+        src,
+        tender_ref="EX/12/2026",
+        title="Supply of office chairs",
+        entity="Entity B (fictional)",
+    )
+    assert created and b.id not in {blank.id, a.id}
+    assert db.get(Award, blank.id).entity_key == ""
+    # The same entity with a ref still merges into its own title row.
+    c, created = _award(
+        db,
+        src,
+        tender_ref="EX/13/2026",
+        title="Supply of office chairs",
+        entity="Entity A (fictional)",
+    )
+    assert not created and c.id == a.id
+    assert _count_awards(db) == 3

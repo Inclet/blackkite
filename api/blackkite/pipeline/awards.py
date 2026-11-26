@@ -10,13 +10,16 @@ Never writes ``opportunity``. Steps per record:
    ``raw["problems"]``; the listed text is kept in ``raw`` as the supporting text
    of every stored amount and date (spec 10).
 2. **Dedupe** on (``ref_key``, ``entity_key``): a re-listed award updates its row
-   (values the new listing leaves empty keep the old ones) and ``last_seen``.
+   (values the new listing leaves empty keep the old ones) and ``last_seen``;
+   a listing that left out the entity or ref merges only when exactly one row
+   qualifies (``find_award``).
 3. **Link** to the tender in the catalogue (``pipeline/records.py``): by tender
    ref quoted in the tender's text, else close title and entity.
 """
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal
@@ -30,7 +33,7 @@ from blackkite.db.models import Award, Source
 from blackkite.pipeline import categories
 from blackkite.pipeline import procurement as P
 from blackkite.pipeline.dates import kigali_date
-from blackkite.pipeline.dedupe import title_key
+from blackkite.pipeline.dedupe import is_generic, title_key
 from blackkite.pipeline.extract import normalise_currency
 
 AWARD_YEARS_BACK = 10
@@ -86,18 +89,40 @@ def _money_json(amount: Decimal | None) -> str | None:
     return None if amount is None else f"{amount:.2f}"
 
 
+def award_key(
+    title: str | None,
+    winner: str | None,
+    amount: Decimal | None,
+    currency: str | None,
+    awarded_on: date | None,
+) -> str:
+    """The dedupe key of an award listed without a tender ref: its title. A
+    generic title ("Invitation for bids", ``dedupe.is_generic``) says nothing
+    about which award it is, so its key also carries the winner, amount and
+    date: only the same listing again shares it."""
+    tk = title_key(title)
+    if not is_generic(tk):
+        return f"title:{tk}"[:300]
+    parts = (
+        P.entity_key(winner),
+        _money_json(amount) or "",
+        currency or "",
+        awarded_on.isoformat() if awarded_on else "",
+    )
+    digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+    return f"title:{tk[:250]}#{digest}"
+
+
 def normalise_award(raw: RawAward, fmt: Formats, today: date) -> NormalisedAward | None:
     """None when the record has neither a tender ref nor a title."""
     problems = P.Problems()
     tender_ref = P.clean_ref(raw.tender_ref)
     title = P.clean_text(raw.title, 1000)
     key = P.ref_key(tender_ref)
-    if key is None:
-        tk = title_key(title)
-        if not tk:
-            return None
-        key = f"title:{tk}"[:300]
+    if key is None and not title_key(title):
+        return None
     entity = P.clean_entity(raw.entity)
+    winner = P.clean_entity(raw.winner)
     amount, currency = money_with_cell(
         raw.amount, raw.currency, fmt, problems, "amount"
     )
@@ -110,6 +135,8 @@ def normalise_award(raw: RawAward, fmt: Formats, today: date) -> NormalisedAward
     ):
         problems(f"award date: {raw.award_date!r} is implausibly old; left out")
         awarded_on = None
+    if key is None:
+        key = award_key(title, winner, amount, currency, awarded_on)
     bidders: list[dict[str, Any]] = []
     prices: list[dict[str, Any]] = []
     for b in raw.bidders:
@@ -143,7 +170,7 @@ def normalise_award(raw: RawAward, fmt: Formats, today: date) -> NormalisedAward
         title=title,
         entity=entity,
         entity_key=P.entity_key(entity),
-        winner=P.clean_entity(raw.winner),
+        winner=winner,
         amount=amount,
         currency=currency,
         awarded_on=awarded_on,
@@ -175,37 +202,44 @@ def _title_ref_key(title: str | None) -> str | None:
 
 
 def find_award(session: Session, n: NormalisedAward) -> Award | None:
-    """The stored award this listing is, merging what a listing left out:
+    """The stored award this listing is, merging what a listing left out. Never
+    guesses: every step but the first merges only when exactly one row qualifies.
 
-    1. same (ref_key, entity_key);
-    2. the listing names the entity and a row with the same ref has none: that
-       row (it takes the entity);
-    3. the listing names no entity and exactly one row has the same ref: that row;
-    4. the listing has a tender ref and a row keyed on the same title (listed
-       without a ref) has the same entity, or no entity: that row (it takes the
-       ref).
+    1. same (ref_key, entity_key). A key built from a generic title carries the
+       listing's winner, amount and date (``award_key``), so a generic title
+       never merges on title (and entity) alone;
+    2. the listing has a tender ref and names the entity, and the only row with
+       that ref has no entity: that row (it takes the entity);
+    3. the listing has a tender ref and names no entity, and exactly one row has
+       that ref: that row;
+    4. the listing has a tender ref, its title is not generic, and exactly one
+       row keyed on the same title (listed without a ref) has the same entity:
+       that row (it takes the ref).
+
+    A row keyed on title alone with no entity never takes on an entity (steps 2
+    and 3 do not apply to title keys, step 4 needs the same entity): which
+    entity's award it is cannot be known from the title.
     """
 
     def by(ref_key: str, *where) -> list[Award]:
-        return list(
-            session.scalars(sa.select(Award).where(Award.ref_key == ref_key, *where))
-        )
+        q = sa.select(Award).where(Award.ref_key == ref_key, *where)
+        return list(session.scalars(q.order_by(Award.id)))
 
+    title_keyed = n.ref_key.startswith("title:")
+    generic = is_generic(title_key(n.title))
     exact = by(n.ref_key, Award.entity_key == n.entity_key)
     if exact:
         return exact[0]
-    if n.entity_key:
-        blank = by(n.ref_key, Award.entity_key == "")
-        if blank:
-            return blank[0]
-    else:
-        named = by(n.ref_key)
-        if len(named) == 1:
-            return named[0]
+    if title_keyed:
+        return None
+    same_ref = by(n.ref_key)
+    if len(same_ref) == 1 and (not n.entity_key or not same_ref[0].entity_key):
+        return same_ref[0]
     tkey = _title_ref_key(n.title)
-    if not n.ref_key.startswith("title:") and tkey:
-        for row in by(tkey, Award.entity_key.in_({n.entity_key, ""})):
-            return row
+    if tkey and not generic:
+        rows = by(tkey, Award.entity_key == n.entity_key)
+        if len(rows) == 1:
+            return rows[0]
     return None
 
 
