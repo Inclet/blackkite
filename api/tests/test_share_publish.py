@@ -391,6 +391,10 @@ def test_feed_and_shortlist_say_manual_too(db, ana, ben, login):
 
 
 OWNER_COPY = "You added this item yourself, so nobody else has checked it."
+PUBLISHED_OWNER_COPY = (
+    "You added this item and an admin made it public with your consent. "
+    "Nobody has checked it against a source."
+)
 
 
 def _trust(client, oid):
@@ -407,11 +411,16 @@ def test_trust_copy_for_an_item_added_by_hand(db, ana, ben, login):
     oid = _item(a, organisation="Kigali Logistics Ltd")
     named = {"desktop": OWNER_COPY, "phone": OWNER_COPY}
     assert {k: _trust(a, oid)[k] for k in ("desktop", "phone")} == named
+    assert _feed_trust(a, oid)["desktop"] == OWNER_COPY
     _consent(a, oid, True)
     login("admin@example.com").post(f"/api/admin/catalogue/{oid}/publish")
-    # The owner keeps their copy once it is published, on the page and the feed.
+    # Once published, the owner reads that an admin made it public, on the page
+    # and the feed.
     for t in (_trust(a, oid), _feed_trust(a, oid)):
-        assert (t["desktop"], t["phone"]) == (OWNER_COPY, OWNER_COPY)
+        assert (t["desktop"], t["phone"]) == (
+            PUBLISHED_OWNER_COPY,
+            PUBLISHED_OWNER_COPY,
+        )
     # Everyone else reads that a member added it.
     fit_for(db, ben, db.get(Opportunity, uuid.UUID(oid)), word="good")
     db.commit()
@@ -435,7 +444,7 @@ def test_trust_copy_for_a_published_item_with_no_organisation(db, ana, ben, logi
     t = _trust(login(ben.email), oid)
     text = "A member added this item by hand; check the details before you act."
     assert (t["desktop"], t["phone"]) == (text, text)
-    assert _trust(a, oid)["desktop"] == OWNER_COPY
+    assert _trust(a, oid)["desktop"] == PUBLISHED_OWNER_COPY
 
 
 def test_published_item_a_source_carries_gets_the_source_copy(db, ana, ben, login):

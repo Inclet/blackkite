@@ -11,7 +11,9 @@ filled from the carrying sources' names and the item's dates.
   investments: "Listed on RSE’s own site."
 * conflict: "Two sources give different closing dates; the original says 23 Nov."
 * added by hand (private, or published by an admin), no source carrying it: the
-  owner reads "You added this item yourself, so nobody else has checked it.";
+  owner reads "You added this item yourself, so nobody else has checked it."
+  while it is private, and "You added this item and an admin made it public
+  with your consent. Nobody has checked it against a source." once published;
   anyone else "A member added this item by hand; check the details with WFP
   before you act." (no organisation: "... check the details before you act.").
   Both layouts use the same sentence.
@@ -99,8 +101,15 @@ def trust_copy(
             text = f"Matched to the {CONFIRMED_NOUN[stream]} on {where}’s own site."
         return text, text
 
-    if private or (manual and own and not links):
+    if private:
         text = "You added this item yourself, so nobody else has checked it."
+        return text, text
+
+    if manual and own and not links:
+        text = (
+            "You added this item and an admin made it public with your consent. "
+            "Nobody has checked it against a source."
+        )
         return text, text
 
     if manual and not links:
