@@ -9,7 +9,8 @@ invented round-ish numbers, not taken from any real award. Rows hang on the demo
 issuer source, so they are visible like the demo catalogue.
 
 25 awards across four categories (transport, IT, construction, office supplies),
-dated in the past year; 10 plan items planned over the next twelve months, one of
+dated in the past year; 14 plan items planned over the next twelve months (health,
+agriculture, cleaning and others besides transport and IT), one of
 them linked to the demo dry-freight tender (so it is left out of the plans list,
 as an advertised tender is).
 """
@@ -144,6 +145,36 @@ PLANS: tuple[tuple[str, int, int | None, int, str], ...] = (
         "[Demo] Catering services for training sessions",
         1,
         2_500_000,
+        6,
+        "Request for quotations",
+    ),
+    # Non-transport plans, so a second user's profile (an NGO in health,
+    # nutrition or agriculture) has coming-up tenders of its own.
+    (
+        "[Demo] Community health worker training on nutrition",
+        3,
+        15_000_000,
+        3,
+        "Quality and cost based selection",
+    ),
+    (
+        "[Demo] Supply of laboratory reagents to district hospitals",
+        3,
+        25_000_000,
+        5,
+        "Open competitive bidding",
+    ),
+    (
+        "[Demo] Supply of seeds and fertilizer to farmer cooperatives",
+        0,
+        35_000_000,
+        4,
+        "Open competitive bidding",
+    ),
+    (
+        "[Demo] Cleaning and security services for district offices",
+        2,
+        9_000_000,
         6,
         "Request for quotations",
     ),

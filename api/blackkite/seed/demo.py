@@ -185,6 +185,56 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         tags=("service:AI/ML", "sector:public sector"),
         value=(20_000, "USD"),
     ),
+    # For a second-user test with an NGO profile on demo data alone.
+    DemoItem(
+        "ngo-community-grant",
+        "funding",
+        "[Demo] Community nutrition grant for local NGOs",
+        "Example Wellbeing Trust (fictional)",
+        "A fictional grant for community nutrition and health education work. "
+        "Demo data only.",
+        "issuer",
+        25,
+        subtype="grant",
+        tags=("sector:health", "sector:nutrition", "service:community health"),
+        value=(30_000, "USD"),
+        eligibility=(
+            "Open only to registered NGOs and civil society organisations "
+            "operating in Rwanda."
+        ),
+        requirements=("Certificate of registration as an NGO.",),
+    ),
+    DemoItem(
+        "nutrition-supplies",
+        "tender",
+        "[Demo] Supply of nutrition supplements to health centres",
+        "Example Health Supplies Agency (fictional)",
+        "A fictional call for fortified flour and nutrition supplements for "
+        "district health centres. Demo data only.",
+        "board",
+        16,
+        organisation_short="EHSA (fictional)",
+        subtype="request for bids",
+        tags=("sector:health", "sector:nutrition", "service:supply of supplements"),
+        value=(18_000_000, "RWF"),
+    ),
+    DemoItem(
+        "seed-distribution",
+        "tender",
+        "[Demo] Supply of improved seeds and fertiliser to cooperatives",
+        "Example Agriculture Board (fictional)",
+        "A fictional call for seeds and fertiliser delivered to farmer "
+        "cooperatives. Demo data only.",
+        "issuer",
+        22,
+        subtype="request for bids",
+        tags=(
+            "sector:agriculture",
+            "sector:food security",
+            "service:supply of agricultural inputs",
+        ),
+        value=(60_000_000, "RWF"),
+    ),
     DemoItem(
         "treasury-bond",
         "investment",
