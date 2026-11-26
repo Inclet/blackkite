@@ -397,5 +397,60 @@ def test_tick_runs_sources_then_alerts_then_backfills(Sessions, settings, monkey
     assert seen_kw == {
         "per_tick": settings.backfill_per_tick,
         "max_attempts": settings.backfill_max_attempts,
+        "debounce": True,
     }
     assert (settings.backfill_per_tick, settings.backfill_max_attempts) == (5, 6)
+
+
+def test_no_debounce_runs_a_fresh_request_now_but_keeps_the_backoff(
+    db, Sessions, profiles, make_opp, monkeypatch
+):
+    """``bk worker --once --no-debounce``: a fresh edit is backfilled at once; a
+    request pushed back after a failure still waits for its retry time."""
+    from blackkite.scoring import service
+
+    _cold(make_opp)
+    ironji, lab = profiles["Ironji-Trade"], profiles["AI lab"]
+    t0 = now()
+    _only(db, profiles, "Ironji-Trade", t0)
+    assert W.run_pending_backfills(Sessions, lambda: t0) == []  # debounced
+    assert W.run_pending_backfills(Sessions, lambda: t0, debounce=False) == [ironji.id]
+    assert _scores(db, ironji) == 1 and _pending(db) == {}
+
+    _only(db, profiles, "AI lab", t0)
+    real = service.backfill_profile
+
+    def down(session, pid, **kw):
+        raise RuntimeError("scoring down")
+
+    monkeypatch.setattr(service, "backfill_profile", down)
+    assert W.run_pending_backfills(Sessions, lambda: t0, debounce=False) == []
+    monkeypatch.setattr(service, "backfill_profile", real)
+    soon = lambda: t0 + timedelta(seconds=30)
+    assert W.run_pending_backfills(Sessions, soon, debounce=False) == []
+    later = lambda: t0 + timedelta(minutes=1)
+    assert W.run_pending_backfills(Sessions, later, debounce=False) == [lab.id]
+
+
+def test_cli_worker_once_no_debounce(monkeypatch):
+    from typer.testing import CliRunner
+
+    from blackkite import cli
+    from blackkite.worker import main as worker_main
+
+    seen: list[dict] = []
+    monkeypatch.setattr(cli, "get_settings", lambda: None)
+    monkeypatch.setattr(
+        "blackkite.db.session.get_sessionmaker", lambda: None, raising=True
+    )
+    monkeypatch.setattr(worker_main, "main", lambda s, m, **kw: seen.append(kw))
+    r = CliRunner().invoke(cli.app, ["worker", "--help"])
+    help_text = " ".join(r.output.split())
+    assert "60 s" in help_text and "--no-debounce" in help_text
+    r = CliRunner().invoke(cli.app, ["worker", "--once", "--no-debounce"])
+    assert r.exit_code == 0, r.output
+    r = CliRunner().invoke(cli.app, ["worker", "--once"])
+    assert r.exit_code == 0, r.output
+    assert seen == [{"once": True, "debounce": False}, {"once": True, "debounce": True}]
+    r = CliRunner().invoke(cli.app, ["worker", "--no-debounce"])
+    assert r.exit_code == 2 and len(seen) == 2

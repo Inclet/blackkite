@@ -73,6 +73,8 @@ def tick(
     client: FetchClient,
     settings: Settings,
     transport: MailTransport | None = None,
+    *,
+    debounce: bool = True,
 ) -> None:
     try:
         close_stale_runs(sessions, settings)
@@ -98,7 +100,7 @@ def tick(
     if any(o.status == "succeeded" for o in outcomes):
         alerts(sessions, settings, transport)
     # Last, so a backlog of profile backfills never delays collection or alerts.
-    scored = backfills(sessions, settings)
+    scored = backfills(sessions, settings, debounce=debounce)
     # Queued items: private items created or edited (their owner only) and
     # items made public (everyone).
     scored += item_scores(sessions)
@@ -116,13 +118,16 @@ def item_scores(sessions: sessionmaker[Session]) -> int:
     return len(done)
 
 
-def backfills(sessions: sessionmaker[Session], settings: Settings) -> int:
+def backfills(
+    sessions: sessionmaker[Session], settings: Settings, *, debounce: bool = True
+) -> int:
     """Pending profile backfills. Never lets a failure stop the tick."""
     try:
         done = run_pending_backfills(
             sessions,
             per_tick=settings.backfill_per_tick,
             max_attempts=settings.backfill_max_attempts,
+            debounce=debounce,
         )
     except Exception:
         log.exception("profile backfills failed")
@@ -212,16 +217,30 @@ def run_once(
     settings: Settings,
     client: FetchClient | None = None,
     transport: MailTransport | None = None,
+    *,
+    debounce: bool = True,
 ) -> None:
     """``bk worker --once``: exactly one tick (stale runs, due sources, alerts,
     backfills, queued item scores), then return. No scheduler, so the daily
-    status refresh and the weekly digest do not run."""
+    status refresh and the weekly digest do not run. A profile backfill waits
+    until its request is ``BACKFILL_DEBOUNCE`` (60 s) old, unless ``debounce``
+    is False (``--no-debounce``)."""
     client = client or make_fetch_client(settings, cache=DbHttpCache(sessions))
-    tick(sessions, client, settings, transport or make_transport(settings))
+    tick(
+        sessions,
+        client,
+        settings,
+        transport or make_transport(settings),
+        debounce=debounce,
+    )
 
 
 def main(
-    settings: Settings, sessions: sessionmaker[Session], *, once: bool = False
+    settings: Settings,
+    sessions: sessionmaker[Session],
+    *,
+    once: bool = False,
+    debounce: bool = True,
 ) -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -230,7 +249,7 @@ def main(
     if not settings.bot_contact_url:
         log.warning("BK_BOT_CONTACT_URL is not set; the User-Agent has no contact URL")
     if once:
-        run_once(sessions, settings)  # tick() closes stale runs itself
+        run_once(sessions, settings, debounce=debounce)  # closes stale runs itself
         log.info("worker: one tick done")
         return
     close_stale_runs(sessions, settings)  # runs left by a worker that stopped

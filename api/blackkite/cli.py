@@ -488,13 +488,34 @@ def backfill_cmd(
 
 @app.command()
 def worker(
-    once: bool = typer.Option(False, "--once", help="Run exactly one tick, then exit."),
+    once: bool = typer.Option(
+        False,
+        "--once",
+        help=(
+            "Run exactly one tick, then exit. A profile backfill waits until 60 s "
+            "(the backfill debounce) after the last profile edit, so after an edit "
+            "run this again a minute later, or add --no-debounce."
+        ),
+    ),
+    no_debounce: bool = typer.Option(
+        False,
+        "--no-debounce",
+        help=(
+            "With --once: run pending profile backfills now, without the 60 s "
+            "wait after an edit (failed ones still wait for their retry time)."
+        ),
+    ),
 ) -> None:
     """Run the scheduler: every active/testing source on its schedule."""
     from blackkite.db.session import get_sessionmaker
     from blackkite.worker.main import main as worker_main
 
-    worker_main(get_settings(), get_sessionmaker(), once=once)
+    if no_debounce and not once:
+        typer.echo(
+            "error: --no-debounce is for manual runs; use it with --once", err=True
+        )
+        raise typer.Exit(2)
+    worker_main(get_settings(), get_sessionmaker(), once=once, debounce=not no_debounce)
 
 
 @app.command()
