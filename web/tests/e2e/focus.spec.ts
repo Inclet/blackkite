@@ -39,6 +39,12 @@ for (const [name, size, route, minStops] of [
   ['admin shareable', { width: 390, height: 844 }, '/admin/shareable', 5],
   ['filtered feed', { width: 1440, height: 900 }, '/?fit=good', 10],
   ['phone opportunity sections', { width: 390, height: 844 }, '/o/wfp-logistics', 9],
+  // M5: the filters, each category's link; each award's bidder disclosure and notice link, paging.
+  ['benchmarks', { width: 1440, height: 900 }, '/benchmarks', 14],
+  ['benchmarks, phone', { width: 390, height: 844 }, '/benchmarks?period=all', 12],
+  ['category awards', { width: 1440, height: 900 }, '/benchmarks/freight', 30],
+  ['category awards, phone', { width: 390, height: 844 }, '/benchmarks/freight?page=2', 10],
+  ['shortlist with Coming up', { width: 390, height: 844 }, '/shortlist', 6],
 ] as const) {
   test(`${name}: every Tab stop shows the double focus ring`, async ({ page }, testInfo) => {
     await stubSession(page, testInfo.testId);

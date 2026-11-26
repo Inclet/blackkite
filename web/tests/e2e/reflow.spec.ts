@@ -42,6 +42,12 @@ const ROUTES = [
   '/admin/shareable',
   '/?fit=good&window=7',
   '/o/wfp-logistics?verification=unconfirmed',
+  // M5 (contract section 6).
+  '/benchmarks',
+  '/benchmarks?period=all&entity=Kigali',
+  '/benchmarks/freight',
+  '/benchmarks/freight?page=2',
+  '/benchmarks/road-works',
 ];
 
 /** Fewest interactive elements each page must have (the sign-in and unsubscribe pages have one or two controls). */

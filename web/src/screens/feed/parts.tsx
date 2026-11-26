@@ -21,6 +21,7 @@ import { LoadState } from '../common/LoadState';
 import { DISMISS_COPY, isDismissNav, type FeedModel } from './model';
 import { OwnItemControls } from './OwnItem';
 import { DetailSections } from './DetailSections';
+import { SimilarAwards } from './SimilarAwards';
 import { useIsDesktop } from '../../lib/useIsDesktop';
 import type { OwnedDetail } from '../../api/m4';
 import styles from './parts.module.css';
@@ -317,6 +318,7 @@ export function LiveDetail({ model, item, detail }: { model: FeedModel; item: Fe
           </span>
         </div>
       </form>
+      <SimilarAwards stream={item.stream} benchmark={detail.data?.detail.benchmark} />
       {detail.data && <DetailSections detail={detail.data.detail} collapsible={!desktop} headingLevel={desktop ? 3 : 2} />}
     </div>
   );

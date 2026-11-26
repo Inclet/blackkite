@@ -36,6 +36,13 @@
   flex-wrap: wrap;
 }
 
+/* A chip group's help line: the Field hint's values (12px/500 slate), design review. */
+.hint {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bk-slate);
+}
+
 .error {
   font-size: 12px;
   font-weight: 500;

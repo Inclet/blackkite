@@ -17,6 +17,7 @@ import {
   chipOptions,
   EVENT_TOPICS,
   INSTRUMENTS,
+  ORGANISATION_TYPES,
   toForm,
   toInput,
   validate,
@@ -33,11 +34,17 @@ export const EDITOR_COPY = {
   about: 'About',
   name: 'Profile name',
   location: 'Based in',
+  locations: 'Other places you work, separated by commas',
+  locationsHint: 'Such as Musanze, Rubavu. Leave empty if you work only where you are based.',
+  organisationType: 'Type of organisation',
+  organisationTypeHint: 'Some calls are only for NGOs. Without an answer, this profile counts as not an NGO.',
   active: 'Use this profile',
   activeHelp: 'When off, nothing is ranked against it.',
   streams: 'Streams',
   offer: 'What you offer',
   services: 'Services, separated by commas',
+  sectors: 'Sectors you work in, separated by commas',
+  sectorsHint: 'Such as logistics, agriculture. Used to find calls for your sector.',
   provisional: 'Provisional',
   provisionalHelp: 'Matches are labelled provisional until you confirm these services.',
   registrations: 'Registrations',
@@ -56,6 +63,11 @@ export const EDITOR_COPY = {
   ticketMin: 'Smallest ticket (FRW)',
   ticketMax: 'Largest ticket (FRW)',
   topics: 'Event topics',
+  horizon: 'How long you can invest for',
+  horizonHint: 'Such as 1 to 3 years, or 10 years and more.',
+  availability: 'When you can go to events',
+  availabilityHint: 'Such as weekday evenings, or weekends.',
+  budget: 'Most you would spend on one event (FRW)',
   exclusions: 'Leave out',
   excludeOrganisations: 'Organisations',
   excludeSectors: 'Sectors',
@@ -106,11 +118,24 @@ export function ProfileEditor() {
   return <Editor key={profile.id} profile={profile} type={profile.type} onSaved={() => profiles.reload()} />;
 }
 
-function ChipGroup({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
+/** The offered organisation types, then a stored word the list does not have (kept as written). */
+function organisationOptions(current: string): { value: string; label: string }[] {
+  const base: { value: string; label: string }[] = ORGANISATION_TYPES.map((o) => ({ ...o }));
+  return current && !base.some((o) => o.value === current) ? [...base, { value: current, label: current }] : base;
+}
+
+function ChipGroup({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: ReactNode }) {
   const errorId = useId();
+  const hintId = useId();
+  const described = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ') || undefined;
   return (
-    <fieldset className={styles.group} aria-describedby={error ? errorId : undefined}>
+    <fieldset className={styles.group} aria-describedby={described}>
       <legend className={styles.groupLabel}>{label}</legend>
+      {hint && (
+        <div id={hintId} className={styles.hint}>
+          {hint}
+        </div>
+      )}
       <div className={styles.chips}>{children}</div>
       {error && (
         <div id={errorId} className={styles.error}>
@@ -145,7 +170,7 @@ function Editor({ profile, type, onSaved }: { profile: Profile | null; type: Pro
     set(key, form[key].includes(v) ? form[key].filter((x) => x !== v) : [...form[key], v]);
   const toggleStream = (s: Stream) => set('streams', form.streams.includes(s) ? form.streams.filter((x) => x !== s) : [...form.streams, s]);
 
-  const text = (key: TextKey, label: string, extra: { inputMode?: 'numeric' | 'decimal' } = {}) => (
+  const text = (key: TextKey, label: string, extra: { inputMode?: 'numeric' | 'decimal'; hint?: string } = {}) => (
     <Field
       label={label}
       name={key}
@@ -214,6 +239,7 @@ function Editor({ profile, type, onSaved }: { profile: Profile | null; type: Pro
             {text('name', EDITOR_COPY.name)}
             {text('location', EDITOR_COPY.location)}
           </div>
+          {text('locations', EDITOR_COPY.locations, { hint: EDITOR_COPY.locationsHint })}
           <SwitchRow label={EDITOR_COPY.active} description={EDITOR_COPY.activeHelp} checked={form.active} onChange={(v) => set('active', v)} />
           <ChipGroup label={EDITOR_COPY.streams} error={errors.streams}>
             {STREAMS.map((s) => (
@@ -225,7 +251,20 @@ function Editor({ profile, type, onSaved }: { profile: Profile | null; type: Pro
         {form.type === 'business' ? (
           <>
             <Card label={EDITOR_COPY.offer} gap={14}>
+              <ChipGroup label={EDITOR_COPY.organisationType} hint={EDITOR_COPY.organisationTypeHint}>
+                {organisationOptions(form.organisationType).map((o) => (
+                  <FilterChip
+                    key={o.value}
+                    stream="all"
+                    label={o.label}
+                    selected={form.organisationType === o.value}
+                    // One choice; pressing the chosen one again clears the answer.
+                    onClick={() => set('organisationType', form.organisationType === o.value ? '' : o.value)}
+                  />
+                ))}
+              </ChipGroup>
               {text('services', EDITOR_COPY.services)}
+              {text('sectors', EDITOR_COPY.sectors, { hint: EDITOR_COPY.sectorsHint })}
               <SwitchRow
                 label={EDITOR_COPY.provisional}
                 description={EDITOR_COPY.provisionalHelp}
@@ -262,11 +301,16 @@ function Editor({ profile, type, onSaved }: { profile: Profile | null; type: Pro
               {number('ticketMin', EDITOR_COPY.ticketMin)}
               {number('ticketMax', EDITOR_COPY.ticketMax)}
             </div>
+            {text('horizon', EDITOR_COPY.horizon, { hint: EDITOR_COPY.horizonHint })}
             <ChipGroup label={EDITOR_COPY.topics}>
               {chipOptions(EVENT_TOPICS, form.eventTopics).map((v) => (
                 <FilterChip key={v} stream="all" label={v} selected={form.eventTopics.includes(v)} onClick={() => toggle('eventTopics', v)} />
               ))}
             </ChipGroup>
+            <div className={styles.fields}>
+              {text('availability', EDITOR_COPY.availability, { hint: EDITOR_COPY.availabilityHint })}
+              {number('budgetRwf', EDITOR_COPY.budget)}
+            </div>
           </Card>
         )}
 

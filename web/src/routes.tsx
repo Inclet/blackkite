@@ -7,6 +7,8 @@ import { AdminSuggestions } from './screens/admin/AdminSuggestions';
 import { AdminUsers } from './screens/admin/AdminUsers';
 import { SourceEditor } from './screens/admin/SourceEditor';
 import { AuthConfirm } from './screens/AuthConfirm';
+import { BenchmarkAwards } from './screens/benchmarks/BenchmarkAwards';
+import { Benchmarks } from './screens/benchmarks/Benchmarks';
 import { Calendar } from './screens/calendar/Calendar';
 import { FeedRoute } from './screens/feed/FeedRoute';
 import { ItemEditor } from './screens/items/ItemEditor';
@@ -47,6 +49,9 @@ export const routes: RouteObject[] = [
   { path: '/account', element: <Account /> },
   { path: '/more', element: <More /> },
   { path: '/sources', element: <Sources /> },
+  // Awarded-price benchmarks (spec 8, contract section 6). Not designed yet (design review).
+  { path: '/benchmarks', element: <Benchmarks /> },
+  { path: '/benchmarks/:category', element: <BenchmarkAwards /> },
   // Admins only (the server enforces roles regardless); not designed yet (design review).
   { path: '/admin', element: <AdminHome /> },
   { path: '/admin/sources', element: <AdminSources /> },
