@@ -1,5 +1,6 @@
 import type { ExtractedField, OpportunityChange } from '../api/types';
 import { formatTime } from './calendar';
+import { dayMonthYear } from './months';
 
 const TIMEZONE = 'Africa/Kigali';
 
@@ -8,8 +9,7 @@ const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 
 /** "7 Dec 2026": full dates, with the year. */
 export function formatFullDate(isoDate: string): string {
-  const [y, m, d] = isoDate.slice(0, 10).split('-').map(Number);
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(y!, m! - 1, d!)));
+  return dayMonthYear(isoDate);
 }
 
 /** "30 Nov 2026, 5pm" in Kigali time; midnight is left as the date alone. Dates without a time as "30 Nov 2026". */
