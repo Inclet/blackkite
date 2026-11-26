@@ -1,6 +1,7 @@
 import type { RouteObject } from 'react-router';
 import { AdminHome } from './screens/admin/AdminHome';
 import { AdminReview } from './screens/admin/AdminReview';
+import { AdminShareable } from './screens/admin/AdminShareable';
 import { AdminSources } from './screens/admin/AdminSources';
 import { AdminSuggestions } from './screens/admin/AdminSuggestions';
 import { AdminUsers } from './screens/admin/AdminUsers';
@@ -54,6 +55,7 @@ export const routes: RouteObject[] = [
   { path: '/admin/suggestions', element: <AdminSuggestions /> },
   { path: '/admin/review', element: <AdminReview /> },
   { path: '/admin/users', element: <AdminUsers /> },
+  { path: '/admin/shareable', element: <AdminShareable /> },
   { path: '/digest/preview', element: <Placeholder name="Digest preview" /> },
   { path: '/styleguide/foundations', element: <StyleguideFoundations /> },
   { path: '/styleguide/components', element: <StyleguideComponents /> },
