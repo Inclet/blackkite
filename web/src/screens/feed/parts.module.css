@@ -90,3 +90,193 @@
   font-size: 13px;
   font-weight: 500;
 }
+
+/* The owner's own manual item: Tag, Edit/Delete, the share-consent row. Design review. */
+.own {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-space-3);
+  padding-top: var(--bk-space-3);
+  border-top: 1px solid var(--bk-stone-200);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.liveText {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--bk-slate);
+}
+
+.liveAlert {
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 500;
+  color: var(--bk-alert-text);
+}
+
+/* Live only: Filters and "Add an item" under the stream chips. Design review. */
+.tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Details, Sources, Documents, History (live only). Design review. */
+.sections {
+  display: flex;
+  flex-direction: column;
+}
+
+.section {
+  border-top: 1px solid var(--bk-stone-200);
+  padding: var(--bk-space-3) 0;
+}
+
+.section:last-child {
+  padding-bottom: 0;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+/* Phone: the whole heading is the button, 44px tall. */
+.sectionToggle {
+  width: 100%;
+  min-height: var(--bk-tap-min);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--bk-graphite);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--bk-radius-flag);
+}
+
+.sectionToggle:focus-visible {
+  outline: none;
+  box-shadow: var(--bk-focus-ring);
+}
+
+.sectionHint {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--bk-slate);
+}
+
+.sectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.sectionBody[hidden] {
+  display: none;
+}
+
+.fields {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fieldRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.fieldValue {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.quote {
+  color: var(--bk-slate);
+  font-size: 13px;
+}
+
+.sectionList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sourceRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sourceName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* The source name; TextLink's invisible layer keeps the tap area 44px. */
+.sourceLink {
+  overflow-wrap: anywhere;
+}
+
+.docName,
+.historyRow {
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.toolsWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.applied {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.filterLegend {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+}

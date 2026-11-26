@@ -53,6 +53,11 @@
   min-width: 0;
 }
 
+/* The calendar's month grid uses the whole main column (design review). */
+.wide {
+  max-width: none;
+}
+
 /* Phone */
 .phonePage {
   min-height: 100vh;

@@ -72,6 +72,11 @@
   flex-shrink: 0;
 }
 
+/* Live only (design review): Filters and "Add an item" under the chips. */
+.tools {
+  padding: 0 20px 14px;
+}
+
 .card {
   margin: 0 12px;
 }

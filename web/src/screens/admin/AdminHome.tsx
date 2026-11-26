@@ -5,7 +5,7 @@ import { AppShell } from '../shell/AppShell';
 import settingsStyles from '../settings/Settings.module.css';
 import { ADMIN_LINKS, AdminOnly } from './AdminOnly';
 
-export const ADMIN_HOME_SUMMARY = 'Sources, suggestions from members, items to review, and who can sign in.';
+export const ADMIN_HOME_SUMMARY = 'Sources, suggestions from members, items to review, who can sign in, and private items their owners let you make public.';
 
 /** /admin: the admin screens, as a card of NavItems (as More). Design review. */
 export function AdminHome() {

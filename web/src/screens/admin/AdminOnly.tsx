@@ -17,6 +17,7 @@ export const ADMIN_LINKS = [
   { label: 'Suggestions', to: '/admin/suggestions' },
   { label: 'Review', to: '/admin/review' },
   { label: 'Users', to: '/admin/users' },
+  { label: 'Shareable private items', to: '/admin/shareable' },
 ] as const;
 
 /** The plain refusal non-admins see (and anyone the admin API answers 403). */

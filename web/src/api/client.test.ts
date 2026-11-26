@@ -42,6 +42,12 @@ test('feed filters become the query string; empty ones are left out', async () =
   expect(call(fn).url).toBe('/api/feed?stream=tender&profile=AI+lab');
 });
 
+test('the "Open" status filter means still open: open and closing soon', async () => {
+  const fn = stub(reply(200, { items: [] }));
+  await api.feed({ status: 'open', fit: 'good' });
+  expect(call(fn).url).toBe('/api/feed?status=open&fit=good&status=closing_soon');
+});
+
 test.each([
   ['opportunity', () => api.opportunity('wfp/1'), '/api/opportunities/wfp%2F1', 'GET', undefined],
   ['state', () => api.setState('wfp', 'saved'), '/api/opportunities/wfp/state', 'PUT', { state: 'saved' }],

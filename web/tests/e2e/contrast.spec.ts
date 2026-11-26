@@ -34,6 +34,16 @@ const checks: [string, { width: number; height: number }, string, string, number
   ['error log text (graphite on white)', { width: 390, height: 844 }, '/admin/sources/src-umucyo', 'text=HTTP 503 from www.umucyo.gov.rw', 4.5],
   ['review reason (graphite on white)', { width: 390, height: 844 }, '/admin/review', 'text=Job in Rwanda says 3 Dec 2026', 4.5],
   ['admin back link (graphite on mist)', { width: 1440, height: 900 }, '/admin/users', 'a:has-text("Admin") >> nth=1', 4.5],
+  ['calendar weekday heading (slate on white)', { width: 1440, height: 900 }, '/calendar', 'th >> nth=0', 4.5],
+  ['calendar entry title (graphite on mist)', { width: 1440, height: 900 }, '/calendar', 'table a span span >> nth=1', 4.5],
+  ['calendar today mark (white on graphite)', { width: 1440, height: 900 }, '/calendar', '[aria-current="date"] [aria-hidden="true"]', 4.5],
+  ['calendar day heading (slate on white)', { width: 390, height: 844 }, '/calendar', 'text=Monday 30 November 2026', 4.5],
+  ['calendar link explanation (graphite on white)', { width: 390, height: 844 }, '/calendar', 'text=never shows your notes', 4.5],
+  ['applied filters hint (slate on mist)', { width: 1440, height: 900 }, '/?fit=good', 'text=Applied filters', 4.5],
+  ['quote from the notice (slate on white)', { width: 1440, height: 900 }, '/o/wfp-logistics', 'text=from the notice: >> nth=0', 4.5],
+  ['section toggle hint (slate on white)', { width: 390, height: 844 }, '/o/wfp-logistics', 'button:has-text("Details") span', 4.5],
+  ['item form hint (slate on white)', { width: 1440, height: 900 }, '/items/new', 'text=With the year, such as 7 Dec 2026. >> nth=0', 4.5],
+  ['shareable empty line (slate on white)', { width: 1440, height: 900 }, '/admin/shareable', 'text=No private items are waiting', 4.5],
 ];
 
 for (const [name, size, route, selector, min] of checks) {

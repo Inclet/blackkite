@@ -15,7 +15,7 @@ import { ADMIN_ME, adminSource, COLLECTOR_TYPES, INVITES, MEMBER_ME, PREVIEW, NO
 beforeEach(() => setViewport('desktop'));
 afterEach(() => vi.unstubAllGlobals());
 
-const ADMIN_ROUTES = ['/admin', '/admin/sources', '/admin/sources/new', '/admin/sources/src-1', '/admin/suggestions', '/admin/review', '/admin/users'];
+const ADMIN_ROUTES = ['/admin', '/admin/sources', '/admin/sources/new', '/admin/sources/src-1', '/admin/suggestions', '/admin/review', '/admin/users', '/admin/shareable'];
 
 test.each(ADMIN_ROUTES)('%s for a member: "This page is for admins." and no admin API call or nav', async (url) => {
   const api = mockApi({ 'GET /me': MEMBER_ME });
@@ -37,7 +37,7 @@ test('no session: sign in', async () => {
   expect(await screen.findByRole('button', { name: SIGN_IN.button })).toBeInTheDocument();
 });
 
-test('/admin: links to the four admin screens, with Admin current in the sidebar', async () => {
+test('/admin: links to the admin screens, with Admin current in the sidebar', async () => {
   mockApi({ 'GET /me': ADMIN_ME });
   renderAt('/admin');
   const card = within(await screen.findByRole('region', { name: 'Admin screens' }));
