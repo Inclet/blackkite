@@ -14,7 +14,7 @@ import { httpUrl } from '../../lib/externalUrl';
 import { useAppLink } from '../../lib/useAppLink';
 import { Sidebar } from '../shell/Sidebar';
 import { DISMISS_NAV, type FeedModel } from './model';
-import { DetailTop, DismissReasonPrompt, FilterChips, focusInDismissPrompt, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus, SaveButton } from './parts';
+import { DetailTop, DismissReasonPrompt, FilterChips, focusInDismissPrompt, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus, originalLinkLabel, SaveButton, useLiveDetail } from './parts';
 import { HEADING, PROMPT, rowId } from './focus';
 import { useLiveList, useLiveSelection } from './liveList';
 import { FeedTools } from './FeedTools';
@@ -209,6 +209,7 @@ function DetailPane({ item, model, onDismiss }: { item: FeedItem; model: FeedMod
   const saved = model.saved.has(item.id);
   // Only http(s) links to the original notice; anything else renders no link.
   const original = httpUrl(item.detail.originalUrl);
+  const detail = useLiveDetail(item, model);
   const headingId = `detail-${item.id}`;
   return (
     <Card as="article" padding="24px" gap={16} aria-labelledby={headingId}>
@@ -234,11 +235,11 @@ function DetailPane({ item, model, onDismiss }: { item: FeedItem; model: FeedMod
         </Button>
         {original && (
           <TextLink href={original} target="_blank" rel="noopener noreferrer">
-            Read the original
+            {originalLinkLabel(item, detail.data, 'Read the original')}
           </TextLink>
         )}
       </div>
-      {model.live && <LiveDetail key={item.id} model={model} item={item} />}
+      {model.live && <LiveDetail key={item.id} model={model} item={item} detail={detail} />}
     </Card>
   );
 }

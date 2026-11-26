@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent, type Ref } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type Ref } from 'react';
 import { useLocation } from 'react-router';
 import { api } from '../../api/client';
 import { DISMISS_REASONS } from '../../api/types';
-import { useResource } from '../../api/useResource';
+import { readCache, useResource, type Resource } from '../../api/useResource';
 import { Button } from '../../components/Button/Button';
 import { Card } from '../../components/Card/Card';
 import { DeadlinePill } from '../../components/DeadlinePill/DeadlinePill';
@@ -40,7 +40,38 @@ export function FilterChips({ model, className, chipClassName }: { model: FeedMo
 export const DETAIL_COPY = {
   /** Next to the profile tag when the matched profile is provisional (spec 7.1). Not on any board (design review). */
   provisional: 'Provisional',
+  /** The link on a manual item: not a notice (design review). */
+  ownLink: 'Open your link',
+  manualLink: 'Open the link added with this item',
 } as const;
+
+/**
+ * The words on the link out. A manual item's link is whatever its owner typed,
+ * not an original notice: "Open your link" for the owner (detail.ownItem), "Open
+ * the link added with this item" for anyone else (detail.isManual); otherwise
+ * the board's words.
+ */
+export function originalLinkLabel(item: FeedItem, detail: OwnedDetail | undefined, board: string): string {
+  if (detail?.detail.ownItem) return DETAIL_COPY.ownLink;
+  if (item.detail.isManual || detail?.detail.isManual) return DETAIL_COPY.manualLink;
+  return board;
+}
+
+/**
+ * The detail answer on live data (GET /opportunities/{id}); nothing on fixtures.
+ * Loaded once by the pane or page, which shares it with the link out and
+ * LiveDetail. When the item changes, the previous item's answer is never shown:
+ * the cached answer for the new one stands in until it loads.
+ */
+export function useLiveDetail(item: FeedItem, model: FeedModel): Resource<OwnedDetail> {
+  const key = model.live ? `opportunity:${item.id}` : null;
+  const res = useResource<OwnedDetail>(key, (s) => api.opportunity(item.id, s) as Promise<OwnedDetail>);
+  const mine = (d: OwnedDetail | undefined) => (d?.id === item.id ? d : key ? readCache<OwnedDetail>(key) : undefined);
+  const data = mine(res.data);
+  const { setData: set } = res;
+  const setData = useCallback((update: (prev: OwnedDetail | undefined) => OwnedDetail | undefined) => set((prev) => update(mine(prev))), [set, item.id, key]);
+  return { ...res, data, loading: res.loading && !data, setData };
+}
 
 /**
  * Whether the profile (and Provisional) tags belong on the item. Tenders and
@@ -227,10 +258,9 @@ export function LiveStatus({ model, className, padding }: { model: FeedModel; cl
  * mark acting/done) and the user's note, each saved with PUT. Not on any board:
  * FilterChip and Field from the Components board (design review).
  */
-export function LiveDetail({ model, item }: { model: FeedModel; item: FeedItem }) {
+export function LiveDetail({ model, item, detail }: { model: FeedModel; item: FeedItem; detail: Resource<OwnedDetail> }) {
   const live = model.live!;
   const desktop = useIsDesktop();
-  const detail = useResource<OwnedDetail>(`opportunity:${item.id}`, (s) => api.opportunity(item.id, s) as Promise<OwnedDetail>);
   const state = live.stateOf(item.id);
   const [note, setNote] = useState('');
   const [noteStatus, setNoteStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');

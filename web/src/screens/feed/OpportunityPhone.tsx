@@ -9,14 +9,13 @@ import { httpUrl } from '../../lib/externalUrl';
 import { useAppLink } from '../../lib/useAppLink';
 import { DISMISS_NAV, type FeedModel } from './model';
 import { HEADING } from './focus';
-import { DetailTop, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus, SaveButton } from './parts';
+import { DetailTop, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus, originalLinkLabel, SaveButton, useLiveDetail } from './parts';
+import type { FeedItem } from '../../fixtures/types';
 import styles from './OpportunityPhone.module.css';
 
 /** opportunity-phone.html: one opportunity, with a sticky action bar. Below 792 px. */
 export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }) {
   const link = useAppLink();
-  const navigate = useNavigate();
-  const { search } = useLocation();
   const item = model.byId(id);
   const back = link('/');
 
@@ -34,6 +33,15 @@ export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }
     );
   }
 
+  return <PhoneDetail key={item.id} item={item} model={model} />;
+}
+
+function PhoneDetail({ item, model }: { item: FeedItem; model: FeedModel }) {
+  const link = useAppLink();
+  const navigate = useNavigate();
+  const { search } = useLocation();
+  const back = link('/');
+  const detail = useLiveDetail(item, model);
   const saved = model.saved.has(item.id);
   // Only http(s) links to the original notice; anything else renders no link.
   const original = httpUrl(item.detail.originalUrl);
@@ -60,10 +68,10 @@ export function OpportunityPhone({ model, id }: { model: FeedModel; id: string }
         </TrustPanel>
         {original && (
           <TextLink spacing="block" href={original} target="_blank" rel="noopener noreferrer">
-            Read the original notice
+            {originalLinkLabel(item, detail.data, 'Read the original notice')}
           </TextLink>
         )}
-        {model.live && <LiveDetail key={item.id} model={model} item={item} />}
+        {model.live && <LiveDetail model={model} item={item} detail={detail} />}
       </main>
 
       <div className={styles.actions} role="group" aria-label="Actions">
