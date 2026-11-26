@@ -35,7 +35,7 @@ from blackkite.llm.embeddings import Embedder
 from blackkite.member.schemas import CamelModel, OpportunityBenchmark
 from blackkite.pipeline import categories
 from blackkite.pipeline.dates import kigali_date
-from blackkite.pipeline.dedupe import org_key
+from blackkite.pipeline.dedupe import org_key, title_key
 from blackkite.pipeline.procurement import period_label
 from blackkite.pipeline.visibility import (
     MEMBER_VISIBLE_SOURCE_STATUSES,
@@ -477,13 +477,32 @@ def service_categories(profile: Profile) -> set[str]:
     return out
 
 
-def _service_match(hit: TermHit) -> bool:
-    """A whole profile term in the plan: a phrase (word for word or through the
-    synonyms), or a one-word term word for word (never a one-word synonym:
-    "software" does not match "solar system")."""
+def _category_words(key: str) -> set[str]:
+    """The plan category's key and the words of its label ("Agriculture";
+    "Food and catering": food, catering)."""
+    if key == categories.OTHER:
+        return set()
+    words = set(title_key(categories.label(key)).split()) - {"and"}
+    return words | {key}
+
+
+def _service_match(
+    hit: TermHit, *, category: bool, category_words: set[str], shared: int
+) -> bool:
+    """A whole profile term in the plan: a phrase of two or more words (word for
+    word or through the synonyms), or a one-word term word for word (never a
+    one-word synonym: "software" does not match "solar system"). A one-word term
+    ("health") is too broad alone: it counts only with category agreement (the
+    plan's category is one the profile's services name, or the term names the
+    plan's category: "agriculture" for an agriculture plan), or a second distinct
+    word shared with the profile's terms ("Construction of a health centre" is
+    not a health NGO's service)."""
     if not hit.phrase:
         return False
-    return hit.literal or len(hit.stems) > 1
+    if len(hit.stems) > 1:
+        return True
+    agrees = category or title_key(hit.term) in category_words
+    return hit.literal and (agrees or shared >= MIN_SHARED_TOKENS)
 
 
 @dataclass(frozen=True)
@@ -508,14 +527,20 @@ def plan_match(
     similarity: float | None,
     settings: ScoringSettings,
 ) -> PlanMatch | None:
-    """A plan matches a profile on any of: a whole service (or sector) phrase;
-    at least two distinct shared words; its category being one the profile's
+    """A plan matches a profile on any of: a whole service (or sector) phrase
+    (a one-word term only with the category or a second shared word, see
+    ``_service_match``); at least two distinct shared words; its category being one the profile's
     services name; embedding similarity at the threshold. One shared word alone
     ("dry" foodstuffs, "health" centre construction) is too weak."""
     hits = term_hits(terms, _plan_text(plan))
-    services = sum(1 for h in hits if _service_match(h))
     shared = len(frozenset().union(*(h.stems for h in hits))) if hits else 0
     category = plan.category != categories.OTHER and plan.category in cats
+    words = _category_words(plan.category)
+    services = sum(
+        1
+        for h in hits
+        if _service_match(h, category=category, category_words=words, shared=shared)
+    )
     similar = similarity is not None and similarity >= settings.embedding_min_similarity
     if services or shared >= MIN_SHARED_TOKENS or category or similar:
         return PlanMatch(services, shared, category, similarity)
