@@ -790,3 +790,41 @@ def score_new_opportunities(
                 session, user, profile, run, statuses=NEW_STATUSES, opportunity_ids=ids
             )
     return run.stats
+
+
+def score_opportunities(
+    session: Session,
+    opportunity_ids: Sequence[uuid.UUID],
+    *,
+    deps: ScoringDeps | None = None,
+    now: datetime | None = None,
+) -> RunStats:
+    """The worker's item queue (worker/item_scores.py): these items, each for
+    the users who may see it. A private item is scored for its owner only (and
+    ``visible_to`` would refuse anyone else anyway); a public one for every
+    active user's active profiles."""
+    run = _new_run(deps, now)
+    rows = session.execute(
+        sa.select(Opportunity.id, Opportunity.visibility, Opportunity.owner_user_id)
+        .where(Opportunity.id.in_(list(opportunity_ids)))
+        .order_by(Opportunity.id)
+    ).all()
+    public = [oid for oid, vis, _ in rows if vis == "public"]
+    private: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
+    for oid, vis, owner in rows:
+        if vis == "private" and owner is not None:
+            private[owner].append(oid)
+    if not public and not private:
+        return run.stats
+    q = sa.select(User).where(User.status == "active").order_by(User.created_at)
+    if not public:
+        q = q.where(User.id.in_(list(private)))
+    for user in session.scalars(q).all():
+        ids = public + private.get(user.id, [])
+        if not ids:
+            continue
+        for profile in _active_profiles(session, user.id):
+            _score_profile(
+                session, user, profile, run, statuses=NEW_STATUSES, opportunity_ids=ids
+            )
+    return run.stats

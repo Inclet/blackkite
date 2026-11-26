@@ -437,6 +437,11 @@ class Opportunity(Base):
             "needs_review",
             postgresql_where=sa.text("needs_review"),
         ),
+        sa.Index(
+            "ix_opportunity_score_requested_at",
+            "score_requested_at",
+            postgresql_where=sa.text("score_requested_at IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -486,6 +491,13 @@ class Opportunity(Base):
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("user.id", ondelete="CASCADE"), index=True
     )
+    # Private manual items (spec 6): the link the owner gave, http(s) only. No
+    # source row carries a manual item.
+    manual_url: Mapped[str | None] = mapped_column(sa.Text)
+    # Scoring queue run by the worker (worker/item_scores.py): set when a
+    # private item is created or edited (scored for its owner only) or made
+    # public (scored for everyone). NULL = nothing pending.
+    score_requested_at: Mapped[datetime | None] = _ts()
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 

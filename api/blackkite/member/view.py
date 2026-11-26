@@ -392,7 +392,8 @@ def _topic(opp: Opportunity) -> str | None:
 
 def _original_url(row: Row) -> str:
     if not row.links:
-        return ""
+        # A manual item's own link (spec 6); else nothing.
+        return row.opp.manual_url or ""
     original = next((link for link in row.links if link.is_original), None)
     return (original or row.links[0]).url
 
