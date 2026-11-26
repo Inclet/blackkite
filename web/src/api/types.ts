@@ -6,6 +6,7 @@
  * and account shapes below follow the schema (spec section 6, api models) in
  * camelCase and are listed in the Phase 4 report for the member-API track to confirm.
  */
+import type { DetailBenchmark } from './m5';
 import type { FeedContent, FeedItem, FeedItemDetail } from '../fixtures/types';
 import type { Stream } from '../lib/streams';
 
@@ -75,6 +76,8 @@ export type OpportunityDetail = LiveFeedItem & {
     note: string | null;
     state: ItemState;
     dismissReason?: DismissReason;
+    /** Tenders whose category has at least 3 awards (contract section 6). */
+    benchmark?: DetailBenchmark;
   };
 };
 
@@ -120,6 +123,8 @@ export interface CommonProfileData {
 
 /** api `BusinessData`. */
 export interface BusinessProfileData extends CommonProfileData {
+  /** "company", "ngo", "cooperative" (or another word the API holds); scoring reads it for NGO-only calls (decision 37). */
+  organisationType?: string | null;
   services?: string[] | null;
   sectors?: string[] | null;
   capacity?: ProfileCapacity | null;

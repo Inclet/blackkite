@@ -26,6 +26,17 @@ export const DEFAULT_STREAMS: Record<ProfileType, Stream[]> = {
   personal: ['investment', 'event'],
 };
 
+/**
+ * Organisation types offered as chips (business profiles). Scoring reads
+ * `organisationType`: "ngo" (and other non-profit words) passes NGO-only calls;
+ * none set counts as not an NGO (decision 37).
+ */
+export const ORGANISATION_TYPES = [
+  { value: 'company', label: 'Company' },
+  { value: 'ngo', label: 'NGO or non-profit' },
+  { value: 'cooperative', label: 'Cooperative' },
+] as const;
+
 /** Everything as the inputs hold it: text for text fields, lists for chip groups. */
 export interface ProfileForm {
   type: ProfileType;
@@ -33,7 +44,12 @@ export interface ProfileForm {
   active: boolean;
   streams: Stream[];
   location: string;
+  /** Other places, comma-separated (api `locations`). */
+  locations: string;
+  /** '' = not given. */
+  organisationType: string;
   services: string;
+  sectors: string;
   registrationsHeld: string;
   registrationsNotHeld: string;
   capacityModel: string;
@@ -48,7 +64,10 @@ export interface ProfileForm {
   instruments: string[];
   ticketMin: string;
   ticketMax: string;
+  horizon: string;
   eventTopics: string[];
+  availability: string;
+  budgetRwf: string;
   excludeOrganisations: string;
   excludeSectors: string;
   excludeKeywords: string;
@@ -62,7 +81,8 @@ export type NumberField =
   | 'tonnageMax'
   | 'minContractRwf'
   | 'ticketMin'
-  | 'ticketMax';
+  | 'ticketMax'
+  | 'budgetRwf';
 export type FormErrors = Partial<Record<'name' | 'streams' | NumberField, string>>;
 
 export const ERRORS = {
@@ -85,7 +105,7 @@ export const ERRORS = {
  */
 const COMMON_KEYS = ['streams', 'location', 'locations', 'exclusions', 'provisional'] as const;
 export const DATA_KEYS: Record<ProfileType, readonly (keyof ProfileData)[]> = {
-  business: [...COMMON_KEYS, 'services', 'sectors', 'capacity', 'registrationsHeld', 'registrationsNotHeld', 'minContractRwf'],
+  business: [...COMMON_KEYS, 'organisationType', 'services', 'sectors', 'capacity', 'registrationsHeld', 'registrationsNotHeld', 'minContractRwf'],
   personal: [...COMMON_KEYS, 'instruments', 'ticketRangeRwf', 'horizon', 'eventTopics', 'availability', 'budgetRwf'],
 };
 const CAPACITY_KEYS = ['model', 'trucksInNetwork', 'refrigeratedInNetwork', 'ownedTrucks', 'tonnage'] as const;
@@ -124,7 +144,10 @@ export function toForm(profile: Pick<Profile, 'name' | 'type' | 'data' | 'active
     active: profile?.active ?? true,
     streams: d.streams ?? (profile ? [] : DEFAULT_STREAMS[t]),
     location: d.location ?? '',
+    locations: list(d.locations),
+    organisationType: d.organisationType ?? '',
     services: list(d.services),
+    sectors: list(d.sectors),
     registrationsHeld: list(d.registrationsHeld),
     registrationsNotHeld: list(d.registrationsNotHeld),
     capacityModel: d.capacity?.model ?? '',
@@ -138,7 +161,10 @@ export function toForm(profile: Pick<Profile, 'name' | 'type' | 'data' | 'active
     instruments: d.instruments ?? [],
     ticketMin: num(d.ticketRangeRwf?.min),
     ticketMax: num(d.ticketRangeRwf?.max),
+    horizon: d.horizon ?? '',
     eventTopics: d.eventTopics ?? [],
+    availability: d.availability ?? '',
+    budgetRwf: num(d.budgetRwf),
     excludeOrganisations: list(d.exclusions?.organisations),
     excludeSectors: list(d.exclusions?.sectors),
     excludeKeywords: list(d.exclusions?.keywords),
@@ -162,7 +188,7 @@ export function parseNumber(s: string): number | null {
 }
 
 const BUSINESS_NUMBERS: NumberField[] = ['trucksInNetwork', 'refrigeratedInNetwork', 'ownedTrucks', 'tonnageMin', 'tonnageMax', 'minContractRwf'];
-const PERSONAL_NUMBERS: NumberField[] = ['ticketMin', 'ticketMax'];
+const PERSONAL_NUMBERS: NumberField[] = ['ticketMin', 'ticketMax', 'budgetRwf'];
 
 export function validate(f: ProfileForm): FormErrors {
   const e: FormErrors = {};
@@ -173,7 +199,7 @@ export function validate(f: ProfileForm): FormErrors {
     // Counts and francs are whole numbers in the API (it refuses 2.5 trucks); only tonnage takes decimals.
     const whole = !k.startsWith('tonnage');
     if (Number.isNaN(n) || (whole && n !== null && !Number.isInteger(n))) {
-      e[k] = k === 'minContractRwf' || k.startsWith('ticket') ? ERRORS.rwf : Number.isNaN(n) ? ERRORS.number : ERRORS.whole;
+      e[k] = k === 'minContractRwf' || k === 'budgetRwf' || k.startsWith('ticket') ? ERRORS.rwf : Number.isNaN(n) ? ERRORS.number : ERRORS.whole;
     }
   }
   if (f.type === 'personal' && !e.ticketMin && !e.ticketMax) {
@@ -210,7 +236,11 @@ export function toInput(f: ProfileForm, original?: Partial<ProfileData>): Profil
       ...keep,
       streams,
       location: f.location.trim() || null,
+      locations: parseList(f.locations),
+      // Sent only when given (or to clear a stored one), so a profile without it stays as the API had it.
+      ...(f.organisationType || original?.organisationType != null ? { organisationType: f.organisationType || null } : {}),
       services: parseList(f.services),
+      sectors: parseList(f.sectors),
       registrationsHeld: parseList(f.registrationsHeld),
       registrationsNotHeld: parseList(f.registrationsNotHeld),
       capacity: {
@@ -230,6 +260,10 @@ export function toInput(f: ProfileForm, original?: Partial<ProfileData>): Profil
       ...keep,
       streams,
       location: f.location.trim() || null,
+      locations: parseList(f.locations),
+      horizon: f.horizon.trim() || null,
+      availability: f.availability.trim() || null,
+      budgetRwf: parseNumber(f.budgetRwf),
       instruments: f.instruments.length ? f.instruments : null,
       ticketRangeRwf: { min: parseNumber(f.ticketMin), max: parseNumber(f.ticketMax) },
       eventTopics: f.eventTopics.length ? f.eventTopics : null,

@@ -17,6 +17,7 @@ import { useIsDesktop } from '../../lib/useIsDesktop';
 import { LoadState } from '../common/LoadState';
 import { AppShell } from '../shell/AppShell';
 import { SignIn } from '../SignIn';
+import { ComingUp } from '../plans/ComingUp';
 import { FeedLinkCard } from './FeedLinkCard';
 import styles from './Calendar.module.css';
 
@@ -161,6 +162,8 @@ export function Calendar() {
         {res.data && view === 'month' && <MonthGrid month={month} days={days} />}
         {res.data && view === 'list' && days.length > 0 && <DayList days={days} />}
       </Card>
+
+      <ComingUp headingId="cal-coming-up" />
 
       <FeedLinkCard />
     </AppShell>

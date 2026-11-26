@@ -284,3 +284,14 @@
   font-size: 13px;
   font-weight: 500;
 }
+
+/* "Similar awarded contracts" (live tenders, design review): the sentence is the link, 13px as the live text. */
+.similar {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.similar a {
+  font-size: inherit;
+}

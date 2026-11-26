@@ -10,6 +10,7 @@ export const MORE_LINKS = [
   { label: 'Profiles', to: '/profiles' },
   { label: 'Digest', to: '/settings/digest' },
   { label: 'Sources', to: '/sources' },
+  { label: 'Benchmarks', to: '/benchmarks' },
   { label: 'Account', to: '/account' },
 ] as const;
 

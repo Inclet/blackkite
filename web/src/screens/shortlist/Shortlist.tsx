@@ -12,6 +12,7 @@ import { useAppLink } from '../../lib/useAppLink';
 import { useIsDesktop } from '../../lib/useIsDesktop';
 import { LoadState } from '../common/LoadState';
 import { rowId } from '../feed/focus';
+import { ComingUp } from '../plans/ComingUp';
 import { AppShell } from '../shell/AppShell';
 import { SignIn } from '../SignIn';
 
@@ -75,6 +76,7 @@ export function Shortlist() {
           ))}
         </Card>
       )}
+      {res.data && <ComingUp headingId="shortlist-coming-up" />}
     </AppShell>
   );
 }
