@@ -141,6 +141,8 @@ class Row:
     best: ScoreView | None
     all_filtered: bool
     links: list[LinkInfo] = field(default_factory=list)
+    # The caller added this item (private, or published; decision 50).
+    own: bool = False
 
     @property
     def state(self) -> str:
@@ -327,7 +329,8 @@ def load_rows(
             rows = [r for r in rows if r.hard_filtered != MUTED_SOURCE_ONLY]
         shown = [r for r in rows if not r.hard_filtered]
         all_filtered = bool(rows) and not shown and not pending
-        own = keep_own and is_own_item(o, user.id)
+        mine = is_own_item(o, user.id)
+        own = keep_own and mine
         if (
             profile_id is not None
             and not shown
@@ -338,7 +341,9 @@ def load_rows(
         if all_filtered and not keep_filtered and not own:
             continue
         best = max(shown, key=lambda r: (r.rank, r.profile_name)) if shown else None
-        out.append(Row(o, states.get(o.id), best, all_filtered, links.get(o.id, [])))
+        out.append(
+            Row(o, states.get(o.id), best, all_filtered, links.get(o.id, []), mine)
+        )
     return out
 
 
@@ -449,6 +454,8 @@ def trust_for(row: Row) -> S.Trust:
         deadline_at=o.deadline_at,
         links=row.links,
         private=o.visibility == "private",
+        manual=is_manual(o),
+        own=row.own,
     )
     return S.Trust(state=state, desktop=desktop, phone=phone)
 

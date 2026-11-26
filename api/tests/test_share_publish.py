@@ -388,3 +388,65 @@ def test_feed_and_shortlist_say_manual_too(db, ana, ben, login):
     fit_for(db, ben, db.get(Opportunity, uuid.UUID(oid)), word="good")
     db.commit()
     assert manual(login(ben.email)) == {oid: True}
+
+
+OWNER_COPY = "You added this item yourself, so nobody else has checked it."
+
+
+def _trust(client, oid):
+    return client.get(f"/api/opportunities/{oid}").json()["detail"]["trust"]
+
+
+def _feed_trust(client, oid):
+    return next(i for i in items(client) if i["id"] == oid)["detail"]["trust"]
+
+
+def test_trust_copy_for_an_item_added_by_hand(db, ana, ben, login):
+    make_user(db, "admin@example.com", role="admin")
+    a = login(ana.email)
+    oid = _item(a, organisation="Kigali Logistics Ltd")
+    named = {"desktop": OWNER_COPY, "phone": OWNER_COPY}
+    assert {k: _trust(a, oid)[k] for k in ("desktop", "phone")} == named
+    _consent(a, oid, True)
+    login("admin@example.com").post(f"/api/admin/catalogue/{oid}/publish")
+    # The owner keeps their copy once it is published, on the page and the feed.
+    for t in (_trust(a, oid), _feed_trust(a, oid)):
+        assert (t["desktop"], t["phone"]) == (OWNER_COPY, OWNER_COPY)
+    # Everyone else reads that a member added it.
+    fit_for(db, ben, db.get(Opportunity, uuid.UUID(oid)), word="good")
+    db.commit()
+    b = login(ben.email)
+    other = (
+        "A member added this item by hand; check the details with "
+        "Kigali Logistics Ltd before you act."
+    )
+    for t in (_trust(b, oid), _feed_trust(b, oid)):
+        assert t["state"] == "unconfirmed"
+        assert (t["desktop"], t["phone"]) == (other, other)
+        assert "own site" not in t["desktop"]
+
+
+def test_trust_copy_for_a_published_item_with_no_organisation(db, ana, ben, login):
+    make_user(db, "admin@example.com", role="admin")
+    a = login(ana.email)
+    oid = _item(a)
+    _consent(a, oid, True)
+    login("admin@example.com").post(f"/api/admin/catalogue/{oid}/publish")
+    t = _trust(login(ben.email), oid)
+    text = "A member added this item by hand; check the details before you act."
+    assert (t["desktop"], t["phone"]) == (text, text)
+    assert _trust(a, oid)["desktop"] == OWNER_COPY
+
+
+def test_published_item_a_source_carries_gets_the_source_copy(db, ana, ben, login):
+    make_user(db, "admin@example.com", role="admin")
+    a = login(ana.email)
+    oid = _item(a, organisation="WFP")
+    _consent(a, oid, True)
+    login("admin@example.com").post(f"/api/admin/catalogue/{oid}/publish")
+    f.link(db, db.get(Opportunity, uuid.UUID(oid)), f.source(db, "Job Board"))
+    db.commit()
+    for c in (a, login(ben.email)):
+        t = _trust(c, oid)
+        assert t["desktop"].startswith("Found on Job Board.")
+        assert "member added" not in t["desktop"]
