@@ -145,3 +145,20 @@ Export and deletion (spec 10): `GET /api/me/export` adds `privateItems[].url`, `
 Logs: **built:** `token=` query values (calendar feed, unsubscribe GET/POST) are rewritten to `token=[redacted]` in uvicorn's access log and the app's logs (`blackkite/logredact.py`); the reverse proxy must redact its own access log the same way (`.env.example`).
 
 Environment: `BK_CALENDAR_SECRET` (api; at least 32 random characters, example values refused at startup; the renderer refuses to start with it set), `BK_CALENDAR_RATE_PER_TOKEN_PER_HOUR` (api, default 60).
+
+## 6. M5: benchmarks, procurement plans, second user (added 2026-11-26)
+
+Spec 2.6, 6 (`award`), 8 ("Benchmarks: awarded tender prices by category"), 11 (M5). Real Umucyo pages are untested until M0: collectors are configurable (selectors in source config, like `html_list`) and tested on synthetic pages only.
+
+**Data (shared, not per user).** `award` (spec 6: tender ref, entity, bidders with prices, winner, period; plus category tags, currency, source, award date, link to the notice, and the matching `opportunity_id` when the tender is in the catalogue). New `procurement_plan_item` (entity, description, category tags, procurement method, estimated value + currency, planned quarter or date, fiscal year, source, link, and `opportunity_id` once the actual tender appears). Both are collected by two new allowlisted custom collectors, `umucyo_awards` and `umucyo_plans`, which write through their own ingest paths (never into `opportunity`). Bidder names are public procurement records; still show only what the source publishes.
+
+| Route | What |
+|---|---|
+| `GET /api/benchmarks?category=&entity=&from=&to=` | Categories with awarded-price statistics in the window: `{categories: [{category, label, awards, median, p25, p75, min, max, currency, medianBidders}]}`. A category needs ≥ 3 awards to show statistics (fewer → counts only). Amounts per currency; never mixed. |
+| `GET /api/benchmarks/{category}` | The awards behind it: `{awards: [{id, tenderRef, entity, title, winner, winningPrice, bidders: [{name, price}], awardedOn, url}]}` paged. |
+| `GET /api/opportunities/{id}` | `detail.benchmark?` `{category, median, p25, p75, awards, currency}` when the item's category has ≥ 3 awards (tenders only). |
+| `GET /api/plans?window=&profile=` | Planned tenders not yet advertised that match the caller's active profiles (cheap tag/embedding match, no LLM): `{items: [{id, entity, description, method, estimatedValue?, currency?, plannedFor, matchedProfile, url}]}`; items linked to an advertised tender are dropped (the tender is in the feed). |
+
+Web (undesigned; existing components only; design review): `/benchmarks` (category list with ranges in plain words, e.g. "Most awards were between FRW 4.2M and FRW 9.8M; the middle one was FRW 6.1M (14 awards)"), `/benchmarks/{category}` (awards list), a "Similar awarded contracts" line in the tender detail, and a "Coming up" section (plans) on the Calendar and/or Shortlist. Numbers here are prices, not scores: allowed.
+
+**Second user.** After the above, a live run with two accounts with different profiles (e.g. the seeded owner and an invited member with a personal-investing profile or an NGO business profile) through the whole flow; whatever breaks is fixed. The profile editor must cover every profile field scoring reads (e.g. organisation type for NGO-only calls).
