@@ -1,0 +1,27 @@
+# Smoke test only (deploy/smoke/run.sh): a local page for the renderer to render.
+# The renderer's URL guard refuses private addresses, so the page sits on a
+# network whose subnet is globally routable (11.0.0.0/8, never used on the
+# public internet by its owner) and only the renderer and the page are on it.
+# Never use this file outside the local smoke test.
+services:
+  renderer:
+    networks: [render-internal, render-egress, smoke-public]
+  testpage:
+    image: caddy:2.11.6-alpine
+    command: ["caddy", "file-server", "--root", "/srv", "--listen", ":80"]
+    volumes:
+      - ./deploy/smoke/testpage:/srv:ro
+    networks:
+      smoke-public:
+        ipv4_address: 11.250.0.20
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/robots.txt"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  smoke-public:
+    ipam:
+      config:
+        - subnet: 11.250.0.0/24
