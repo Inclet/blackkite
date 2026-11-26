@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { filterFeed, m4Admin, m4Member, ownExtras, type OwnRecord } from './stubM4';
 
 /**
  * A stub member API (docs/api-contract.md section 2) for the e2e run. One server
@@ -65,6 +66,10 @@ export interface Seed {
   suggestionsPerDay?: number;
   /** Both test-run routes answer 429, as when BK_TEST_RUNS_MAX_CONCURRENT runs are already going. */
   testRunBusy?: boolean;
+  /** The caller's own manual items (contract section 5), by id; their feed rows are in `items`. */
+  own: Record<string, OwnRecord>;
+  /** The personal calendar feed link's version; rotate bumps it. */
+  feedLinkVersion: number;
 }
 
 export interface Seen {
@@ -279,6 +284,8 @@ export function defaultSeed(): Seed {
       { id: 'u2', email: 'amina@example.rw', name: 'Amina', role: 'member', status: 'active', createdAt: '2026-11-10T08:00:00Z', lastSignInAt: null },
     ],
     invites: [],
+    own: {},
+    feedLinkVersion: 1,
   };
 }
 
@@ -574,6 +581,8 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
   const withState = (i: Item) => ({ ...i, state: s.states[i.id] ?? 'unseen' });
   const opp = path.match(/^\/opportunities\/([^/]+)(\/state|\/note)?$/);
   const prof = path.match(/^\/profiles\/([^/]+)$/);
+  const q = new URLSearchParams(url.split('?')[1] ?? '');
+  if (!path.startsWith('/admin') && m4Member(s, method, path, q, body, res)) return;
 
   if (path.startsWith('/admin/') || path === '/admin') return admin(s, method, path, url, body, res);
   const mute = path.match(/^\/sources\/([^/]+)\/mute$/);
@@ -636,7 +645,9 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
   if (method === 'GET' && path === '/me/export') return send(res, 200, { profiles: s.profiles, digest: s.digest, states: s.states, notes: s.notes });
   if (method === 'GET' && path === '/feed') {
     // Deliberately not in closing order: the web app ranks what it gets.
-    const items = s.items.filter((i) => s.states[i.id] !== 'dismissed').map(withState);
+    const filtered = filterFeed(s, s.items, q);
+    if (typeof filtered === 'string') return send(res, 422, { detail: filtered });
+    const items = filtered.filter((i) => s.states[i.id] !== 'dismissed').map(withState);
     return send(res, 200, { user: { name: s.userName }, sources: { checked: 3, when: 'this morning' }, digest: { channel: 'email' }, items });
   }
   if (method === 'GET' && path === '/shortlist') {
@@ -646,7 +657,8 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
     const item = s.items.find((i) => i.id === decodeURIComponent(opp[1]!));
     if (!item) return send(res, 404, { detail: 'Not found' });
     if (method === 'GET' && !opp[2]) {
-      return send(res, 200, opportunityBody(withState(item), s.notes[item.id] ?? null));
+      const out = opportunityBody(withState(item), s.notes[item.id] ?? null);
+      return send(res, 200, { ...out, detail: { ...(out.detail as object), ...ownExtras(s, item.id) } });
     }
     if (method === 'PUT' && opp[2] === '/state') {
       const b = (body ?? {}) as { state?: string; dismissReason?: unknown };
@@ -735,6 +747,7 @@ function admin(s: Session, method: string, path: string, fullPath: string, body:
   const user = p.match(/^\/users\/([^/]+)$/);
   const invite = p.match(/^\/invites\/([^/]+)$/);
 
+  if (m4Admin(s, method, p, query, res)) return;
   if (method === 'GET' && p === '/collector-types') return send(res, 200, COLLECTOR_TYPES);
   if (method === 'GET' && p === '/sources') {
     const status = query.get('status');
