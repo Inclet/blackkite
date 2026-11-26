@@ -119,8 +119,21 @@ def _at_least(fit: str | None, wanted: str) -> bool:
     return fit in FIT_RANK and FIT_RANK[fit] >= FIT_RANK[wanted]
 
 
-def feed_rows(db: Session, user: User, f: FeedFilters, now: datetime) -> list[Row]:
-    opps = list(db.scalars(_base_query(user, f)).all())
+def feed_rows(
+    db: Session,
+    user: User,
+    f: FeedFilters,
+    now: datetime,
+    *,
+    where: sa.ColumnElement[bool] | None = None,
+    limit: int | None = FEED_LIMIT,
+) -> list[Row]:
+    """The feed's rows (visibility, mutes, state, decision 41, filters).
+    ``where`` adds a clause on ``Opportunity`` (the calendar's date window)."""
+    q = _base_query(user, f)
+    if where is not None:
+        q = q.where(where)
+    opps = list(db.scalars(q).all())
     if f.statuses is not None:
         opps = [o for o in opps if current_status(o, now) in f.statuses]
     elif f.state is None:
@@ -143,7 +156,7 @@ def feed_rows(db: Session, user: User, f: FeedFilters, now: datetime) -> list[Ro
     rows = [r for r in rows if not _hidden_without_fit_word(r, user.id)]
     if f.fit is not None:
         rows = [r for r in rows if _at_least(fit_for(r, now), f.fit)]
-    return closing_soonest(rows, now)[:FEED_LIMIT]
+    return closing_soonest(rows, now)[:limit]
 
 
 # States that keep an item in the feed even with no fit word (decision 41).

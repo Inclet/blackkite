@@ -200,6 +200,38 @@ class OpportunityOut(FeedItem):
     detail: OpportunityDetail  # type: ignore[assignment]
 
 
+# --- calendar ------------------------------------------------------------------------
+
+CalendarKind = Literal["deadline", "event_start", "event_end", "event"]
+
+
+class CalendarEntry(CamelModel):
+    """One date of one item on the calendar (docs/api-contract.md section 5)."""
+
+    omit_if_none = frozenset({"organisation_short", "time", "fit"})
+
+    id: str
+    stream: Stream
+    title: str
+    organisation_short: str | None = None
+    kind: CalendarKind
+    # Kigali time "HH:MM" when the source stated one; left out otherwise.
+    time: str | None = None
+    # As FeedItem.fit; left out when null (events, investments, closed items).
+    fit: Fit | None = None
+    state: State
+    provisional: bool
+
+
+class CalendarDay(CamelModel):
+    date: str  # YYYY-MM-DD, Kigali calendar
+    entries: list[CalendarEntry]
+
+
+class CalendarOut(CamelModel):
+    days: list[CalendarDay]
+
+
 # --- actions -------------------------------------------------------------------------
 
 

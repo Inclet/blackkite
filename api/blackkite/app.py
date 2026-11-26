@@ -7,6 +7,7 @@ from blackkite.config import Settings, get_settings, warn_ignored_env
 from blackkite.routes import (
     admin,
     auth,
+    calendar,
     catalogue,
     digest_settings,
     member,
@@ -45,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(sources.member_router, prefix=API_PREFIX)
     app.include_router(sources.admin_router, prefix=API_PREFIX)
     app.include_router(member.router, prefix=API_PREFIX)
+    app.include_router(calendar.router, prefix=API_PREFIX)
     app.include_router(catalogue.router, prefix=API_PREFIX)
     app.include_router(profiles.router, prefix=API_PREFIX)
     app.include_router(digest_settings.router, prefix=API_PREFIX)
