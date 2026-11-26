@@ -96,6 +96,25 @@ def test_stream_not_selected_and_missing_streams_never_filter():
     assert rules(opp(stream="investment"), no_streams).hard_filtered is None
 
 
+@pytest.mark.parametrize(
+    ("stream", "profile", "text"),
+    [
+        ("funding", PERSONAL, "This profile does not follow funding calls."),
+        ("tender", PERSONAL, "This profile does not follow tenders."),
+        ("investment", IRONJI, "This profile does not follow investments."),
+        ("event", seed("Ironji-Trade"), None),  # Ironji follows events
+    ],
+)
+def test_stream_not_selected_wording(stream, profile, text):
+    kw = {"event_start": NOW + timedelta(days=9)} if stream == "event" else {}
+    r = rules(opp(stream=stream, **kw), profile)
+    assert r.filter_reason == text
+    only_tenders = seed("AI lab")
+    only_tenders.data = {**only_tenders.data, "streams": ["tender"]}
+    r = rules(opp(stream="event", event_start=NOW + timedelta(days=9)), only_tenders)
+    assert r.filter_reason == "This profile does not follow events."
+
+
 def test_muted_source_only():
     o = opp()
     assert rules(o, sources=[src(muted=True)]).hard_filtered == "muted_source_only"

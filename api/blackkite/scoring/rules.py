@@ -436,6 +436,15 @@ def _fmt_rwf(v: float) -> str:
     return f"FRW {v:,.0f}"
 
 
+# How a stream reads in "This profile does not follow ...".
+STREAM_PLURALS = {
+    "tender": "tenders",
+    "funding": "funding calls",
+    "investment": "investments",
+    "event": "events",
+}
+
+
 def check_rules(
     opp: Opportunity,
     profile: Profile,
@@ -459,7 +468,8 @@ def check_rules(
     streams = data.get("streams")
     if isinstance(streams, list) and streams and opp.stream not in streams:
         return RuleResult(
-            "stream_not_selected", f"This profile does not follow {opp.stream}s."
+            "stream_not_selected",
+            f"This profile does not follow {STREAM_PLURALS.get(opp.stream, opp.stream)}.",
         )
     if sources and all(s.muted for s in sources):
         return RuleResult(
