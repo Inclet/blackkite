@@ -49,3 +49,7 @@ Answers to the Phase 0 questions, 2026-11-24. Conflict numbers refer to `PLAN.md
 | 43 | Unsubscribe | One-click: a signed link in every digest and alert turns that email off without signing in, plus List-Unsubscribe and List-Unsubscribe-Post headers. |
 | 44 | Where collection runs | The VPS. Nothing is deployed without the owner's go-ahead. |
 | 45 | Email provider | Resend. No real email is sent until the owner gives the go-ahead and the key is provided through the secure form. |
+| 46 | Headless browser isolation | `browser_list` collection and its test runs run in a separate container with no secrets (no database credentials, no API keys), reaching the network only through the guarded path; the API and worker call it over an internal channel. |
+| 47 | Role change | Kept: admins can switch another user between member and admin (never themselves, never leaving no active admin). Extends spec 3. |
+| 48 | Robots on JavaScript sites | Robots.txt is also checked for pages a site redirects or navigates us to; a disallowed page is stopped. |
+| 49 | Emails with no usable link | Skipped, and each skipped email is recorded in the run's error log (sender, subject, date) so an admin can see what was missed. |
