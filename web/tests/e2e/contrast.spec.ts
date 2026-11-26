@@ -42,7 +42,7 @@ const checks: [string, { width: number; height: number }, string, string, number
   ['applied filters hint (slate on mist)', { width: 1440, height: 900 }, '/?fit=good', 'text=Applied filters', 4.5],
   ['quote from the notice (slate on white)', { width: 1440, height: 900 }, '/o/wfp-logistics', 'text=from the notice: >> nth=0', 4.5],
   ['section toggle hint (slate on white)', { width: 390, height: 844 }, '/o/wfp-logistics', 'button:has-text("Details") span', 4.5],
-  ['item form hint (slate on white)', { width: 1440, height: 900 }, '/items/new', 'text=With the year, such as 7 Dec 2026. >> nth=0', 4.5],
+  ['item form hint (slate on white)', { width: 1440, height: 900 }, '/items/new', 'text=With the year, such as 7 Dec 2026 or 7 Dec 2026, 5pm. >> nth=0', 4.5],
   ['shareable empty line (slate on white)', { width: 1440, height: 900 }, '/admin/shareable', 'text=No private items are waiting', 4.5],
 ];
 
