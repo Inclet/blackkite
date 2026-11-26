@@ -40,6 +40,7 @@ function owned(over: Partial<OwnedDetail['detail']['ownItem'] & object> = {}, ti
       note: null,
       state: 'unseen',
       fields: [{ name: 'organisation', value: 'Kigali Bus' }],
+      isManual: true,
       ownItem: { shareConsent: false, published: false, ...over },
     },
   };

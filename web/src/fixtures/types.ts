@@ -71,7 +71,10 @@ export interface FeedItemDetail {
   };
   /** Link to the original notice. */
   originalUrl: string;
-  /** A member added it by hand (api `detail.isManual`); optional until the API sends it everywhere. */
+  /**
+   * A member added it by hand (api `detail.isManual`). The API always sends it (required on
+   * LiveFeedItem); optional here so the reference fixtures, which have no manual items, stay as the boards.
+   */
   isManual?: boolean;
 }
 

@@ -122,7 +122,7 @@ function LiveFeedScreens({
         // Keep the cached shortlist and feed in step, so the next screen starts from the truth.
         setShortlist((prev) => {
           const rest = (prev ?? []).filter((i) => i.id !== item.id);
-          return state === 'saved' || state === 'acting' ? [...rest, { ...item, state, provisional: item.provisional ?? false }] : rest;
+          return state === 'saved' || state === 'acting' ? [...rest, { ...item, detail: { ...item.detail, isManual: item.detail.isManual ?? false }, state, provisional: item.provisional ?? false }] : rest;
         });
         setFeed((prev) => {
           if (!prev) return prev;

@@ -19,7 +19,12 @@ export type ItemState = 'unseen' | 'saved' | 'dismissed' | 'acting' | 'done';
  * section 2, on feed, shortlist and detail items). The screens read saved,
  * acting and done from it.
  */
-export type LiveFeedItem = FeedItem & { state: ItemState; provisional: boolean };
+export type LiveFeedItem = FeedItem & {
+  state: ItemState;
+  provisional: boolean;
+  /** isManual is required on the API's FeedItem detail (feed, shortlist and detail answers). */
+  detail: FeedItemDetail & { isManual: boolean };
+};
 
 /** The dismiss reason codes PUT /opportunities/{id}/state accepts (contract section 2). */
 export const DISMISS_REASONS = ['not_my_sector', 'too_small', 'cant_meet_requirements', 'already_knew', 'other'] as const;

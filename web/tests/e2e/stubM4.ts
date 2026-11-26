@@ -202,6 +202,7 @@ function itemFrom(id: string, input: Record<string, unknown>): Item {
       reasons: [],
       trust: { state: 'unconfirmed', desktop: PRIVATE_TRUST, phone: PRIVATE_TRUST },
       originalUrl: typeof input.url === 'string' ? input.url : '',
+      isManual: true,
     },
   };
 }
