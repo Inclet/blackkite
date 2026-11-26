@@ -16,6 +16,13 @@
 # Only the proxy publishes ports. db and api are not reachable from outside.
 name: blackkite
 
+# Container logs rotate (json-file): at most 5 x 10 MB per container.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 x-app-env: &app-env
   BK_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-blackkite}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-blackkite}
   BK_DATA_DIR: /app/data
@@ -30,6 +37,7 @@ services:
   db:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-blackkite}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -51,6 +59,7 @@ services:
     image: blackkite-app:${BK_IMAGE_TAG:-local}
     pull_policy: build
     restart: unless-stopped
+    logging: *logging
     env_file:
       - path: .env
         required: false
@@ -82,6 +91,7 @@ services:
     image: blackkite-app:${BK_IMAGE_TAG:-local}   # built by `api`
     pull_policy: never
     restart: unless-stopped
+    logging: *logging
     command: ["bk", "worker"]
     env_file:
       - path: .env
@@ -125,6 +135,7 @@ services:
     image: blackkite-renderer:${BK_IMAGE_TAG:-local}
     pull_policy: build
     restart: unless-stopped
+    logging: *logging
     environment:
       BK_RENDERER_TOKEN: ${BK_RENDERER_TOKEN:?set BK_RENDERER_TOKEN in .env}
       BK_BOT_CONTACT_URL: ${BK_BOT_CONTACT_URL:-}
@@ -165,6 +176,7 @@ services:
     image: blackkite-proxy:${BK_IMAGE_TAG:-local}
     pull_policy: build
     restart: unless-stopped
+    logging: *logging
     environment:
       BK_SITE_ADDRESS: ${BK_DOMAIN:-}
     ports:
@@ -195,6 +207,7 @@ services:
   mailpit:
     image: axllent/mailpit:v1.20
     profiles: ["dev"]
+    logging: *logging
     networks: [default]
     ports:
       - "127.0.0.1:1025:1025"   # SMTP; inside compose use BK_SMTP_HOST=mailpit
