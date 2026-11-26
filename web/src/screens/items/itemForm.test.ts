@@ -138,3 +138,51 @@ test('the edit form takes the API amount (a decimal string) as a whole number', 
   expect(toForm(item).value).toBe('6000000');
   expect(validate(toForm(item))).toEqual({});
 });
+
+/** An owned item as GET /api/opportunities/{id} answers it: the row's Kigali dates plus the stored instants in fields. */
+function stored(stream: 'tender' | 'event', rowDates: Record<string, unknown>, fields: { name: string; value: unknown }[]): OwnedDetail {
+  return {
+    id: 'own-rt', stream, title: 'Item', organisation: '', fit: null, deadline: null, state: 'unseen', provisional: false, ...rowDates,
+    detail: { reasons: [], trust: { state: 'unconfirmed', desktop: '', phone: '' }, originalUrl: '', fields, sources: [], documents: [], changes: [], note: null, state: 'unseen', ownItem: { shareConsent: false, published: false } },
+  } as unknown as OwnedDetail;
+}
+
+test.each([
+  ['deadline with a time', stored('tender', { deadline: '2026-12-07' }, [{ name: 'deadlineAt', value: '2026-12-07T17:00:00+02:00' }]), { deadline: '7 Dec 2026, 5pm' }, { deadline: '2026-12-07T17:00' }],
+  ['deadline, date only', stored('tender', { deadline: '2026-12-07' }, [{ name: 'deadlineAt', value: '2026-12-07T23:59:59+02:00' }]), { deadline: '7 Dec 2026' }, { deadline: '2026-12-07' }],
+  [
+    'same-day event with start and end times',
+    stored('event', { eventDates: { start: '2026-12-07', end: '2026-12-07' } }, [{ name: 'eventStart', value: '2026-12-07T09:00:00+02:00' }, { name: 'eventEnd', value: '2026-12-07T13:30:00+02:00' }]),
+    { eventStart: '7 Dec 2026, 9am', eventEnd: '7 Dec 2026, 1:30pm' },
+    { eventStart: '2026-12-07T09:00', eventEnd: '2026-12-07T13:30' },
+  ],
+  [
+    'same-day event, date only end',
+    stored('event', { eventDates: { start: '2026-12-07', end: '2026-12-07' } }, [{ name: 'eventStart', value: '2026-12-07T09:00:00+02:00' }, { name: 'eventEnd', value: '2026-12-07T23:59:59+02:00' }]),
+    { eventStart: '7 Dec 2026, 9am', eventEnd: '7 Dec 2026' },
+    { eventStart: '2026-12-07T09:00', eventEnd: '2026-12-07' },
+  ],
+  [
+    'multi-day event',
+    stored('event', { eventDates: { start: '2026-12-01', end: '2026-12-03' } }, [{ name: 'eventStart', value: '2026-12-01T00:00:00+02:00' }, { name: 'eventEnd', value: '2026-12-03T23:59:59+02:00' }]),
+    { eventStart: '1 Dec 2026', eventEnd: '3 Dec 2026' },
+    { eventStart: '2026-12-01', eventEnd: '2026-12-03' },
+  ],
+  [
+    'event with a start only',
+    stored('event', { eventDates: { start: '2026-12-01', end: null } }, [{ name: 'eventStart', value: '2026-12-01T10:00:00+02:00' }]),
+    { eventStart: '1 Dec 2026, 10am', eventEnd: '' },
+    { eventStart: '2026-12-01T10:00', eventEnd: null },
+  ],
+  [
+    'event dates from the row only (no stored instants)',
+    stored('event', { eventDates: { start: '2026-12-07', end: '2026-12-07' } }, []),
+    { eventStart: '7 Dec 2026', eventEnd: '7 Dec 2026' },
+    { eventStart: '2026-12-07', eventEnd: '2026-12-07' },
+  ],
+] as const)('date round trip, %s: loads as typed and sends what was stored', (_name, item, shown, sent) => {
+  const form = toForm(item);
+  expect(form).toMatchObject(shown);
+  expect(validate(form)).toEqual({});
+  expect(toInput(form)).toMatchObject(sent);
+});

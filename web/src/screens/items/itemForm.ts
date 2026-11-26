@@ -44,7 +44,6 @@ export function toForm(item: OwnedDetail): ItemForm {
     return f === undefined || f.value === null ? '' : fieldValueText(f.value);
   };
   const event = item.stream === 'event';
-  const end = item.eventDates?.end;
   // The stored instant when the answer has it (keeps a typed time), else the row's date.
   const when = (name: string, fallback: string | null | undefined, edge: DayEdge) => {
     const f = item.detail.fields.find((x) => x.name === name);
@@ -57,7 +56,8 @@ export function toForm(item: OwnedDetail): ItemForm {
     organisation: field('organisation'),
     deadline: event ? '' : when('deadlineAt', item.deadline, 'end'),
     eventStart: event ? when('eventStart', item.eventDates?.start, 'start') : '',
-    eventEnd: event && end && end !== item.eventDates?.start ? when('eventEnd', end, 'end') : '',
+    // Whenever the item has an end: a same-day end keeps its time ("7 Dec 2026, 1:30pm").
+    eventEnd: event ? when('eventEnd', item.eventDates?.end, 'end') : '',
     // The API sends the amount as a decimal string ("6000000.00"); the form takes whole numbers.
     value: wholeAmount(field('valueAmount')),
     currency: field('valueCurrency') || 'RWF',
