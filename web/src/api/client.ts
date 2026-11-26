@@ -127,7 +127,12 @@ const enc = encodeURIComponent;
 export interface FeedQuery {
   stream?: string;
   profile?: string;
+  /** open | closing_soon | expired (spec 6 status). */
+  status?: string;
+  /** Days ahead, Kigali calendar (7, 14, 30). */
   window?: string;
+  /** strong | good | possible: that fit word or better. Never a number. */
+  fit?: string;
   verification?: string;
   source?: string;
   state?: string;
