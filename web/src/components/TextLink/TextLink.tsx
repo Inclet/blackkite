@@ -1,4 +1,4 @@
-import type { AnchorHTMLAttributes, ButtonHTMLAttributes } from 'react';
+import type { AnchorHTMLAttributes, ComponentProps } from 'react';
 import { cx } from '../../lib/streams';
 import styles from './TextLink.module.css';
 
@@ -15,7 +15,7 @@ export function TextLink({ spacing = 'inline', className, ...rest }: TextLinkPro
   return <a className={cx(styles.link, styles[spacing], className)} {...rest} />;
 }
 
-export interface TextButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+export interface TextButtonProps extends ComponentProps<'button'> {
   spacing?: 'inline' | 'stacked';
 }
 

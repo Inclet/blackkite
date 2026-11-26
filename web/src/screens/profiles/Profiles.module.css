@@ -104,3 +104,14 @@
   font-size: 13px;
   color: var(--bk-slate);
 }
+
+/* The Capacity card's fields, behind "Add capacity" (design review): the card's 14px gap. */
+.capacityFields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.capacityFields[hidden] {
+  display: none;
+}

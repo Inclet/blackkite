@@ -217,3 +217,48 @@ test('phone: the editor sits in the phone frame, under More', async () => {
   await screen.findByRole('heading', { level: 1, name: 'Ironji-Trade' });
   expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'More' })).toHaveAttribute('aria-current', 'page');
 });
+
+test('capacity: under "Capacity (transport and logistics)", open when it holds values', async () => {
+  mockApi({ 'GET /api/profiles': [IRONJI], 'GET /me': ME });
+  renderAt('/profiles/p1');
+  await screen.findByRole('heading', { level: 1, name: 'Ironji-Trade' });
+  const card = within(screen.getByRole('region', { name: 'Capacity (transport and logistics)' }));
+  expect(card.getByText('Optional. Only needed if you move goods; leave it empty otherwise.')).toBeInTheDocument();
+  expect(card.getByLabelText(EDITOR_COPY.trucks)).toHaveValue('1000');
+  expect(card.queryByRole('button', { name: EDITOR_COPY.showCapacity })).toBeNull();
+  expect(card.queryByRole('button', { name: EDITOR_COPY.hideCapacity })).toBeNull();
+});
+
+test('capacity: collapsed by default when empty; opens, and closes again while still empty', async () => {
+  mockApi({ 'GET /api/profiles': [AI], 'GET /me': ME });
+  renderAt('/profiles/p2');
+  await screen.findByRole('heading', { level: 1, name: 'AI lab' });
+  const region = screen.getByRole('region', { name: 'Capacity (transport and logistics)' });
+  const card = within(region);
+  expect(card.getByLabelText(EDITOR_COPY.trucks)).not.toBeVisible();
+  const show = card.getByRole('button', { name: EDITOR_COPY.showCapacity });
+  expect(show).toHaveAttribute('aria-expanded', 'false');
+  expect(document.getElementById(show.getAttribute('aria-controls')!)).not.toBeVisible();
+  fireEvent.click(show);
+  expect(card.getByLabelText(EDITOR_COPY.trucks)).toBeVisible();
+  // Focus moves to the first field, then back to the toggle when closed.
+  expect(card.getByLabelText(EDITOR_COPY.capacityModel)).toHaveFocus();
+  const hide = card.getByRole('button', { name: EDITOR_COPY.hideCapacity });
+  expect(hide).toHaveAttribute('aria-expanded', 'true');
+  fireEvent.click(hide);
+  expect(card.getByLabelText(EDITOR_COPY.trucks)).not.toBeVisible();
+  expect(card.getByRole('button', { name: EDITOR_COPY.showCapacity })).toHaveFocus();
+  // Once something is typed it stays open.
+  fireEvent.click(card.getByRole('button', { name: EDITOR_COPY.showCapacity }));
+  type(EDITOR_COPY.trucks, '12');
+  expect(card.queryByRole('button', { name: EDITOR_COPY.hideCapacity })).toBeNull();
+  expect(card.getByLabelText(EDITOR_COPY.trucks)).toBeVisible();
+});
+
+test('capacity: a new business profile starts collapsed', async () => {
+  mockApi({ 'GET /api/profiles': [], 'GET /me': ME });
+  renderAt('/profiles/new/business');
+  await screen.findByRole('heading', { level: 1, name: EDITOR_COPY.newBusiness });
+  expect(screen.getByRole('button', { name: EDITOR_COPY.showCapacity })).toBeInTheDocument();
+  expect(screen.getByLabelText(EDITOR_COPY.trucks)).not.toBeVisible();
+});
