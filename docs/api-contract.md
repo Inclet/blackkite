@@ -51,7 +51,7 @@ Field mapping for `FeedItem`: `provisional` = true when the matched profile is p
 
 Web screens (undesigned; existing components only; design review): `/sources` (members: active sources with publisher, kind, streams, last successful run, items in 30 days, health, mute; suggest-a-source form), `/admin/sources` (all sources by status), `/admin/sources/new` and `/admin/sources/{id}` (record and config editor per collector type, test-run preview that writes nothing, status changes with the promotion gate, run history and error log), `/admin/suggestions`, `/admin/review` (catalogue items with needs_review reasons; "Mark reviewed"), `/admin/users` (users, invite, deactivate). Admin links appear only for admins; the server enforces roles regardless.
 
-Collector types completed in M3 (spec 4.2): `rss`, `browser_list` (Playwright, same URL guard, robots, rate limit and size caps as `html_list`), `json_api`, `email_ingest` (a shared inbox over IMAP; sender address/pattern per source), `custom` (a named class from an allowlist in code; config never names arbitrary import paths). Each returns `RawItem` and raises `CollectorError` on failure.
+Collector types completed in M3 (spec 4.2): `rss`, `browser_list` (Playwright, same URL guard, robots, rate limit and size caps as `html_list`; since decision 46 rendered by the separate `renderer` service, 4.2 below; robots.txt checked on every navigation, decision 48), `json_api`, `email_ingest` (a shared inbox over IMAP; sender address/pattern per source), `custom` (a named class from an allowlist in code; config never names arbitrary import paths). Each returns `RawItem` and raises `CollectorError` on failure.
 
 ### 4.1 Routes (built 2026-11-25)
 
@@ -69,7 +69,7 @@ Every route below needs a session; `/api/admin/*` also needs `role = admin` (401
 | `GET /api/admin/sources/{id}` | | `SourceDetailOut` = `SourceOut` + `promotionGate {goodRuns, needed: 2, since, met}` (runs that succeeded and found items since `since` = the last config change) + `statusHistory [{at, oldStatus, newStatus, changedBy, reason}]`, newest first (`oldStatus` null = created; `reason` "created" or "config changed"). History starts with migration 0012; older sources have none. |
 | `PATCH /api/admin/sources/{id}` | any `SourceIn` field except `suggestionId` | `SourceDetailOut`; a config or collector-type change on an active source sends it back to testing (decision 27) |
 | `POST /api/admin/sources/{id}/status` | `{status}` | `SourceDetailOut`; 409 `{detail}` when the status graph refuses; when the promotion gate refuses, 409 `{detail, errors: [], goodRuns, needed}` with the server's own gate numbers (same as `promotionGate`) |
-| `GET /api/admin/sources/{id}/runs` | `?status=running\|succeeded\|failed&limit=1..200 (50)&offset=` | `{total, items: [{id, startedAt, finishedAt, status, itemsFound, itemsNew, itemsFailed, error}]}`, newest first; the error log is `status=failed` |
+| `GET /api/admin/sources/{id}/runs` | `?status=running\|succeeded\|failed&problems=true&limit=1..200 (50)&offset=` | `{total, items: [{id, startedAt, finishedAt, status, itemsFound, itemsNew, itemsFailed, error, warnings}]}`, newest first. `warnings` (always sent, `[]` when none) lists what a run skipped without failing (decision 49): `[{kind, message, sender, subject, date}]`; kind `email_no_link` is an email_ingest (message mode) email with no usable link, `date` ISO 8601 when it parsed, else as written, any of the three may be null; the body is never stored. **The error log is `problems=true`**: failed runs and runs with warnings (a run with warnings is still `succeeded`, `error` null). `status=failed` still gives failed runs only. Added 2026-11-26. |
 | `POST /api/admin/sources/test-run` | `{collectorType, config, homeUrl?, streams?, rateLimit?}` | `PreviewOut {ok, error, errors, items, totalParsed, requestsMade, elapsedSeconds}`; writes nothing. `error` is plain text; when the saved config itself is refused it is one sentence per field ("Feed URL: address 127.0.0.1 is not public.") and `errors` lists them as `{field, message}` (otherwise `errors` is `[]`). `requestsMade` counts requests actually sent: 0 when the run fails before any (a refused config, or the URL guard refusing the first address). 429 `{detail: "Another test run is in progress; try again in a minute."}` when `BK_TEST_RUNS_MAX_CONCURRENT` (default 2) test runs of any type, browser_list included, are already running |
 | `POST /api/admin/sources/{id}/test-run` | | the same, with the saved config |
 | `GET /api/admin/collector-types` | | one entry per collector type, in spec order: `{type, implemented, schemaSource, fields}`; `schemaSource` is always `"model"` (every type has a config model; `"declared"` is no longer sent). Each field `{name, kind, required, help, default, options, min, max, fields}`. `name` is the key in `config`. `kind`: string, url, integer, number, boolean, choice (`options`), string_list, selector (a CSS string or `{css, attr}`), object (nested `fields`), object_list (nested `fields`), map (string to string), json. Mapped in `sources/collector_types.py` from `registry.config_forms()` (`collectors/forms.py`); help text is each model field's `description`. Shapes without a widget are `json` with the shapes in `help`: json_api `pagination` (a choice of page-number or next-link variants) and custom `options` (the fields of each allowlisted collector). |
@@ -85,3 +85,33 @@ Every route below needs a session; `/api/admin/*` also needs `role = admin` (401
 | `DELETE /api/admin/invites/{id}` | | 204; 409 once accepted |
 
 Collector config forms: every type has its own config model (`browser_list` is the `html_list` fields plus `wait_for`). The "declared" fallback for types without one is gone.
+
+### 4.2 Renderer service (decision 46, added 2026-11-26)
+
+Not web-facing: the web app never calls it. Headless Chromium for `browser_list` (scheduled runs and admin test runs) runs in its own container, `renderer` (`bk renderer`, `api/Dockerfile` target `renderer`), instead of in the API or worker, whose image (target `app`) no longer contains a browser. Test runs keep the same `PreviewOut` shape; a browser_list failure reads as before ("robots.txt disallows ...", "... did not load in 45 s", "blocked: ... is not a public address"), plus the renderer's own messages ("the renderer is busy; try again later", "cannot reach the renderer at ...", "browser_list needs the renderer service: set BK_RENDERER_URL and BK_RENDERER_TOKEN ...").
+
+Isolation:
+- No secrets. The renderer reads no `.env` file and refuses to start (exit 2) if any of `BK_DATABASE_URL`, `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, `BRAVE_API_KEY`, `RESEND_API_KEY`, `BK_UNSUBSCRIBE_SECRET`, `BK_INGEST_IMAP_PASSWORD`, `BK_SMTP_PASSWORD` or `POSTGRES_PASSWORD` is present in its environment, even empty. Compose gives it no `env_file`, no volumes, non-root user, all capabilities dropped.
+- Networks: `render-internal` (internal, no route out) joins only api, worker and renderer; `render-egress` is the renderer's own way out. The renderer is not on the default network, so it cannot see the database; its URL guard refuses non-public addresses anyway.
+- The renderer does not trust its caller: it applies the URL guard (and the guarded transport for every request the page makes), robots.txt on every main-frame navigation including redirects and script navigations (decision 48), per-host pacing across all callers (at least `BK_RENDERER_MIN_HOST_DELAY`, raised by robots Crawl-delay), its own limit ceilings, and the per-render timeout with the browser's process group killed on overrun. The API and worker still check robots.txt and pace the top-level page on their side as well.
+
+HTTP:
+
+| Route | Auth | Body | Returns |
+|---|---|---|---|
+| `GET /healthz` | none | | `{"ok": true}` |
+| `POST /render` | `Authorization: Bearer <BK_RENDERER_TOKEN>`; 401 without it or with a wrong one | `{url, wait_for?, limits?: {timeout_seconds, max_bytes, total_bytes, max_requests, subresource_delay, request_timeout}}` (snake_case, unknown keys 422; each limit optional and clamped to the renderer's ceiling: never more time, bytes or requests, never less delay) | 200 `{ok: true, url (final), html, requests, blocked: [url], request_log: [{url, method, type, outcome, status?}], limits (effective)}` or 200 `{ok: false, kind: unsafe_url\|robots\|rate_limited\|render, error, request_log, limits}`; 503 when every browser stays busy for `BK_RENDERER_QUEUE_WAIT_SECONDS`; 422 for a malformed body. `outcome`: fulfilled, redirected, blocked (URL guard), robots, refused (resource type, method or download), limit, failed. |
+
+No OpenAPI or docs pages are served.
+
+Environment:
+
+| Variable | Where | Meaning |
+|---|---|---|
+| `BK_RENDERER_URL` | api, worker | Renderer origin; compose sets `http://renderer:8100`. Unset: browser_list refuses to run, except with `BK_ENV=dev` (local Chromium). Needs `BK_RENDERER_TOKEN`. |
+| `BK_RENDERER_TOKEN` | api, worker, renderer | Shared token, the same everywhere; at least 32 random characters, example values and weak strings refused at startup. Compose requires it. |
+| `BK_RENDERER_MAX_CONCURRENT` (2), `BK_RENDERER_QUEUE_WAIT_SECONDS` (30) | renderer | Browsers at once; wait for a free one before 503. |
+| `BK_RENDERER_TIMEOUT_SECONDS` (45), `BK_RENDERER_MAX_BYTES` (5000000), `BK_RENDERER_TOTAL_BYTES` (20000000), `BK_RENDERER_MAX_REQUESTS` (150), `BK_RENDERER_REQUEST_TIMEOUT` (20), `BK_RENDERER_SUBRESOURCE_DELAY` (0.25) | renderer | Per-render ceilings. |
+| `BK_RENDERER_MIN_HOST_DELAY` (1, minimum 1), `BK_RENDERER_MAX_PACE_WAIT_SECONDS` (30) | renderer | Pause between two renders on one host; a render that would wait longer for its host's turn gets `rate_limited`. |
+| `BK_BOT_CONTACT_URL` | renderer too | Its User-Agent, as for every other fetch. The caller cannot set the User-Agent. |
+
