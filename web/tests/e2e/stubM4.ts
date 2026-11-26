@@ -212,7 +212,13 @@ function ownFields(input: Record<string, unknown>): Record<string, unknown>[] {
   if (input.deadline) out.push({ name: 'deadlineAt', value: instant(String(input.deadline), 'end') });
   if (input.eventStart) out.push({ name: 'eventStart', value: instant(String(input.eventStart), 'start') });
   if (input.eventEnd) out.push({ name: 'eventEnd', value: instant(String(input.eventEnd), 'end') });
-  if (input.value !== undefined) out.push({ name: 'valueAmount', value: input.value });
+  if (input.value !== undefined && input.value !== null) {
+    // As the API: the decimal as a string, and display in the digest's wording (RWF as FRW).
+    const n = Number(input.value);
+    const code = input.currency ? (String(input.currency).toUpperCase() === 'RWF' ? 'FRW' : String(input.currency).toUpperCase()) : '';
+    const figure = n.toLocaleString('en-GB', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: Number.isInteger(n) ? 0 : 2 });
+    out.push({ name: 'valueAmount', value: n.toFixed(2), display: `${code} ${figure}`.trim() });
+  }
   if (input.currency) out.push({ name: 'valueCurrency', value: input.currency });
   if (input.location) out.push({ name: 'location', value: input.location });
   return out;
@@ -222,14 +228,14 @@ function ownFields(input: Record<string, unknown>): Record<string, unknown>[] {
 export function ownExtras(s: M4State, id: string): Record<string, unknown> {
   const own = s.own[id];
   if (!own) return {};
-  return { fields: ownFields(own.input), changes: own.changes, ownItem: { shareConsent: own.shareConsent, published: own.published } };
+  return { fields: ownFields(own.input), changes: own.changes, ownItem: { shareConsent: own.shareConsent, published: own.published }, isManual: true };
 }
 
 function opportunity(s: M4State, item: Item): Record<string, unknown> {
   return {
     ...item,
     state: s.states[item.id] ?? 'unseen',
-    detail: { ...(item.detail as object), fields: [], sources: [], documents: [], changes: [], note: s.notes[item.id] ?? null, state: s.states[item.id] ?? 'unseen', ...ownExtras(s, item.id) },
+    detail: { ...(item.detail as object), fields: [], sources: [], documents: [], changes: [], note: s.notes[item.id] ?? null, state: s.states[item.id] ?? 'unseen', isManual: false, ...ownExtras(s, item.id) },
   };
 }
 

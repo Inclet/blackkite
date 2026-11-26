@@ -162,7 +162,8 @@ export const DETAIL_EXTRAS: Record<string, Record<string, unknown>> = {
     fields: [
       { name: 'organisation', value: 'World Food Programme', snippet: 'The World Food Programme (WFP) invites bids' },
       { name: 'deadlineAt', value: '2026-11-30T17:00:00+02:00', snippet: 'Closing date: 30 November 2026, 17:00 Kigali time' },
-      { name: 'valueAmount', value: 120000000, snippet: 'estimated at FRW 120,000,000' },
+      // The API sends the decimal as a string, with its own wording in display.
+      { name: 'valueAmount', value: '120000000.00', snippet: 'estimated at FRW 120,000,000', display: 'FRW 120,000,000' },
       { name: 'requirements', value: ['Proof of owned vehicles', 'RRA tax clearance'], snippets: ['logbooks in the bidder’s name', 'a valid tax clearance certificate'] },
       { name: 'location', value: 'Kigali' },
     ],
@@ -182,7 +183,8 @@ export const DETAIL_EXTRAS: Record<string, Record<string, unknown>> = {
 
 /** One GET /api/opportunities/{id} answer, in the API's shape. */
 export function opportunityBody(item: Item & { state: string }, note: string | null): Record<string, unknown> {
-  const extras = { fields: [], sources: [], documents: [], changes: [], ...DETAIL_EXTRAS[item.id] };
+  // isManual is always sent: false for collected items; the M4 routes set it for own items.
+  const extras = { fields: [], sources: [], documents: [], changes: [], isManual: false, ...DETAIL_EXTRAS[item.id] };
   return { ...item, detail: { ...(item.detail as object), ...extras, note, state: item.state } };
 }
 

@@ -95,7 +95,10 @@ test('the detail stub carries the shapes the screens must handle: documents by n
   const res = (await call('GET', '/api/opportunities/wfp-logistics')).json as { detail: { documents: unknown[]; fields: { value: unknown; snippets?: unknown }[] } };
   expect(res.detail.documents[0]).toEqual({ name: expect.any(String) });
   expect(res.detail.fields.some((f) => Array.isArray(f.value) && Array.isArray(f.snippets))).toBe(true);
-  expect(res.detail.fields.some((f) => typeof f.value === 'number')).toBe(true);
+  // Amounts: the decimal as a string, with the API's wording in display (valueAmount only).
+  expect(res.detail.fields.find((f) => (f as { name?: string }).name === 'valueAmount')).toMatchObject({ value: '120000000.00', display: 'FRW 120,000,000' });
+  expect(res.detail.fields.filter((f) => 'display' in f)).toHaveLength(1);
+  expect((res.detail as unknown as { isManual: unknown }).isManual).toBe(false);
 });
 
 test('every feed item says whether its profile is provisional', async () => {

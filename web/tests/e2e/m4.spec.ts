@@ -103,6 +103,9 @@ test('private item: create, edit, consent, admin publish locks it', async ({ pag
   await expect(pane.getByRole('heading', { name: 'Fuel supply' })).toBeVisible();
   await expect(pane.getByText('Private: only you can see this')).toBeVisible();
   await expect(pane).toContainText('You added this item yourself');
+  await expect(pane.getByRole('region', { name: 'Details' })).toContainText('FRW 2,000,000');
+  await expect(pane.getByRole('region', { name: 'Sources' })).toContainText('No source carries this item. You added it yourself.');
+  await expect(pane.getByRole('link', { name: 'Open your link' })).toHaveAttribute('href', 'https://example.rw/notice');
   const created = (await api.seen()).find((r) => r.method === 'POST' && r.url === '/api/items')!;
   expect(JSON.parse(created.body)).toMatchObject({ stream: 'tender', title: 'Fuel supply', deadline: '2026-12-10T17:00', value: 2000000, currency: 'RWF' });
 
