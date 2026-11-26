@@ -98,7 +98,7 @@ test('Coming up: planned tenders on the Calendar and the Shortlist; empty wordin
     await open(page, route);
     const card = page.getByRole('region', { name: 'Coming up' });
     await expect(card).toContainText('Rwanda Agriculture Board');
-    await expect(card).toContainText('Open competitive bidding · Estimated FRW 45M · Planned for Q1 2027');
+    await expect(card).toContainText('Open competitive bidding · Estimated FRW 45M · Planned for January to March 2027');
     await expect(card).toContainText('Matches Ironji-Trade');
     await expect(card).toContainText('Restricted tender · Planned for March 2027');
     await expect(card).toContainText('Matches AI lab');

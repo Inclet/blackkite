@@ -82,10 +82,23 @@ test('periods end today (Kigali) and start 12 months or 2 years back; all has no
 });
 
 test('planned dates, methods and category labels in words', () => {
-  expect(plannedWhen('2027-Q1')).toBe('Q1 2027');
-  expect(plannedWhen('Q3 2027')).toBe('Q3 2027');
+  // The API's label first: it says fiscal or calendar correctly.
+  expect(plannedWhen('2027-Q1', 'January to March 2027')).toBe('January to March 2027');
+  expect(plannedWhen('2026-10-01/2027-03-31', 'October 2026 to March 2027')).toBe('October 2026 to March 2027');
+  expect(plannedWhen('2027-Q1', '  ')).toBe('January to March 2027');
+  // Quarters as month ranges, dates with the day, ranges in words; never raw ISO.
+  expect(plannedWhen('2027-Q1')).toBe('January to March 2027');
+  expect(plannedWhen('Q3 2027')).toBe('July to September 2027');
   expect(plannedWhen('2027-03')).toBe('March 2027');
-  expect(plannedWhen('2027-03-15')).toBe('March 2027');
+  expect(plannedWhen('2027-02-17')).toBe('17 Feb 2027');
+  expect(plannedWhen('2026-09-17')).toBe('17 Sep 2026');
+  expect(plannedWhen('2027-03-15/2027-06-30')).toBe('15 Mar 2027 to 30 Jun 2027');
+  expect(plannedWhen('2027-01-01/2027-06-30')).toBe('January to June 2027');
+  expect(plannedWhen('2026-10-01/2027-03-31')).toBe('October 2026 to March 2027');
+  expect(plannedWhen('2027-02-17/2027-02-17')).toBe('17 Feb 2027');
+  expect(plannedWhen('2027-02-30')).toBeNull();
+  expect(plannedWhen('2027-13')).toBeNull();
+  expect(plannedWhen('2027-01-01/soon')).toBeNull();
   expect(plannedWhen('second half of FY 2026/27')).toBe('second half of FY 2026/27');
   expect(plannedWhen(null)).toBeNull();
   expect(methodWords('open_competitive_bidding')).toBe('Open competitive bidding');

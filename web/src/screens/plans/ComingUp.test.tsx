@@ -38,8 +38,16 @@ afterEach(() => {
 });
 
 test('the facts line: method, estimated value when known, and when it is planned', () => {
-  expect(planFacts(PLANS.items[0]!)).toBe('Open competitive bidding · Estimated FRW 45M · Planned for Q1 2027');
+  expect(planFacts(PLANS.items[0]!)).toBe('Open competitive bidding · Estimated FRW 45M · Planned for January to March 2027');
   expect(planFacts(PLANS.items[1]!)).toBe('Planned for March 2027');
+});
+
+test('the facts line prefers the API\'s plannedLabel, and never shows raw ISO', () => {
+  const base = { id: 'p', entity: 'RTDA', description: 'Road marking', method: null, matchedProfile: null, url: null };
+  expect(planFacts({ ...base, plannedFor: '2027-Q1', plannedLabel: 'January to March 2027' })).toBe('Planned for January to March 2027');
+  expect(planFacts({ ...base, plannedFor: '2027-02-17' })).toBe('Planned for 17 Feb 2027');
+  expect(planFacts({ ...base, plannedFor: '2027-02-17/2027-04-10' })).toBe('Planned for 17 Feb 2027 to 10 Apr 2027');
+  expect(planFacts({ ...base, plannedFor: '2027-02-31' })).toBe('');
 });
 
 test.each(['/calendar', '/shortlist'])('%s: a "Coming up" card lists planned tenders that match the profiles, with a link to the plan', async (url) => {
@@ -49,7 +57,7 @@ test.each(['/calendar', '/shortlist'])('%s: a "Coming up" card lists planned ten
   expect(card.getByRole('heading', { level: 2, name: COMING_UP_COPY.title })).toBeInTheDocument();
   expect(await card.findByText('Rwanda Agriculture Board')).toBeInTheDocument();
   expect(card.getByText('Cold-chain transport of vaccines and seed to district stores')).toBeInTheDocument();
-  expect(card.getByText('Open competitive bidding · Estimated FRW 45M · Planned for Q1 2027')).toBeInTheDocument();
+  expect(card.getByText('Open competitive bidding · Estimated FRW 45M · Planned for January to March 2027')).toBeInTheDocument();
   expect(card.getByText('Matches Ironji-Trade')).toBeInTheDocument();
   expect(card.getByText('Matches AI lab')).toBeInTheDocument();
   const links = card.getAllByRole('link');

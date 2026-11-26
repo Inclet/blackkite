@@ -27,7 +27,7 @@ export const COMING_UP_COPY = {
 /** The plan's facts in one line: method, estimated value when known, and when it is planned for. */
 export function planFacts(p: PlanItem): string {
   const value = amountOf(p.estimatedValue);
-  const when = plannedWhen(p.plannedFor);
+  const when = plannedWhen(p.plannedFor, p.plannedLabel);
   return [methodWords(p.method), value !== null ? COMING_UP_COPY.estimated(shortAmount(value, p.currency)) : null, when ? COMING_UP_COPY.plannedFor(when) : null]
     .filter(Boolean)
     .join(' · ');
