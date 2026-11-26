@@ -53,6 +53,7 @@ from blackkite.db.models import (
 )
 from blackkite.delivery.wording import amount
 from blackkite.member import schemas as S
+from blackkite.member.procurement import opportunity_benchmark
 from blackkite.member.trust import LinkInfo, trust_copy
 from blackkite.pipeline.dates import KIGALI, kigali_date
 from blackkite.pipeline.validate import status_for, trust_state
@@ -703,6 +704,7 @@ def opportunity_out(
         state=row.state,
         dismiss_reason=S.dismiss_reason_out(row.uo.dismiss_reason if row.uo else None),
         own_item=own_item_out(o, user_id),
+        benchmark=opportunity_benchmark(db, o),
     )
     return S.OpportunityOut(**_item_fields(row, now), detail=detail)
 
