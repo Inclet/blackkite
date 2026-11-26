@@ -573,28 +573,161 @@ class ChangeEvent(Base):
 
 
 class Award(Base):
-    """Awarded contract, from Umucyo awarded lists, for price benchmarking."""
+    """Awarded contract, from Umucyo awarded lists, for price benchmarking (spec 6).
+
+    Shared, not per user. Collected by the ``umucyo_awards`` custom collector and
+    written only by ``pipeline/awards.py`` (never into ``opportunity``). One row per
+    (tender ref, procuring entity): ``ref_key`` is the normalised tender ref, or
+    ``title:<normalised title>`` when the list gave no ref; ``entity_key`` the
+    normalised entity name ("" when unknown).
+    """
 
     __tablename__ = "award"
-    __table_args__ = (sa.Index("ix_award_tender_ref", "tender_ref"),)
+    __table_args__ = (
+        sa.UniqueConstraint("ref_key", "entity_key"),
+        sa.CheckConstraint(
+            "currency IS NULL OR currency ~ '^[A-Z]{3}$'", name="currency_iso"
+        ),
+        sa.CheckConstraint("amount IS NULL OR amount >= 0", name="amount_not_negative"),
+        sa.Index("ix_award_tender_ref", "tender_ref"),
+        sa.Index("ix_award_category_currency", "category", "currency"),
+        sa.Index("ix_award_entity_key", "entity_key"),
+        sa.Index("ix_award_awarded_on", "awarded_on"),
+        sa.Index("ix_award_tags", "tags", postgresql_using="gin"),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     tender_ref: Mapped[str | None] = mapped_column(sa.String(200))
+    ref_key: Mapped[str] = mapped_column(sa.String(300), nullable=False)
+    title: Mapped[str | None] = mapped_column(sa.Text)
     entity: Mapped[str | None] = mapped_column(sa.Text)
-    # [{"name": ...}, ...]
+    entity_key: Mapped[str] = mapped_column(sa.Text, nullable=False, server_default="")
+    # [{"name": ...}, ...], as the source listed them
     bidders: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")
     )
-    # [{"bidder": ..., "amount": ..., "currency": ...}, ...]
+    # [{"bidder": ..., "amount": "123.00" | null, "currency": "RWF" | null}, ...]
     prices: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")
     )
     winner: Mapped[str | None] = mapped_column(sa.Text)
+    # The winning (contract) price and its currency; NULL when not stated.
+    amount: Mapped[Decimal | None] = mapped_column(sa.Numeric(20, 2))
+    currency: Mapped[str | None] = mapped_column(sa.String(3))
+    # Contract period as listed (for example "12 months").
     period: Mapped[str | None] = mapped_column(sa.String(100))
+    # Date the contract was awarded; only from a date with an explicit year.
+    awarded_on: Mapped[date | None] = mapped_column(sa.Date)
+    # Primary benchmark category (pipeline/categories.py) and every category tag
+    # ("sector:<key>", the extraction tag vocabulary).
+    category: Mapped[str] = mapped_column(
+        sa.String(100), nullable=False, server_default="other"
+    )
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(sa.String(100)), nullable=False, server_default=sa.text("'{}'::varchar[]")
+    )
+    url: Mapped[str | None] = mapped_column(sa.Text)
+    # The tender in the catalogue, when it is there (by tender ref or close
+    # title and entity).
+    opportunity_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("opportunity.id", ondelete="SET NULL"), index=True
+    )
     source_id: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("source.id", ondelete="SET NULL"), index=True
     )
+    # The values as listed ({field: text}), and what normalising left out
+    # ("problems": [...]). Supporting text for every stored amount and date.
+    raw: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    )
+    first_seen: Mapped[datetime] = created_at()
+    last_seen: Mapped[datetime] = created_at()
     created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
+class ProcurementPlanItem(Base):
+    """A planned tender from a procurement plan (spec 2.6: tenders before they are
+    advertised). Shared, not per user; written only by ``pipeline/plans.py``.
+
+    One row per (entity, description, fiscal year), on their normalised keys.
+    ``planned_start``/``planned_end`` are the planned period as dates: from a
+    stated date, or from a quarter with an explicit fiscal or calendar year;
+    NULL when the plan does not say (never guessed). ``opportunity_id`` is set
+    once the actual tender appears in the catalogue.
+    """
+
+    __tablename__ = "procurement_plan_item"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "entity_key",
+            "description_key",
+            "fiscal_year",
+            postgresql_nulls_not_distinct=True,
+        ),
+        sa.CheckConstraint(
+            "currency IS NULL OR currency ~ '^[A-Z]{3}$'", name="currency_iso"
+        ),
+        sa.CheckConstraint(
+            "estimated_amount IS NULL OR estimated_amount >= 0",
+            name="estimated_amount_not_negative",
+        ),
+        sa.CheckConstraint(
+            "planned_quarter IS NULL OR planned_quarter IN ('Q1', 'Q2', 'Q3', 'Q4')",
+            name="planned_quarter_valid",
+        ),
+        sa.CheckConstraint(
+            "(planned_start IS NULL) = (planned_end IS NULL) "
+            "AND (planned_start IS NULL OR planned_start <= planned_end)",
+            name="planned_period_valid",
+        ),
+        sa.Index("ix_procurement_plan_item_category", "category"),
+        sa.Index("ix_procurement_plan_item_entity_key", "entity_key"),
+        sa.Index(
+            "ix_procurement_plan_item_planned_start_planned_end",
+            "planned_start",
+            "planned_end",
+        ),
+        sa.Index("ix_procurement_plan_item_tags", "tags", postgresql_using="gin"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    entity: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    entity_key: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    description: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    description_key: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    category: Mapped[str] = mapped_column(
+        sa.String(100), nullable=False, server_default="other"
+    )
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(sa.String(100)), nullable=False, server_default=sa.text("'{}'::varchar[]")
+    )
+    # Procurement method as listed (for example "Open competitive bidding").
+    method: Mapped[str | None] = mapped_column(sa.Text)
+    estimated_amount: Mapped[Decimal | None] = mapped_column(sa.Numeric(20, 2))
+    currency: Mapped[str | None] = mapped_column(sa.String(3))
+    # "2026/27" (Rwanda's fiscal year runs July to June); NULL when not stated.
+    fiscal_year: Mapped[str | None] = mapped_column(sa.String(7))
+    planned_quarter: Mapped[str | None] = mapped_column(sa.String(2))
+    planned_date: Mapped[date | None] = mapped_column(sa.Date)
+    planned_start: Mapped[date | None] = mapped_column(sa.Date)
+    planned_end: Mapped[date | None] = mapped_column(sa.Date)
+    tender_ref: Mapped[str | None] = mapped_column(sa.String(200))
+    url: Mapped[str | None] = mapped_column(sa.Text)
+    embedding: Mapped[Any | None] = mapped_column(Vector(EMBEDDING_DIM))
+    opportunity_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("opportunity.id", ondelete="SET NULL"), index=True
+    )
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("source.id", ondelete="SET NULL"), index=True
+    )
+    raw: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    )
+    first_seen: Mapped[datetime] = created_at()
+    last_seen: Mapped[datetime] = created_at()
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
 
 
 # --- Per user ------------------------------------------------------------------------

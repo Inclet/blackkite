@@ -71,6 +71,7 @@ def test_schema_has_every_spec_table():
         "http_cache",  # conditional GET cache for collectors (not per user)
         "alert_log",  # urgent alerts sent, one per (user, opportunity)
         "source_status_change",  # admin audit: source status history (spec 4.4)
+        "procurement_plan_item",  # planned tenders (spec 2.6, M5)
     }
     assert spec == set(Base.metadata.tables)
 
@@ -370,4 +371,37 @@ def test_0013_backfills_last_sign_in_from_sessions(make_database):
     )
     assert rows == [("a@example.com", "2026-11-21"), ("b@example.com", None)]
     command.downgrade(cfg, "0012")
+    command.upgrade(cfg, "head")
+
+
+def test_0018_existing_awards_get_unique_keys(make_database):
+    url = make_database("bk_migr")
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0017")
+    _exec(
+        url,
+        "INSERT INTO award (tender_ref, entity) VALUES "
+        "('REF/001/2026', 'Entity A (fictional)'), (NULL, 'Entity A (fictional)'), "
+        "(NULL, 'Entity A (fictional)')",
+    )
+    command.upgrade(cfg, "0018")
+    rows = _exec(
+        url, "SELECT ref_key, entity_key, category FROM award ORDER BY ref_key"
+    )
+    assert rows[-1] == ("ref/001/2026", "", "other")
+    assert all(r[0].startswith("id:") for r in rows[:2])
+    _exec(
+        url,
+        "INSERT INTO procurement_plan_item (entity, entity_key, description, "
+        "description_key) VALUES ('E', 'e', 'D', 'd')",
+    )
+    # NULL fiscal years count as equal for the dedupe key.
+    with pytest.raises(sa.exc.IntegrityError):
+        _exec(
+            url,
+            "INSERT INTO procurement_plan_item (entity, entity_key, description, "
+            "description_key) VALUES ('E', 'e', 'D', 'd')",
+        )
+    command.downgrade(cfg, "0017")
+    assert _exec(url, "SELECT count(*) FROM award") == [(3,)]
     command.upgrade(cfg, "head")
