@@ -25,9 +25,10 @@ export function formatWhen(value: string): string {
   return time === '00:00' ? date : `${date}, ${formatTime(time)}`;
 }
 
-/** Amounts as the digest writes them: "FRW 120,000,000". */
+/** Amounts as the digest writes them: "FRW 120,000,000" (whole), "USD 1,250.50" (with cents). */
 export function formatAmount(amount: number, currency?: string | null): string {
-  const n = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 2 }).format(amount);
+  const digits = Number.isInteger(amount) ? 0 : 2;
+  const n = new Intl.NumberFormat('en-GB', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(amount);
   const c = !currency || currency === 'RWF' ? 'FRW' : currency;
   return `${c} ${n}`;
 }
@@ -71,8 +72,20 @@ export interface DetailLine {
   values: { text: string; quotes: string[] }[];
 }
 
-function valueText(name: string, value: unknown, currency?: string | null): string {
-  if (name === 'valueAmount' && typeof value === 'number') return formatAmount(value, currency);
+/** An amount as the API sends it: a number, or the decimal as a string ("6000000.00"). */
+export function amountOf(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value.trim())) return Number(value);
+  return null;
+}
+
+function valueText(name: string, value: unknown, currency?: string | null, display?: string): string {
+  if (name === 'valueAmount') {
+    // The API's own wording when it sends one ("FRW 6,000,000"), else the number with separators.
+    if (display?.trim()) return display.trim();
+    const n = amountOf(value);
+    if (n !== null) return formatAmount(n, currency);
+  }
   if (DATE_FIELDS.has(name) && typeof value === 'string') return formatWhen(value);
   if (Array.isArray(value)) return value.join('; ');
   return String(value);
@@ -96,7 +109,7 @@ export function detailLines(fields: ExtractedField[]): DetailLine[] {
       continue;
     }
     const quotes = f.snippets?.length ? f.snippets : f.snippet ? [f.snippet] : [];
-    out.push({ name, label: fieldLabel(name), values: [{ text: valueText(name, f.value, typeof currency === 'string' ? currency : null), quotes }] });
+    out.push({ name, label: fieldLabel(name), values: [{ text: valueText(name, f.value, typeof currency === 'string' ? currency : null, f.display), quotes }] });
   }
   return out;
 }
@@ -113,7 +126,7 @@ function changeValue(field: string, v: unknown): string {
   if (v === null || v === undefined || v === '') return 'nothing';
   if (field === 'status' && typeof v === 'string') return STATUS_WORDS[v] ?? v;
   if (typeof v === 'string' && (ISO_DATE.test(v) || ISO_DATE_TIME.test(v))) return formatWhen(v);
-  if (typeof v === 'number' && field === 'valueAmount') return formatAmount(v);
+  if (field === 'valueAmount' && amountOf(v) !== null) return formatAmount(amountOf(v)!);
   if (Array.isArray(v)) return v.join('; ');
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);

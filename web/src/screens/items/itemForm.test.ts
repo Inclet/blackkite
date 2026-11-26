@@ -129,3 +129,12 @@ test('the edit form shows stored dates as typed text, keeping a time', () => {
   expect(toForm({ ...item, detail: { ...item.detail, fields: [] } }).deadline).toBe('7 Dec 2026');
   expect(toInput(toForm(item)).deadline).toBe('2026-12-07T17:00');
 });
+
+test('the edit form takes the API amount (a decimal string) as a whole number', () => {
+  const item = {
+    id: 'own-3', stream: 'tender', title: 'Fuel', organisation: '', fit: null, deadline: null, state: 'unseen', provisional: false,
+    detail: { reasons: [], trust: { state: 'unconfirmed', desktop: '', phone: '' }, originalUrl: '', fields: [{ name: 'valueAmount', value: '6000000.00', display: 'FRW 6,000,000' }], sources: [], documents: [], changes: [], note: null, state: 'unseen' },
+  } as unknown as OwnedDetail;
+  expect(toForm(item).value).toBe('6000000');
+  expect(validate(toForm(item))).toEqual({});
+});

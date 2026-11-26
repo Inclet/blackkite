@@ -42,3 +42,10 @@ test('next digest is the coming Monday', () => {
 test('detail meta line', () => {
   expect(detailMeta(items[0]!)).toBe('World Food Programme · Kigali · closes 30 Nov');
 });
+
+test('detailMeta: an item with no organisation has no leading separator', () => {
+  const own = { ...items[0]!, organisation: '', detail: { ...items[0]!.detail, location: 'Kigali' } };
+  expect(detailMeta(own)).toBe('Kigali · closes 30 Nov');
+  expect(detailMeta({ ...own, detail: { ...own.detail, location: undefined } })).toBe('closes 30 Nov');
+  expect(detailMeta({ ...own, deadline: null, detail: { ...own.detail, location: undefined } })).toBe('');
+});

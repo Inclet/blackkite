@@ -58,12 +58,18 @@ export function toForm(item: OwnedDetail): ItemForm {
     deadline: event ? '' : when('deadlineAt', item.deadline, 'end'),
     eventStart: event ? when('eventStart', item.eventDates?.start, 'start') : '',
     eventEnd: event && end && end !== item.eventDates?.start ? when('eventEnd', end, 'end') : '',
-    value: field('valueAmount'),
+    // The API sends the amount as a decimal string ("6000000.00"); the form takes whole numbers.
+    value: wholeAmount(field('valueAmount')),
     currency: field('valueCurrency') || 'RWF',
     location: field('location') || (item.detail.location ?? ''),
     url: item.detail.originalUrl ?? '',
     notes: item.detail.note ?? '',
   };
+}
+
+function wholeAmount(text: string): string {
+  const m = text.trim().match(/^(\d+)(?:\.0+)?$/);
+  return m ? m[1]! : text;
 }
 
 /** Map the API's refused fields (RefusalOut errors, camelCase) onto the form. */
