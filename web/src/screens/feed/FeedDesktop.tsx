@@ -17,6 +17,7 @@ import { DISMISS_NAV, type FeedModel } from './model';
 import { DetailTop, DismissReasonPrompt, FilterChips, focusInDismissPrompt, FitSection, hasFitSection, LiveDetail, LiveRegion, LiveStatus, SaveButton } from './parts';
 import { HEADING, PROMPT, rowId } from './focus';
 import { useLiveList, useLiveSelection } from './liveList';
+import { FeedTools } from './FeedTools';
 import { useFeedKeys } from './useFeedKeys';
 import { useStateCard } from './useStateCard';
 import styles from './FeedDesktop.module.css';
@@ -148,6 +149,7 @@ export function FeedDesktop({ model, openId }: { model: FeedModel; openId: strin
           <FilterChips model={model} className={styles.chips} />
           <div className={styles.sort}>Closing soonest first</div>
         </div>
+        <FeedTools model={model} />
 
         <div className={styles.grid}>
           <div className={styles.column}>

@@ -129,6 +129,10 @@ function LiveFeedScreens({
         });
       },
       setDismissReason: (item: FeedItem, reason: DismissReason) => api.setState(item.id, 'dismissed', reason),
+      forget: (id: string) => {
+        setShortlist((prev) => prev?.filter((i) => i.id !== id));
+        setFeed((prev) => prev && { ...prev, items: (prev.items as LiveFeedItem[]).filter((i) => i.id !== id) });
+      },
     }),
     [initial, setShortlist, setFeed],
   );

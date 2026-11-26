@@ -8,6 +8,7 @@ import { SourceEditor } from './screens/admin/SourceEditor';
 import { AuthConfirm } from './screens/AuthConfirm';
 import { Calendar } from './screens/calendar/Calendar';
 import { FeedRoute } from './screens/feed/FeedRoute';
+import { ItemEditor } from './screens/items/ItemEditor';
 import { Placeholder } from './screens/Placeholder';
 import { SignIn } from './screens/SignIn';
 import { Shortlist } from './screens/shortlist/Shortlist';
@@ -35,6 +36,9 @@ export const routes: RouteObject[] = [
   // No session needed (decision 43): the signed token in the fragment is the authority.
   { path: '/unsubscribe', element: <Unsubscribe /> },
   { path: '/shortlist', element: <Shortlist /> },
+  // Private manual items (spec 6). Not designed yet (design review).
+  { path: '/items/new', element: <ItemEditor /> },
+  { path: '/items/:id/edit', element: <ItemEditor /> },
   { path: '/profiles', element: <Profiles /> },
   { path: '/profiles/new/:type', element: <ProfileEditor /> },
   { path: '/profiles/:id', element: <ProfileEditor /> },

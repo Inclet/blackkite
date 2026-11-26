@@ -16,6 +16,7 @@ import { DISMISS_NAV, isDismissNav, type FeedModel } from './model';
 import { DismissReasonPrompt, FilterChips, LiveRegion, LiveStatus } from './parts';
 import { HEADING, rowId } from './focus';
 import { useLiveList } from './liveList';
+import { FeedTools } from './FeedTools';
 import { useFeedKeys } from './useFeedKeys';
 import { useStateCard } from './useStateCard';
 import styles from './FeedPhone.module.css';
@@ -113,6 +114,7 @@ export function FeedPhone({ model }: { model: FeedModel }) {
         </div>
 
         <FilterChips model={model} className={styles.chips} chipClassName={styles.chip} />
+        <FeedTools model={model} className={styles.tools} />
 
         <LiveStatus model={model} className={styles.statusCard} padding="22px 24px" />
         <DismissReasonPrompt

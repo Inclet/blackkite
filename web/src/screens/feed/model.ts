@@ -27,6 +27,8 @@ export interface FeedPersist {
   setState: (item: FeedItem, state: ItemState) => Promise<unknown>;
   /** The optional reason after a dismissal: PUT state dismissed with the code. */
   setDismissReason: (item: FeedItem, reason: DismissReason) => Promise<unknown>;
+  /** Drop an item the owner deleted from the loaded feed and shortlist. */
+  forget?: (id: string) => void;
 }
 
 /** "Why not? (optional)" after a dismissal, until a reason is chosen or the user navigates. */
@@ -58,6 +60,10 @@ export interface LiveExtras {
   status: LoadStateProps;
   /** Set when the last change could not be saved and was undone on screen. */
   failed: boolean;
+  /** After the owner deleted their own item: drop it from the feed. */
+  forget: (id: string) => void;
+  /** Say something in the feed's polite live region. */
+  announce: (message: string) => void;
 }
 
 export interface FeedModel extends FeedSource {
@@ -215,7 +221,7 @@ export function useFeedModel(
   const stateCard = state ? (source.states.find((s) => s.kind === state) ?? null) : null;
 
   const live: LiveExtras | undefined = persist
-    ? { stateOf: (id) => states[id] ?? 'unseen', setState: change, status, failed }
+    ? { stateOf: (id) => states[id] ?? 'unseen', setState: change, status, failed, forget: (id) => persist.forget?.(id), announce: setAnnouncement }
     : undefined;
 
   return {

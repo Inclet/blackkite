@@ -11,6 +11,11 @@ export function clearApiCache(): void {
   cache.clear();
 }
 
+/** Read a cached value (to adjust it after a change made elsewhere). */
+export function readCache<T>(key: string): T | undefined {
+  return cache.get(key) as T | undefined;
+}
+
 /** Write a cached value (after an optimistic change, so a return visit starts from it). */
 export function primeCache(key: string, value: unknown): void {
   cache.set(key, value);

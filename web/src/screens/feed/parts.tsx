@@ -19,6 +19,8 @@ import { cx, STREAMS, type Stream } from '../../lib/streams';
 import { COPY } from '../common/copy';
 import { LoadState } from '../common/LoadState';
 import { DISMISS_COPY, isDismissNav, type FeedModel } from './model';
+import { OwnItemControls } from './OwnItem';
+import type { OwnedDetail } from '../../api/m4';
 import styles from './parts.module.css';
 
 /** All, then the four streams (the desktop board shows all four; the phone's Events chip scrolls off-screen, decision 4). */
@@ -225,7 +227,7 @@ export function LiveStatus({ model, className, padding }: { model: FeedModel; cl
  */
 export function LiveDetail({ model, item }: { model: FeedModel; item: FeedItem }) {
   const live = model.live!;
-  const detail = useResource(`opportunity:${item.id}`, (s) => api.opportunity(item.id, s));
+  const detail = useResource<OwnedDetail>(`opportunity:${item.id}`, (s) => api.opportunity(item.id, s) as Promise<OwnedDetail>);
   const state = live.stateOf(item.id);
   const [note, setNote] = useState('');
   const [noteStatus, setNoteStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
@@ -252,6 +254,7 @@ export function LiveDetail({ model, item }: { model: FeedModel; item: FeedItem }
 
   return (
     <div className={styles.live}>
+      {detail.data?.detail.ownItem && <OwnItemControls item={item} detail={detail} model={model} />}
       <div className={styles.liveLabel} id={`progress-${item.id}`}>
         {LIVE_COPY.progress}
       </div>

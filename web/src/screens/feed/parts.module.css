@@ -90,3 +90,39 @@
   font-size: 13px;
   font-weight: 500;
 }
+
+/* The owner's own manual item: Tag, Edit/Delete, the share-consent row. Design review. */
+.own {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-space-3);
+  padding-top: var(--bk-space-3);
+  border-top: 1px solid var(--bk-stone-200);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.liveText {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--bk-slate);
+}
+
+.liveAlert {
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 500;
+  color: var(--bk-alert-text);
+}
+
+/* Live only: Filters and "Add an item" under the stream chips. Design review. */
+.tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}

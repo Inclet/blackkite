@@ -41,3 +41,8 @@
   border-radius: 50%;
   background: var(--bk-white);
 }
+
+/* Locked (not drawn on the boards; design review): the same look, no pointer. */
+.switch:disabled {
+  cursor: default;
+}

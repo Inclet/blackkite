@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router';
 import { api } from '../../api/client';
 import { useResource } from '../../api/useResource';
+import { Button } from '../../components/Button/Button';
 import { Card } from '../../components/Card/Card';
+import { ITEM_COPY } from '../items/ItemEditor';
 import { FeedRow } from '../../components/FeedRow/FeedRow';
 import { StateCard } from '../../components/StateCard/StateCard';
 import { isClosed, pillFor, sortClosingSoonest } from '../../lib/feed';
@@ -39,6 +41,11 @@ export function Shortlist() {
 
   return (
     <AppShell path="/shortlist" title={SHORTLIST_COPY.title} summary={res.data ? shortlistSummary(items.length) : undefined}>
+      <div>
+        <Button variant="secondary" onClick={() => navigate('/items/new')}>
+          {ITEM_COPY.add}
+        </Button>
+      </div>
       <LoadState loading={res.loading} refreshing={res.refreshing} error={res.error} onRetry={res.reload} />
       {res.data && items.length === 0 && (
         <Card gap={12} aria-label="Shortlist status">
