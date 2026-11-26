@@ -532,10 +532,10 @@ function send(res: http.ServerResponse, status: number, body?: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-/** Like the API (member/profiles.py): data keys outside the type's model, or no streams, are refused. */
+/** Like the API (member/profiles.py): data keys outside the type's model, or no streams, are refused. organisationType: contract section 6 (scoring reads it). */
 const COMMON_KEYS = ['streams', 'location', 'locations', 'exclusions', 'provisional'];
 const PROFILE_KEYS: Record<string, Set<string>> = {
-  business: new Set([...COMMON_KEYS, 'services', 'sectors', 'capacity', 'registrationsHeld', 'registrationsNotHeld', 'minContractRwf']),
+  business: new Set([...COMMON_KEYS, 'organisationType', 'services', 'sectors', 'capacity', 'registrationsHeld', 'registrationsNotHeld', 'minContractRwf']),
   personal: new Set([...COMMON_KEYS, 'instruments', 'ticketRangeRwf', 'horizon', 'eventTopics', 'availability', 'budgetRwf']),
 };
 const PROFILE_BODY_KEYS = new Set(['name', 'type', 'data', 'active']);

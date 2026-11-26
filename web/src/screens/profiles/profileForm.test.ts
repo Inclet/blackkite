@@ -84,8 +84,9 @@ test('chip options: the spec set, then anything else already held', () => {
 });
 
 test('a change of type sends only keys valid for the new type (the API refuses the rest)', () => {
-  const asPersonal = { ...toForm(IRONJI, 'business'), type: 'personal' as const, instruments: ['RSE shares'] };
-  const d = toInput(asPersonal, { ...IRONJI.data, sectors: ['logistics'], locations: ['Musanze'] }).data;
+  const stored = { ...IRONJI.data, sectors: ['logistics'], locations: ['Musanze'] };
+  const asPersonal = { ...toForm({ ...IRONJI, data: stored }, 'business'), type: 'personal' as const, instruments: ['RSE shares'] };
+  const d = toInput(asPersonal, stored).data;
   for (const k of Object.keys(d)) expect(DATA_KEYS.personal).toContain(k);
   expect(d).toMatchObject({ streams: ['tender', 'funding', 'event'], location: 'Kigali, Rwanda', locations: ['Musanze'], instruments: ['RSE shares'] });
   for (const k of ['services', 'sectors', 'capacity', 'registrationsHeld', 'registrationsNotHeld', 'minContractRwf']) expect(d).not.toHaveProperty(k);

@@ -123,6 +123,8 @@ export interface BusinessProfileData extends CommonProfileData {
   services?: string[] | null;
   sectors?: string[] | null;
   capacity?: ProfileCapacity | null;
+  /** "company", "ngo", "cooperative" (or another word the API holds); scoring reads it for NGO-only calls (decision 37). */
+  organisationType?: string | null;
   registrationsHeld?: string[] | null;
   registrationsNotHeld?: string[] | null;
   minContractRwf?: number | null;
