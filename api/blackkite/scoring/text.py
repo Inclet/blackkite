@@ -236,15 +236,6 @@ def _stem(t: str) -> str:
     return _strip_once(_strip_once(t))
 
 
-def term_tokens(term: str) -> set[str]:
-    """A profile term's tokens plus their expansions, stemmed."""
-    base = tokens(term)
-    out = set(base)
-    for t in base:
-        out.update(EXPANSIONS.get(t, ()))
-    return {_stem(t) for t in out}
-
-
 # Words of a multi-word term that say nothing on their own: "dry" in "dry
 # season", "chain" in "supply chain", "community" in "community meeting". They
 # count inside the whole phrase, never as a hit by themselves (their expansions
@@ -382,12 +373,6 @@ def mentioned(hits: Iterable[TermHit]) -> list[str]:
             continue
         out.append(q)
     return out
-
-
-def matched_terms(terms: Iterable[str], opp_tokens: set[str]) -> list[str]:
-    """Profile terms that share a (stemmed, expanded) token with a token set."""
-    stems = {_stem(t) for t in opp_tokens}
-    return [t for t in terms if term_tokens(t) & stems]
 
 
 def opportunity_match_text(opp: Opportunity) -> str:
