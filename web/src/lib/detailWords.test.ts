@@ -41,5 +41,7 @@ test('changes in plain words', () => {
   expect(changeSentence({ field: 'deadline_at', old: null, new: '2026-12-01', at: '2026-11-20T06:00:00Z' })).toBe('20 Nov 2026: a deadline was added: 1 Dec 2026.');
   expect(changeSentence({ field: 'status', old: 'open', new: 'closing_soon', at: '2026-11-21T06:00:00Z' })).toBe('21 Nov 2026: the status changed from open to closing soon.');
   expect(changeSentence({ field: 'visibility', old: 'private', new: 'public', at: '2026-11-24T08:00:00Z' })).toBe('24 Nov 2026: an admin made it public, with the owner’s consent.');
+  // As the API records it (members never see *_by keys).
+  expect(changeSentence({ field: 'visibility', old: { visibility: 'private' }, new: { visibility: 'public' }, at: '2026-11-24T08:00:00Z' })).toBe('24 Nov 2026: an admin made it public, with the owner’s consent.');
   expect(changeSentence({ field: 'title', old: 'A', new: 'B', at: '2026-11-24T08:00:00Z' })).toBe('24 Nov 2026: the title changed from A to B.');
 });

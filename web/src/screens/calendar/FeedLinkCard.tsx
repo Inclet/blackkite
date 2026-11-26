@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
+import { ApiError } from '../../api/client';
 import { m4Api } from '../../api/m4';
+import { TextLink } from '../../components/TextLink/TextLink';
 import { useResource } from '../../api/useResource';
 import { Button } from '../../components/Button/Button';
 import { Card } from '../../components/Card/Card';
@@ -25,6 +27,8 @@ export const FEED_LINK_COPY = {
   stopFailed: `${COPY.unreachableTitle}, so the link was not changed. Try again.`,
   loading: 'Getting your link…',
   unreachable: `${COPY.unreachableTitle}, so your link is not shown. Try again later.`,
+  notSetUp: 'The calendar link isn’t set up yet. An admin needs to turn on calendar links on the server.',
+  openApp: 'Open in your calendar app',
 } as const;
 
 /** The personal calendar feed (GET /api/calendar/feed-link), copy, and "Stop this link" (rotate) with a confirm. */
@@ -56,8 +60,8 @@ export function FeedLinkCard() {
       setConfirming(false);
       // The confirm buttons leave the page; focus goes back to where the user started.
       requestAnimationFrame(() => stopRef.current?.focus());
-    } catch {
-      setStatus({ text: FEED_LINK_COPY.stopFailed, alert: true });
+    } catch (e) {
+      setStatus({ text: e instanceof ApiError && e.status === 503 ? FEED_LINK_COPY.notSetUp : FEED_LINK_COPY.stopFailed, alert: true });
     } finally {
       setBusy(false);
     }
@@ -72,7 +76,11 @@ export function FeedLinkCard() {
       <p className={styles.body}>
         {FEED_LINK_COPY.contains} {FEED_LINK_COPY.keep}
       </p>
-      {!res.data && <div className={res.error ? styles.alertStatus : styles.status}>{res.error ? FEED_LINK_COPY.unreachable : FEED_LINK_COPY.loading}</div>}
+      {!res.data && (
+        <div className={res.error && res.error.status !== 503 ? styles.alertStatus : styles.status}>
+          {res.error?.status === 503 ? FEED_LINK_COPY.notSetUp : res.error ? FEED_LINK_COPY.unreachable : FEED_LINK_COPY.loading}
+        </div>
+      )}
       {res.data && (
         <>
           <Field ref={inputRef} label={FEED_LINK_COPY.label} name="calendar-link" value={url} readOnly onFocus={(e) => e.currentTarget.select()} />
@@ -81,6 +89,7 @@ export function FeedLinkCard() {
             <Button ref={stopRef} variant="secondary" aria-expanded={confirming} onClick={() => setConfirming((c) => !c)}>
               {FEED_LINK_COPY.stop}
             </Button>
+            {/^webcal:\/\//.test(res.data.webcalUrl ?? '') && <TextLink href={res.data.webcalUrl}>{FEED_LINK_COPY.openApp}</TextLink>}
           </div>
           {confirming && (
             <div className={styles.confirm} role="group" aria-label={FEED_LINK_COPY.stop}>

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { api, ApiError } from '../../api/client';
+import { api, ApiError, refusalOf } from '../../api/client';
 import { CURRENCIES, m4Api, type OwnedDetail } from '../../api/m4';
 import type { LiveFeedItem } from '../../api/types';
 import { primeCache, readCache, useResource } from '../../api/useResource';
@@ -14,7 +14,7 @@ import { LoadState } from '../common/LoadState';
 import { AppShell } from '../shell/AppShell';
 import { SignIn } from '../SignIn';
 import styles from '../sources/Sources.module.css';
-import { emptyForm, toForm, toInput, validate, type ItemErrors, type ItemForm } from './itemForm';
+import { emptyForm, serverErrors, toForm, toInput, validate, type ItemErrors, type ItemForm } from './itemForm';
 
 /** Not on any board (design review). */
 export const ITEM_COPY = {
@@ -42,10 +42,11 @@ export const ITEM_COPY = {
   refused: 'Blackkite did not accept some of these details. Check them and try again.',
   unreachable: `${COPY.unreachableTitle}. Nothing was saved; try again.`,
   notOwner: 'Only the person who added an item can edit it.',
+  published: 'This item is public now, so it can’t be changed or deleted here. Ask an admin if something is wrong with it.',
   notFound: 'We could not find that item.',
 } as const;
 
-const CURRENCY_WORDS: Record<(typeof CURRENCIES)[number], string> = { RWF: 'FRW', USD: 'USD', EUR: 'EUR' };
+const CURRENCY_WORDS: Record<string, string> = { RWF: 'FRW', USD: 'USD', EUR: 'EUR' };
 
 /** Keep the cached feed and shortlist in step with a created or edited item, so /o/:id opens it at once. */
 export function rememberItem(item: OwnedDetail): void {
@@ -76,19 +77,20 @@ export function ItemEditor() {
   if (existing.error?.kind === 'unauthorized') return <SignIn />;
   if (!id) return <Editor />;
   const own = existing.data?.detail.ownItem;
-  if (!existing.data || !own) {
+  if (!existing.data || !own || own.published) {
+    const why = existing.error?.kind === 'not-found' ? ITEM_COPY.notFound : existing.data ? (own ? ITEM_COPY.published : ITEM_COPY.notOwner) : null;
     return (
       <AppShell path="/items" title={ITEM_COPY.editTitle}>
         <LoadState loading={existing.loading} error={existing.error?.kind === 'not-found' ? null : existing.error} onRetry={existing.reload} />
-        {(existing.error?.kind === 'not-found' || (existing.data && !own)) && (
+        {why && (
           <Card aria-label={ITEM_COPY.editTitle}>
-            <div className={styles.status}>{existing.data ? ITEM_COPY.notOwner : ITEM_COPY.notFound}</div>
+            <div className={styles.status}>{why}</div>
           </Card>
         )}
       </AppShell>
     );
   }
-  return <Editor id={id} initial={toForm(own.input)} />;
+  return <Editor id={id} initial={toForm(existing.data)} />;
 }
 
 function ChipGroup({ id, label, error, children }: { id: string; label: string; error?: string; children: ReactNode }) {
@@ -109,7 +111,9 @@ function Editor({ id, initial }: { id?: string; initial?: ItemForm }) {
   const navigate = useNavigate();
   const [form, setForm] = useState<ItemForm>(initial ?? emptyForm());
   const [errors, setErrors] = useState<ItemErrors>({});
-  const [status, setStatus] = useState<'idle' | 'saving' | 'invalid' | 'refused' | 'unreachable'>('idle');
+  const [status, setStatus] = useState<'idle' | 'saving' | 'invalid' | 'refused' | 'published' | 'unreachable'>('idle');
+  // The chips offer RWF, USD and EUR, plus whatever three letters the item already has.
+  const [currencies] = useState(() => [...new Set<string>([...CURRENCIES, (initial?.currency ?? 'RWF').toUpperCase()])]);
   const title = id ? ITEM_COPY.editTitle : ITEM_COPY.addTitle;
 
   const set = <K extends keyof ItemForm>(k: K, v: ItemForm[K]) => setForm((f) => ({ ...f, [k]: v }));
@@ -132,7 +136,12 @@ function Editor({ id, initial }: { id?: string; initial?: ItemForm }) {
       rememberItem(saved);
       navigate(`/o/${encodeURIComponent(saved.id)}`, { replace: Boolean(id) });
     } catch (err) {
-      setStatus(err instanceof ApiError && err.kind === 'invalid' ? 'refused' : 'unreachable');
+      if (err instanceof ApiError && err.kind === 'invalid') {
+        const placed = serverErrors(refusalOf(err).errors);
+        setErrors(placed);
+        setStatus(Object.keys(placed).length ? 'invalid' : 'refused');
+      } else if (err instanceof ApiError && err.kind === 'conflict') setStatus('published');
+      else setStatus('unreachable');
     }
   };
 
@@ -141,7 +150,15 @@ function Editor({ id, initial }: { id?: string; initial?: ItemForm }) {
   );
 
   const message =
-    status === 'invalid' ? ITEM_COPY.checkFields : status === 'refused' ? ITEM_COPY.refused : status === 'unreachable' ? ITEM_COPY.unreachable : '';
+    status === 'invalid'
+      ? ITEM_COPY.checkFields
+      : status === 'refused'
+        ? ITEM_COPY.refused
+        : status === 'published'
+          ? ITEM_COPY.published
+          : status === 'unreachable'
+            ? ITEM_COPY.unreachable
+            : '';
 
   return (
     <AppShell path="/items" title={title} summary={ITEM_COPY.summary}>
@@ -168,8 +185,8 @@ function Editor({ id, initial }: { id?: string; initial?: ItemForm }) {
           <div className={styles.fields}>
             {field('value', ITEM_COPY.value, { inputMode: 'numeric' })}
             <ChipGroup id="item-currency" label={ITEM_COPY.currency}>
-              {CURRENCIES.map((c) => (
-                <FilterChip key={c} stream="all" label={CURRENCY_WORDS[c]} selected={form.currency === c} onClick={() => set('currency', c)} />
+              {currencies.map((c) => (
+                <FilterChip key={c} stream="all" label={CURRENCY_WORDS[c] ?? c} selected={form.currency === c} onClick={() => set('currency', c)} />
               ))}
             </ChipGroup>
           </div>

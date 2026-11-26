@@ -34,13 +34,13 @@ function owned(over: Partial<OwnedDetail['detail']['ownItem'] & object> = {}, ti
       reasons: [],
       trust: { state: 'unconfirmed', desktop: TRUST, phone: TRUST },
       originalUrl: 'https://example.rw/n',
-      fields: [],
       sources: [],
       documents: [],
       changes: [],
       note: null,
       state: 'unseen',
-      ownItem: { input: { stream: 'tender', title, organisation: 'Kigali Bus', deadline: '2026-12-10', url: 'https://example.rw/n' }, shareConsent: false, visibility: 'private', ...over },
+      fields: [{ name: 'organisation', value: 'Kigali Bus' }],
+      ownItem: { shareConsent: false, published: false, ...over },
     },
   };
 }
@@ -183,13 +183,46 @@ test('on the item: private Tag, consent switch with rollback, delete with a conf
 });
 
 test('published: the switch is locked on, with the reason', async () => {
-  ownFeed(owned({ visibility: 'public', shareConsent: true }));
+  ownFeed(owned({ published: true, shareConsent: true }));
   renderAt('/o/own-1');
   expect(await screen.findByText(OWN_COPY.public)).toBeInTheDocument();
   const share = screen.getByRole('switch', { name: OWN_COPY.share });
   expect(share).toBeDisabled();
   expect(share).toHaveAttribute('aria-checked', 'true');
   expect(screen.getByText(OWN_COPY.shared)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Edit:/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Delete:/ })).toBeNull();
+});
+
+test('withdrawing consent after an admin published it: 409 locks the switch with the reason', async () => {
+  ownFeed(owned({ shareConsent: true }), { 'PUT /api/items/own-1/share-consent': status(409, { detail: 'public now' }) });
+  renderAt('/o/own-1');
+  const share = await screen.findByRole('switch', { name: OWN_COPY.share });
+  fireEvent.click(share);
+  await waitFor(() => expect(share).toBeDisabled());
+  expect(share).toHaveAttribute('aria-checked', 'true');
+  expect(screen.getAllByText(OWN_COPY.shared).length).toBeGreaterThan(0);
+});
+
+test('edit a published item: a plain refusal instead of the form', async () => {
+  mockApi({ 'GET /me': ME, 'GET /api/opportunities/own-1': owned({ published: true, shareConsent: true }) });
+  renderAt('/items/own-1/edit');
+  expect(await screen.findByText(ITEM_COPY.published)).toBeInTheDocument();
+  expect(screen.queryByLabelText(ITEM_COPY.title)).toBeNull();
+});
+
+test('the API\'s refused fields show next to their fields', async () => {
+  mockApi({
+    'GET /me': ME,
+    'POST /api/items': status(422, { detail: 'Deadline: include the year, for example 30 Nov 2026.', errors: [{ field: 'deadline', message: 'include the year, for example 30 Nov 2026' }] }),
+  });
+  renderAt('/items/new');
+  fireEvent.click(screen.getByRole('button', { name: 'Tenders' }));
+  fireEvent.change(screen.getByLabelText(ITEM_COPY.title), { target: { value: 'X' } });
+  fireEvent.change(screen.getByLabelText(ITEM_COPY.deadline), { target: { value: '2026-12-10' } });
+  fireEvent.click(screen.getByRole('button', { name: ITEM_COPY.create }));
+  expect(await screen.findByText('Include the year, for example 30 Nov 2026.')).toBeInTheDocument();
+  expect(screen.getByLabelText(ITEM_COPY.deadline)).toHaveAttribute('aria-invalid', 'true');
 });
 
 test('other people\'s items show no owner controls', async () => {

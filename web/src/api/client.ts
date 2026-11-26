@@ -127,7 +127,7 @@ const enc = encodeURIComponent;
 export interface FeedQuery {
   stream?: string;
   profile?: string;
-  /** open | closing_soon | expired (spec 6 status). */
+  /** open | closing_soon | expired (spec 6 status); "open" also sends closing_soon (still open). */
   status?: string;
   /** Days ahead, Kigali calendar (7, 14, 30). */
   window?: string;
@@ -146,8 +146,13 @@ function query(params: Record<string, string | undefined>): string {
 }
 
 export const api = {
-  feed: (q: FeedQuery = {}, signal?: AbortSignal) =>
-    request<FeedContent & { items: LiveFeedItem[] }>(`/api/feed${query({ ...q })}`, { signal }),
+  feed: (q: FeedQuery = {}, signal?: AbortSignal) => {
+    // "Open" in the filter panel means still open: the API's status is repeatable and
+    // counts closing-soon items separately (contract section 5).
+    let qs = query({ ...q });
+    if (q.status === 'open') qs += '&status=closing_soon';
+    return request<FeedContent & { items: LiveFeedItem[] }>(`/api/feed${qs}`, { signal });
+  },
   opportunity: (id: string, signal?: AbortSignal) => request<OpportunityDetail>(`/api/opportunities/${enc(id)}`, { signal }),
   setState: (id: string, state: ItemState, dismissReason?: DismissReason) =>
     request<unknown>(`/api/opportunities/${enc(id)}/state`, {

@@ -1,15 +1,7 @@
 /**
- * M4 member and admin routes (docs/api-contract.md section 5): calendar, the
- * personal calendar feed link, private manual items, share consent and the admin
- * publish step. Same client as every other route (cookies, JSON, ApiError).
- *
- * The contract names the routes and their inputs; where it leaves an answer's
- * shape open, the shapes below are the web track's reading, listed in the M4
- * report for the member-API track to confirm:
- * - feed-link and rotate answer `{url}`;
- * - POST/PATCH /api/items answer the item as GET /api/opportunities/{id} does;
- * - an owner's item carries `detail.ownItem` (what they entered, consent, visibility);
- * - GET /api/admin/catalogue?shareable=true lists private items whose owner consented.
+ * M4 member and admin routes (docs/api-contract.md section 5, as built): calendar,
+ * the personal calendar feed link, private manual items, share consent and the
+ * admin publish step. Same client as every other route (cookies, JSON, ApiError).
  */
 import { request } from './client';
 import type { FitLevel } from '../components/FitMeter/FitMeter';
@@ -53,44 +45,54 @@ export interface CalendarQuery {
   saved: boolean;
 }
 
-/** GET /api/calendar/feed-link and POST …/rotate. */
+/** GET /api/calendar/feed-link and POST …/rotate (api FeedLinkOut). 503 when the server has no calendar secret. */
 export interface FeedLink {
   url: string;
+  /** The same link with webcal://, which calendar apps open directly. */
+  webcalUrl: string;
+  /** Null: never stopped. */
+  rotatedAt: string | null;
 }
 
 export const CURRENCIES = ['RWF', 'USD', 'EUR'] as const;
 export type Currency = (typeof CURRENCIES)[number];
 
-/** POST /api/items (spec 6, private manual items). Absent keys were left empty. */
+/** POST /api/items (api ItemIn; spec 6, private manual items). PATCH takes any of these; null clears (not stream or title). */
 export interface PrivateItemInput {
   stream: Stream;
   title: string;
   organisation?: string | null;
-  /** YYYY-MM-DD, Kigali. */
+  /** A date with an explicit year (YYYY-MM-DD here), Kigali; no time = end of day. */
   deadline?: string | null;
   eventStart?: string | null;
   eventEnd?: string | null;
   value?: number | null;
-  currency?: Currency | null;
+  /** Three letters. */
+  currency?: string | null;
   location?: string | null;
   /** http or https only. */
   url?: string | null;
   notes?: string | null;
 }
 
-/** On the owner's own manual items only (never on anyone else's view). */
+/** `detail.ownItem` (api OwnItem): only on the caller's own manual item, private or published. */
 export interface OwnItem {
-  input: PrivateItemInput;
   /** The owner allows an admin to make it public. */
   shareConsent: boolean;
-  /** "public" once an admin published it with consent (the owner stays for attribution). */
-  visibility: 'private' | 'public';
+  /** An admin made it public: consent can't be withdrawn and the owner can no longer edit or delete it (409). */
+  published: boolean;
+}
+
+/** PUT /api/items/{id}/share-consent (api ShareConsentOut). */
+export interface ShareConsent {
+  allow: boolean;
+  published: boolean;
 }
 
 export type OwnedDetail = OpportunityDetail & { detail: OpportunityDetail['detail'] & { ownItem?: OwnItem } };
 
-/** A private item an admin may publish (GET /api/admin/catalogue?shareable=true). */
-export type ShareableItem = CatalogueItem & { visibility?: 'private' | 'public'; shareConsent?: boolean };
+/** A private item an admin may publish (GET /api/admin/catalogue?shareable=true): CatalogueItem with the M4 keys. */
+export type ShareableItem = CatalogueItem & { visibility?: 'private' | 'public'; shareConsentAt?: string; madePublicAt?: string; url?: string };
 
 export interface ShareablePage {
   total: number;
@@ -112,7 +114,7 @@ export const m4Api = {
   createItem: (item: PrivateItemInput) => request<OwnedDetail>('/api/items', { method: 'POST', body: item }),
   updateItem: (id: string, patch: Partial<PrivateItemInput>) => request<OwnedDetail>(`/api/items/${enc(id)}`, { method: 'PATCH', body: patch }),
   deleteItem: (id: string) => request<void>(`/api/items/${enc(id)}`, { method: 'DELETE' }),
-  setShareConsent: (id: string, allow: boolean) => request<unknown>(`/api/items/${enc(id)}/share-consent`, { method: 'PUT', body: { allow } }),
+  setShareConsent: (id: string, allow: boolean) => request<ShareConsent>(`/api/items/${enc(id)}/share-consent`, { method: 'PUT', body: { allow } }),
   shareable: (signal?: AbortSignal) => request<ShareablePage>('/api/admin/catalogue?shareable=true', { signal }),
-  publish: (id: string) => request<unknown>(`/api/admin/catalogue/${enc(id)}/publish`, { method: 'POST' }),
+  publish: (id: string) => request<ShareableItem>(`/api/admin/catalogue/${enc(id)}/publish`, { method: 'POST' }),
 };

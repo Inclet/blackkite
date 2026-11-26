@@ -24,10 +24,10 @@ const DAYS = {
     { date: '2026-12-01', entries: [] },
   ],
 };
-const LINK = { url: 'https://blackkite.example/api/calendar.ics?token=v1' };
+const LINK = { url: 'https://blackkite.example/api/calendar.ics?token=v1', webcalUrl: 'webcal://blackkite.example/api/calendar.ics?token=v1', rotatedAt: null };
 
 function setup(days: unknown = DAYS) {
-  return mockApi({ 'GET /me': ME, 'GET /api/calendar': days, 'GET /api/calendar/feed-link': LINK, 'POST /api/calendar/feed-link/rotate': { url: 'https://blackkite.example/api/calendar.ics?token=v2' } });
+  return mockApi({ 'GET /me': ME, 'GET /api/calendar': days, 'GET /api/calendar/feed-link': LINK, 'POST /api/calendar/feed-link/rotate': { url: 'https://blackkite.example/api/calendar.ics?token=v2', webcalUrl: 'webcal://blackkite.example/api/calendar.ics?token=v2', rotatedAt: '2026-11-24T12:00:00Z' } });
 }
 const calendarUrls = (api: ReturnType<typeof mockApi>) => api.fetch.mock.calls.map(([u]) => u as string).filter((u) => u.startsWith('/api/calendar?'));
 
@@ -145,6 +145,20 @@ test('feed link: a failed copy says how to do it by hand; a failed stop keeps th
   fireEvent.click(card.getByRole('button', { name: FEED_LINK_COPY.confirmYes }));
   await card.findByText(FEED_LINK_COPY.stopFailed);
   expect(card.getByLabelText(FEED_LINK_COPY.label)).toHaveValue(LINK.url);
+});
+
+test('feed link: a webcal link opens the calendar app', async () => {
+  setup();
+  renderAt('/calendar');
+  const card = within(await screen.findByRole('region', { name: FEED_LINK_COPY.title }));
+  expect(await card.findByRole('link', { name: FEED_LINK_COPY.openApp })).toHaveAttribute('href', LINK.webcalUrl);
+});
+
+test('feed link: 503 is "not set up yet"', async () => {
+  mockApi({ 'GET /me': ME, 'GET /api/calendar': DAYS, 'GET /api/calendar/feed-link': status(503, { detail: 'Calendar feeds are not set up on this server yet.' }) });
+  renderAt('/calendar');
+  expect(await screen.findByText(FEED_LINK_COPY.notSetUp)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: FEED_LINK_COPY.copy })).toBeNull();
 });
 
 test('401 signs in', async () => {

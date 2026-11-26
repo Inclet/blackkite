@@ -1,4 +1,5 @@
-import type { Currency, PrivateItemInput } from '../../api/m4';
+import type { OwnedDetail, PrivateItemInput } from '../../api/m4';
+import { fieldValueText } from '../../api/detail';
 import { kigaliToday } from '../../lib/deadline';
 import type { Stream } from '../../lib/streams';
 
@@ -11,7 +12,8 @@ export interface ItemForm {
   eventStart: string;
   eventEnd: string;
   value: string;
-  currency: Currency;
+  /** Three letters; RWF, USD and EUR are offered as chips. */
+  currency: string;
   location: string;
   url: string;
   notes: string;
@@ -24,7 +26,7 @@ export const ITEM_ERRORS = {
   stream: 'Choose what kind of item this is.',
   title: 'Give it a title.',
   date: 'Use a full date with the year, such as 7 Dec 2026.',
-  dateRange: 'Use a date between 2000 and ten years from now.',
+  dateRange: 'Use a date between a year ago and two years from now.',
   eventStart: 'Add the day it starts.',
   eventEnd: 'Make this the same day as the start or later.',
   value: 'Use a whole number, such as 5000000.',
@@ -35,20 +37,39 @@ export function emptyForm(): ItemForm {
   return { stream: null, title: '', organisation: '', deadline: '', eventStart: '', eventEnd: '', value: '', currency: 'RWF', location: '', url: '', notes: '' };
 }
 
-export function toForm(input: PrivateItemInput): ItemForm {
-  return {
-    stream: input.stream,
-    title: input.title,
-    organisation: input.organisation ?? '',
-    deadline: input.deadline ?? '',
-    eventStart: input.eventStart ?? '',
-    eventEnd: input.eventEnd ?? '',
-    value: input.value === null || input.value === undefined ? '' : String(input.value),
-    currency: input.currency ?? 'RWF',
-    location: input.location ?? '',
-    url: input.url ?? '',
-    notes: input.notes ?? '',
+/** The form for editing the owner's item, from GET /api/opportunities/{id} (the API keeps no separate copy of what was typed). */
+export function toForm(item: OwnedDetail): ItemForm {
+  const field = (name: string) => {
+    const f = item.detail.fields.find((x) => x.name === name);
+    return f === undefined || f.value === null ? '' : fieldValueText(f.value);
   };
+  const event = item.stream === 'event';
+  const end = item.eventDates?.end;
+  return {
+    stream: item.stream,
+    title: item.title,
+    organisation: field('organisation'),
+    deadline: event ? '' : (item.deadline ?? ''),
+    eventStart: event ? (item.eventDates?.start ?? '') : '',
+    eventEnd: event && end && end !== item.eventDates?.start ? end : '',
+    value: field('valueAmount'),
+    currency: field('valueCurrency') || 'RWF',
+    location: field('location') || (item.detail.location ?? ''),
+    url: item.detail.originalUrl ?? '',
+    notes: item.detail.note ?? '',
+  };
+}
+
+/** Map the API's refused fields (RefusalOut errors, camelCase) onto the form. */
+export function serverErrors(errors: { field: string | null; message: string }[]): ItemErrors {
+  const keys = new Set(Object.keys(emptyForm()));
+  const out: ItemErrors = {};
+  for (const e of errors) {
+    if (!e.field || !keys.has(e.field) || out[e.field as keyof ItemForm]) continue;
+    const m = e.message.trim();
+    out[e.field as keyof ItemForm] = `${m.charAt(0).toUpperCase()}${m.slice(1)}${/[.!?]$/.test(m) ? '' : '.'}`;
+  }
+  return out;
 }
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -60,8 +81,11 @@ function dateError(raw: string): string | undefined {
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
   const date = new Date(Date.UTC(y, mo - 1, d));
   if (date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d) return ITEM_ERRORS.date;
-  const thisYear = Number(kigaliToday().slice(0, 4));
-  if (y < 2000 || y > thisYear + 10) return ITEM_ERRORS.dateRange;
+  // The API's plausible window (pipeline validate): a year back, two years ahead.
+  const today = kigaliToday();
+  const back = `${Number(today.slice(0, 4)) - 1}${today.slice(4)}`;
+  const ahead = `${Number(today.slice(0, 4)) + 2}${today.slice(4)}`;
+  if (raw < back || raw > ahead) return ITEM_ERRORS.dateRange;
   return undefined;
 }
 
@@ -118,7 +142,7 @@ export function toInput(f: ItemForm): PrivateItemInput {
     eventStart: event ? text(f.eventStart) : null,
     eventEnd: event ? text(f.eventEnd) : null,
     value: value ? Number(value) : null,
-    currency: value ? f.currency : null,
+    currency: value ? f.currency.trim().toUpperCase() : null,
     location: text(f.location),
     url: text(f.url),
     notes: text(f.notes),

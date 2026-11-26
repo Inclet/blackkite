@@ -125,7 +125,8 @@ export function changeSentence(change: OpportunityChange): string {
   const when = formatWhen(change.at).replace(/, .*$/, '');
   const empty = (v: unknown) => v === null || v === undefined || v === '';
   let what: string;
-  if (field === 'visibility' && change.new === 'public') what = 'an admin made it public, with the owner’s consent';
+  const visibility = (v: unknown) => (v !== null && typeof v === 'object' ? (v as { visibility?: unknown }).visibility : v);
+  if (field === 'visibility' && visibility(change.new) === 'public') what = 'an admin made it public, with the owner’s consent';
   else if (field === 'deadlineAt') {
     if (empty(change.old)) what = `a deadline was added: ${changeValue(field, change.new)}`;
     else if (empty(change.new)) what = 'the deadline was removed';

@@ -5,9 +5,9 @@ import type http from 'node:http';
  * calendar feed link, private manual items with share consent, the admin publish
  * step, and the feed's filters. Used by stubApi.ts; same session state.
  *
- * Shapes the contract leaves open follow src/api/m4.ts (feed link `{url}`, items
- * answered like GET /opportunities/{id}, `detail.ownItem` on the owner's items,
- * `GET /api/admin/catalogue?shareable=true`).
+ * Shapes as built (contract section 5; checked against api-schemas.json in
+ * tests/contract/stub.m4.test.ts): CalendarOut, FeedLinkOut, OpportunityOut with
+ * `detail.ownItem {shareConsent, published}`, ShareConsentOut, CatalogueItem.
  */
 
 /** The run's frozen today (Kigali). */
@@ -27,7 +27,8 @@ interface Item {
 export interface OwnRecord {
   input: Record<string, unknown>;
   shareConsent: boolean;
-  visibility: 'private' | 'public';
+  shareConsentAt: string | null;
+  published: boolean;
   changes: Record<string, unknown>[];
 }
 
@@ -40,7 +41,7 @@ export interface M4State {
   sources: Record<string, unknown>[];
   /** The caller's own manual items, by id. */
   own: Record<string, OwnRecord>;
-  /** Bumped by rotate: older feed links stop working. */
+  /** Bumped by rotate: older feed links stop working. 0 = the server has no calendar secret (503). */
   feedLinkVersion: number;
 }
 
@@ -89,16 +90,16 @@ export function filterFeed(s: M4State, items: Item[], q: URLSearchParams): Item[
     if (!p) return 'profile: unknown';
     out = out.filter((i) => (i.detail as { profile?: string }).profile === p.name);
   }
-  const status = q.get('status');
-  if (status) {
-    if (!['open', 'closing_soon', 'expired'].includes(status)) return 'status';
-    out = out.filter((i) => {
-      if (status === 'expired') return closed(i);
-      if (closed(i)) return false;
-      if (status === 'open') return true;
+  // Repeatable: any of the statuses (contract section 5, built).
+  const statuses = q.getAll('status');
+  if (statuses.length) {
+    if (statuses.some((x) => !['open', 'closing_soon', 'expired', 'awarded', 'cancelled'].includes(x))) return 'status';
+    const statusOf = (i: Item) => {
+      if (closed(i)) return 'expired';
       const d = sortDate(i);
-      return d !== null && daysFromToday(d) <= 7;
-    });
+      return d !== null && daysFromToday(d) <= 7 ? 'closing_soon' : 'open';
+    };
+    out = out.filter((i) => statuses.includes(statusOf(i)));
   }
   const window = q.get('window');
   if (window) {
@@ -140,18 +141,39 @@ function entriesOf(i: Item): { date: string; kind: string }[] {
 const ITEM_KEYS = new Set(['stream', 'title', 'organisation', 'deadline', 'eventStart', 'eventEnd', 'value', 'currency', 'location', 'url', 'notes']);
 const STREAMS = new Set(['tender', 'investment', 'funding', 'event']);
 
-function itemRefusal(b: Record<string, unknown>, creating: boolean): string | null {
+interface Problem {
+  field: string | null;
+  message: string;
+}
+
+const LABELS: Record<string, string> = { stream: 'Stream', title: 'Title', deadline: 'Deadline', eventStart: 'Event start', eventEnd: 'Event end', url: 'Link', value: 'Value', currency: 'Currency' };
+
+/** 422 RefusalOut {detail, errors}, in plain words (contract 4.1, 5). */
+function refusal(problems: Problem[]) {
+  return { detail: problems.map((p) => `${p.field ? LABELS[p.field] ?? p.field : 'Item'}: ${p.message}.`).join(' '), errors: problems };
+}
+
+/** A year back to two years ahead of the frozen today, as the API's plausible window. */
+const inWindow = (iso: string) => iso >= '2025-11-24' && iso <= '2028-11-24';
+
+function itemRefusal(b: Record<string, unknown>, creating: boolean, stream: unknown): Problem[] {
+  const out: Problem[] = [];
   const extra = Object.keys(b).filter((k) => !ITEM_KEYS.has(k));
-  if (extra.length) return `extra keys: ${extra.join(', ')}`;
-  if (creating || 'stream' in b) if (!STREAMS.has(String(b.stream))) return 'stream';
-  if (creating || 'title' in b) if (typeof b.title !== 'string' || !b.title.trim()) return 'title';
+  if (extra.length) out.push({ field: null, message: `unknown fields ${extra.join(', ')}` });
+  if (creating || 'stream' in b) if (!STREAMS.has(String(b.stream))) out.push({ field: 'stream', message: 'choose tender, investment, funding or event' });
+  if (creating || 'title' in b) if (typeof b.title !== 'string' || !b.title.trim()) out.push({ field: 'title', message: 'is required' });
   for (const k of ['deadline', 'eventStart', 'eventEnd']) {
-    if (b[k] !== undefined && b[k] !== null && (typeof b[k] !== 'string' || !ISO_DATE.test(b[k] as string))) return `${k}: YYYY-MM-DD`;
+    const v = b[k];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== 'string' || !ISO_DATE.test(v)) out.push({ field: k, message: 'include the year, for example 30 Nov 2026' });
+    else if (!inWindow(v)) out.push({ field: k, message: 'must be between a year ago and two years from now' });
   }
-  if (b.url !== undefined && b.url !== null && (typeof b.url !== 'string' || !/^https?:\/\/[^/]+\.[^/]+/.test(b.url))) return 'url: http or https only';
-  if (b.value !== undefined && b.value !== null && (typeof b.value !== 'number' || b.value < 0)) return 'value';
-  if (b.currency !== undefined && b.currency !== null && !['RWF', 'USD', 'EUR'].includes(String(b.currency))) return 'currency';
-  return null;
+  if ((b.eventStart || b.eventEnd) && stream !== 'event') out.push({ field: 'eventStart', message: 'only events have event dates' });
+  if (b.eventEnd && !b.eventStart) out.push({ field: 'eventEnd', message: 'needs a start date' });
+  if (b.url !== undefined && b.url !== null && (typeof b.url !== 'string' || !/^https?:\/\/[^/\s]+\.[^/\s]+/.test(b.url))) out.push({ field: 'url', message: 'use a web address starting with https://' });
+  if (b.value !== undefined && b.value !== null && (typeof b.value !== 'number' || b.value < 0)) out.push({ field: 'value', message: 'use a number' });
+  if (b.currency !== undefined && b.currency !== null && !/^[A-Za-z]{3}$/.test(String(b.currency))) out.push({ field: 'currency', message: 'use three letters, such as RWF' });
+  return out;
 }
 
 const PRIVATE_TRUST = 'You added this item yourself, so nobody else has checked it.';
@@ -164,7 +186,7 @@ function itemFrom(id: string, input: Record<string, unknown>): Item {
     provisional: false,
     stream: String(input.stream),
     title: String(input.title),
-    organisation: typeof input.organisation === 'string' && input.organisation ? input.organisation : 'Added by you',
+    organisation: typeof input.organisation === 'string' ? input.organisation : '',
     fit: null,
     deadline: event ? null : ((input.deadline as string | null | undefined) ?? null),
     ...(event ? { eventDates: { start: input.eventStart, end: (input.eventEnd as string | null) ?? null } } : {}),
@@ -178,18 +200,31 @@ function itemFrom(id: string, input: Record<string, unknown>): Item {
   };
 }
 
-/** Extra keys GET /opportunities/{id} adds for the caller's own item. */
+/** The extracted fields a manual item shows (what the owner typed, no snippets). */
+function ownFields(input: Record<string, unknown>): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  if (input.organisation) out.push({ name: 'organisation', value: input.organisation });
+  if (input.deadline) out.push({ name: 'deadlineAt', value: `${input.deadline}T23:59:59+02:00` });
+  if (input.eventStart) out.push({ name: 'eventStart', value: `${input.eventStart}T00:00:00+02:00` });
+  if (input.eventEnd) out.push({ name: 'eventEnd', value: `${input.eventEnd}T23:59:59+02:00` });
+  if (input.value !== undefined) out.push({ name: 'valueAmount', value: input.value });
+  if (input.currency) out.push({ name: 'valueCurrency', value: input.currency });
+  if (input.location) out.push({ name: 'location', value: input.location });
+  return out;
+}
+
+/** Extra keys GET /opportunities/{id} adds for the caller's own item (OwnItem; changes without *_by keys). */
 export function ownExtras(s: M4State, id: string): Record<string, unknown> {
   const own = s.own[id];
   if (!own) return {};
-  return { changes: own.changes, ownItem: { input: own.input, shareConsent: own.shareConsent, visibility: own.visibility } };
+  return { fields: ownFields(own.input), changes: own.changes, ownItem: { shareConsent: own.shareConsent, published: own.published } };
 }
 
 function opportunity(s: M4State, item: Item): Record<string, unknown> {
   return {
     ...item,
     state: s.states[item.id] ?? 'unseen',
-    detail: { ...(item.detail as object), fields: [], sources: [], documents: [], note: s.notes[item.id] ?? null, state: s.states[item.id] ?? 'unseen', ...ownExtras(s, item.id) },
+    detail: { ...(item.detail as object), fields: [], sources: [], documents: [], changes: [], note: s.notes[item.id] ?? null, state: s.states[item.id] ?? 'unseen', ...ownExtras(s, item.id) },
   };
 }
 
@@ -201,7 +236,7 @@ export function m4Member(s: M4State, method: string, path: string, q: URLSearchP
     const to = q.get('to') ?? '';
     const kind = q.get('kind') ?? 'all';
     if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || day(to) < day(from)) return send(res, 422, { detail: 'from and to: YYYY-MM-DD' }), true;
-    if (day(to) - day(from) > 120) return send(res, 422, { detail: 'The window is at most 120 days.' }), true;
+    if (day(to) - day(from) > 119) return send(res, 422, { detail: 'The calendar shows at most 120 days at a time.' }), true;
     if (!['deadlines', 'events', 'all'].includes(kind)) return send(res, 422, { detail: 'kind' }), true;
     const savedOnly = q.get('saved') === 'true';
     const byDate = new Map<string, Record<string, unknown>[]>();
@@ -213,7 +248,8 @@ export function m4Member(s: M4State, method: string, path: string, q: URLSearchP
         if (kind === 'deadlines' && e.kind !== 'deadline') continue;
         if (kind === 'events' && e.kind === 'deadline') continue;
         if (day(e.date) < day(from) || day(e.date) > day(to)) continue;
-        const entry: Record<string, unknown> = { id: i.id, stream: i.stream, title: i.title, kind: e.kind, fit: i.fit, state, provisional: Boolean(i.provisional) };
+        const entry: Record<string, unknown> = { id: i.id, stream: i.stream, title: i.title, kind: e.kind, state, provisional: Boolean(i.provisional) };
+        if (i.fit) entry.fit = i.fit;
         if (i.organisationShort) entry.organisationShort = i.organisationShort;
         if (CALENDAR_TIMES[i.id] && e.kind === 'deadline') entry.time = CALENDAR_TIMES[i.id];
         byDate.set(e.date, [...(byDate.get(e.date) ?? []), entry]);
@@ -222,19 +258,28 @@ export function m4Member(s: M4State, method: string, path: string, q: URLSearchP
     const days = [...byDate.entries()].sort(([a], [c]) => a.localeCompare(c)).map(([date, entries]) => ({ date, entries }));
     return send(res, 200, { days }), true;
   }
+  const link = (rotatedAt: string | null) => ({
+    url: `https://blackkite.example/api/calendar.ics?token=cal-u1-v${s.feedLinkVersion}`,
+    webcalUrl: `webcal://blackkite.example/api/calendar.ics?token=cal-u1-v${s.feedLinkVersion}`,
+    rotatedAt,
+  });
+  const notSetUp = { detail: 'Calendar feeds are not set up on this server yet.' };
   if (method === 'GET' && path === '/calendar/feed-link') {
-    return send(res, 200, { url: `https://blackkite.example/api/calendar.ics?token=cal-u1-v${s.feedLinkVersion}` }), true;
+    if (!s.feedLinkVersion) return send(res, 503, notSetUp), true;
+    return send(res, 200, link(s.feedLinkVersion > 1 ? STAMP : null)), true;
   }
   if (method === 'POST' && path === '/calendar/feed-link/rotate') {
+    if (!s.feedLinkVersion) return send(res, 503, notSetUp), true;
     s.feedLinkVersion += 1;
-    return send(res, 200, { url: `https://blackkite.example/api/calendar.ics?token=cal-u1-v${s.feedLinkVersion}` }), true;
+    return send(res, 200, link(STAMP)), true;
   }
   if (method === 'POST' && path === '/items') {
-    const refused = itemRefusal(b, true);
-    if (refused) return send(res, 422, { detail: refused }), true;
+    const refused = itemRefusal(b, true, b.stream);
+    if (refused.length) return send(res, 422, refusal(refused)), true;
     const id = `own-${Object.keys(s.own).length + 1}`;
     const input = Object.fromEntries(Object.entries(b).filter(([, v]) => v !== null && v !== undefined && v !== ''));
-    s.own[id] = { input, shareConsent: false, visibility: 'private', changes: [] };
+    if (typeof input.currency === 'string') input.currency = input.currency.toUpperCase();
+    s.own[id] = { input, shareConsent: false, shareConsentAt: null, published: false, changes: [] };
     const item = itemFrom(id, input);
     s.items.push(item);
     if (typeof input.notes === 'string') s.notes[id] = input.notes;
@@ -246,16 +291,23 @@ export function m4Member(s: M4State, method: string, path: string, q: URLSearchP
   const own = s.own[id];
   // Owner only: anyone else (an admin included) gets 404.
   if (!own) return send(res, 404, { detail: 'Not found' }), true;
+  const isPublic = { detail: "This item is public now, so it can't be changed or deleted here. Ask an admin if something is wrong with it." };
   if (method === 'PUT' && m[2]) {
-    if (typeof b.allow !== 'boolean' || Object.keys(b).length !== 1) return send(res, 422, { detail: 'allow: true or false' }), true;
-    if (own.visibility === 'public') return send(res, 409, { detail: 'Already public' }), true;
+    if (typeof b.allow !== 'boolean' || Object.keys(b).length !== 1) return send(res, 422, refusal([{ field: 'allow', message: 'true or false' }])), true;
+    if (own.published && !b.allow) return send(res, 409, { detail: "This item is public now, so sharing can't be withdrawn. Ask an admin if it should come down." }), true;
+    if (b.allow && !own.shareConsent) own.shareConsentAt = STAMP;
     own.shareConsent = b.allow;
-    return send(res, 200, { allow: own.shareConsent }), true;
+    return send(res, 200, { allow: own.shareConsent, published: own.published }), true;
   }
+  if ((method === 'PATCH' || method === 'DELETE') && !m[2] && own.published) return send(res, 409, isPublic), true;
   if (method === 'PATCH' && !m[2]) {
-    const refused = itemRefusal(b, false);
-    if (refused) return send(res, 422, { detail: refused }), true;
+    if (b.stream === null || b.title === null) return send(res, 422, refusal([{ field: b.stream === null ? 'stream' : 'title', message: 'cannot be cleared' }])), true;
+    const refused = itemRefusal(b, false, b.stream ?? own.input.stream);
+    if (refused.length) return send(res, 422, refusal(refused)), true;
     const next = { ...own.input, ...b };
+    for (const [k, v] of Object.entries(b)) {
+      if (k !== 'notes' && JSON.stringify(own.input[k] ?? null) !== JSON.stringify(v ?? null)) own.changes = [{ field: k, old: own.input[k] ?? null, new: v ?? null, at: STAMP }, ...own.changes];
+    }
     own.input = Object.fromEntries(Object.entries(next).filter(([, v]) => v !== null && v !== undefined && v !== ''));
     const i = s.items.findIndex((x) => x.id === id);
     const item = itemFrom(id, own.input);
@@ -275,25 +327,8 @@ export function m4Member(s: M4State, method: string, path: string, q: URLSearchP
 export function m4Admin(s: M4State, method: string, p: string, q: URLSearchParams, res: http.ServerResponse): boolean {
   if (method === 'GET' && p === '/catalogue' && q.get('shareable') === 'true') {
     const items = Object.entries(s.own)
-      .filter(([, o]) => o.visibility === 'private' && o.shareConsent)
-      .map(([id, o]) => ({
-        id,
-        stream: o.input.stream,
-        title: o.input.title,
-        organisation: o.input.organisation ?? null,
-        status: 'open',
-        verification: 'unverified',
-        trust: 'unconfirmed',
-        needsReview: false,
-        reviewReasons: [],
-        deadline: o.input.deadline ?? o.input.eventStart ?? null,
-        memberVisible: false,
-        sources: [],
-        createdAt: STAMP,
-        updatedAt: STAMP,
-        visibility: o.visibility,
-        shareConsent: o.shareConsent,
-      }));
+      .filter(([, o]) => !o.published && o.shareConsent)
+      .map(([id, o]) => catalogueItem(id, o));
     return send(res, 200, { total: items.length, items }), true;
   }
   const m = p.match(/^\/catalogue\/([^/]+)\/publish$/);
@@ -301,10 +336,36 @@ export function m4Admin(s: M4State, method: string, p: string, q: URLSearchParam
     const id = decodeURIComponent(m[1]!);
     const own = s.own[id];
     if (!own) return send(res, 404, { detail: 'Opportunity not found' }), true;
-    if (!own.shareConsent || own.visibility !== 'private') return send(res, 409, { detail: 'The owner has not allowed this item to be made public.' }), true;
-    own.visibility = 'public';
-    own.changes = [{ field: 'visibility', old: 'private', new: 'public', at: STAMP }, ...own.changes];
-    return send(res, 200, { id, visibility: 'public' }), true;
+    if (own.published) return send(res, 200, catalogueItem(id, own)), true;
+    if (!own.shareConsent) return send(res, 409, { detail: 'The owner has not agreed to share this item, so it stays private.' }), true;
+    own.published = true;
+    own.changes = [{ field: 'visibility', old: { visibility: 'private' }, new: { visibility: 'public' }, at: STAMP }, ...own.changes];
+    return send(res, 200, catalogueItem(id, own)), true;
   }
   return false;
+}
+
+/** CatalogueItem (api routes/catalogue.py) for a manual item: never names the owner. */
+function catalogueItem(id: string, o: OwnRecord): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    id,
+    stream: o.input.stream,
+    title: o.input.title,
+    organisation: o.input.organisation ?? null,
+    status: 'open',
+    verification: 'unverified',
+    trust: 'unconfirmed',
+    needsReview: false,
+    reviewReasons: [],
+    deadline: o.input.deadline ?? null,
+    memberVisible: o.published,
+    sources: [],
+    createdAt: STAMP,
+    updatedAt: STAMP,
+    visibility: o.published ? 'public' : 'private',
+  };
+  if (o.shareConsentAt) out.shareConsentAt = o.shareConsentAt;
+  if (o.published) out.madePublicAt = STAMP;
+  if (o.input.url) out.url = o.input.url;
+  return out;
 }

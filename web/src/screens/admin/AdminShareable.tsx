@@ -18,6 +18,7 @@ export const SHAREABLE_COPY = {
   summary: 'Items members added for themselves and said an admin may make public. Publishing shows the item to every member; the owner’s notes and progress stay private.',
   none: 'No private items are waiting to be made public.',
   date: (d: string) => `Date ${formatFullDate(d)}`,
+  agreed: (d: string) => `The owner agreed to share it on ${formatFullDate(d)}.`,
   publish: 'Make public',
   published: (title: string) => `Made public: ${title}.`,
   noConsent: 'The owner no longer allows this, so it stays private.',
@@ -77,6 +78,7 @@ function Queue() {
           <div className={styles.rowText}>
             <span className={styles.rowTitle}>{item.title}</span>
             {item.organisation && <span className={styles.meta}>{item.organisation}</span>}
+            {item.shareConsentAt && <span className={styles.meta}>{SHAREABLE_COPY.agreed(item.shareConsentAt)}</span>}
           </div>
           <div className={styles.actions}>
             <Button onClick={() => void publish(item)} aria-label={`${SHAREABLE_COPY.publish}: ${item.title}`}>

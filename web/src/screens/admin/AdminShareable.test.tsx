@@ -24,7 +24,7 @@ const item = (id: string, title: string) => ({
   createdAt: '2026-11-24T08:00:00Z',
   updatedAt: '2026-11-24T08:00:00Z',
   visibility: 'private',
-  shareConsent: true,
+  shareConsentAt: '2026-11-23T08:00:00Z',
 });
 
 test('lists consenting private items; Make public; a 409 is a plain sentence', async () => {
@@ -38,6 +38,7 @@ test('lists consenting private items; Make public; a 409 is a plain sentence', a
   const card = within(await screen.findByRole('region', { name: 'Fuel supply' }));
   expect(api.fetch.mock.calls.some(([u]) => u === '/api/admin/catalogue?shareable=true')).toBe(true);
   expect(card.getByText(SHAREABLE_COPY.date('2026-12-10'))).toHaveTextContent('Date 10 Dec 2026');
+  expect(card.getByText('The owner agreed to share it on 23 Nov 2026.')).toBeInTheDocument();
   fireEvent.click(card.getByRole('button', { name: `${SHAREABLE_COPY.publish}: Fuel supply` }));
   expect(await screen.findByText(SHAREABLE_COPY.published('Fuel supply'))).toBeInTheDocument();
   expect(screen.queryByRole('region', { name: 'Fuel supply' })).toBeNull();

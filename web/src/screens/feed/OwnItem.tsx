@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { ApiError } from '../../api/client';
 import { m4Api, type OwnedDetail } from '../../api/m4';
 import type { Resource } from '../../api/useResource';
 import { Button } from '../../components/Button/Button';
@@ -23,7 +24,7 @@ export const OWN_COPY = {
   deleteFailed: `${COPY.unreachableTitle}, so the item was not deleted. Try again.`,
   share: 'Let an admin make this public',
   shareHelp: 'An admin may then publish it, so every member can see the item itself. Your notes and progress stay private. Until it is published you can turn this off.',
-  shared: 'An admin made this public, so it can no longer be made private here.',
+  shared: 'An admin made this public, so it can no longer be made private, changed or deleted here. Ask an admin if something is wrong with it.',
   shareOn: 'Admins may now make this item public.',
   shareOff: 'Only you can see this item.',
   shareFailed: `${COPY.unreachableTitle}, so that change was undone. Try again.`,
@@ -41,17 +42,25 @@ export function OwnItemControls({ item, detail, model }: { item: FeedItem; detai
   const [confirming, setConfirming] = useState(false);
   const [message, setMessage] = useState<{ text: string; alert: boolean } | null>(null);
   const deleteRef = useRef<HTMLButtonElement>(null);
-  const published = own.visibility === 'public';
+  const published = own.published;
+
+  const setOwn = (next: Partial<typeof own>) => detail.setData((d) => d && { ...d, detail: { ...d.detail, ownItem: { ...d.detail.ownItem!, ...next } } });
 
   const setConsent = async (allow: boolean) => {
-    const set = (v: boolean) => detail.setData((d) => d && { ...d, detail: { ...d.detail, ownItem: { ...d.detail.ownItem!, shareConsent: v } } });
-    set(allow);
+    setOwn({ shareConsent: allow });
     setMessage(null);
     try {
-      await m4Api.setShareConsent(item.id, allow);
+      const answer = await m4Api.setShareConsent(item.id, allow);
+      setOwn({ shareConsent: answer?.allow ?? allow, published: answer?.published ?? false });
       setMessage({ text: allow ? OWN_COPY.shareOn : OWN_COPY.shareOff, alert: false });
-    } catch {
-      set(!allow);
+    } catch (e) {
+      // 409: an admin published it meanwhile, so consent can no longer be withdrawn.
+      if (e instanceof ApiError && e.kind === 'conflict') {
+        setOwn({ shareConsent: true, published: true });
+        setMessage({ text: OWN_COPY.shared, alert: true });
+        return;
+      }
+      setOwn({ shareConsent: !allow });
       setMessage({ text: OWN_COPY.shareFailed, alert: true });
     }
   };
@@ -64,8 +73,12 @@ export function OwnItemControls({ item, detail, model }: { item: FeedItem; detai
       model.live?.forget(item.id);
       model.live?.announce(OWN_COPY.deleted(item.title));
       navigate('/');
-    } catch {
-      setMessage({ text: OWN_COPY.deleteFailed, alert: true });
+    } catch (e) {
+      if (e instanceof ApiError && e.kind === 'conflict') {
+        setOwn({ published: true, shareConsent: true });
+        setConfirming(false);
+        setMessage({ text: OWN_COPY.shared, alert: true });
+      } else setMessage({ text: OWN_COPY.deleteFailed, alert: true });
     }
   };
 
@@ -74,6 +87,7 @@ export function OwnItemControls({ item, detail, model }: { item: FeedItem; detai
       <span className={styles.tags}>
         <Tag kind="profile">{published ? OWN_COPY.public : OWN_COPY.private}</Tag>
       </span>
+      {!published && (
       <div className={styles.noteRow}>
         <Button variant="secondary" onClick={() => navigate(`/items/${encodeURIComponent(item.id)}/edit`)} aria-label={`${OWN_COPY.edit}: ${item.title}`}>
           {OWN_COPY.edit}
@@ -82,7 +96,8 @@ export function OwnItemControls({ item, detail, model }: { item: FeedItem; detai
           {OWN_COPY.delete}
         </Button>
       </div>
-      {confirming && (
+      )}
+      {!published && confirming && (
         <div className={styles.stack} role="group" aria-label={OWN_COPY.delete}>
           <div className={styles.liveText}>{OWN_COPY.confirm(item.title)}</div>
           <div className={styles.noteRow}>
