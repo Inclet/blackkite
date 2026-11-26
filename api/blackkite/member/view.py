@@ -285,12 +285,19 @@ def load_rows(
     *,
     profile_id: uuid.UUID | None = None,
     keep_filtered: bool = False,
+    keep_own: bool = False,
 ) -> list[Row]:
     """Attach the caller's state, best score and visible sources to each item.
 
     Items whose every score row is hard-filtered are dropped unless
     ``keep_filtered``. With ``profile_id``, only that profile's row counts, and
     items it did not score (or filtered) are dropped.
+
+    ``keep_own`` (feed and calendar; orchestrator decision 2026-11-26): the
+    caller's own private items are never dropped for hard filters (stream not
+    selected, outside Rwanda, below minimum value, ...); with ``profile_id``
+    they stay when that profile scored them at all, filtered or not. Digests
+    and alerts do not pass it: they still need a fit word.
     """
     opps = list(opps)
     ids = [o.id for o in opps]
@@ -317,9 +324,15 @@ def load_rows(
             rows = [r for r in rows if r.hard_filtered != MUTED_SOURCE_ONLY]
         shown = [r for r in rows if not r.hard_filtered]
         all_filtered = bool(rows) and not shown and not pending
-        if profile_id is not None and not shown and not keep_filtered:
+        own = keep_own and o.visibility == "private" and o.owner_user_id == user.id
+        if (
+            profile_id is not None
+            and not shown
+            and not keep_filtered
+            and not (own and rows)
+        ):
             continue
-        if all_filtered and not keep_filtered:
+        if all_filtered and not keep_filtered and not own:
             continue
         best = max(shown, key=lambda r: (r.rank, r.profile_name)) if shown else None
         out.append(Row(o, states.get(o.id), best, all_filtered, links.get(o.id, [])))
