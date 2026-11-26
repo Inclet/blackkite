@@ -31,6 +31,7 @@
       "toCheck"
     ],
     "FieldOut": [
+      "display",
       "snippet",
       "snippets"
     ],
@@ -2632,6 +2633,18 @@
         "FieldOut": {
           "description": "One extracted field with the passage that supports it.",
           "properties": {
+            "display": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Display"
+            },
             "name": {
               "title": "Name",
               "type": "string"
@@ -2715,6 +2728,10 @@
               },
               "title": "Fields",
               "type": "array"
+            },
+            "isManual": {
+              "title": "Ismanual",
+              "type": "boolean"
             },
             "location": {
               "anyOf": [
@@ -2816,7 +2833,8 @@
             "documents",
             "changes",
             "note",
-            "state"
+            "state",
+            "isManual"
           ],
           "title": "OpportunityDetail",
           "type": "object"

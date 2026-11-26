@@ -28,6 +28,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import unquote, urlsplit
@@ -50,6 +51,7 @@ from blackkite.db.models import (
     UserOpportunityScore,
     UserSourceMute,
 )
+from blackkite.delivery.wording import amount
 from blackkite.member import schemas as S
 from blackkite.member.trust import LinkInfo, trust_copy
 from blackkite.pipeline.dates import KIGALI, kigali_date
@@ -558,8 +560,18 @@ def _fields(opp: Opportunity) -> list[S.FieldOut]:
             )
             continue
         snippet = e.get("snippet") if isinstance(e.get("snippet"), str) else None
+        display = (
+            amount(Decimal(value), opp.value_currency)
+            if name == "value_amount"
+            else None
+        )
         out.append(
-            S.FieldOut(name=to_camel(name), value=_json_value(value), snippet=snippet)
+            S.FieldOut(
+                name=to_camel(name),
+                value=_json_value(value),
+                snippet=snippet,
+                display=display,
+            )
         )
     return out
 
@@ -631,6 +643,12 @@ def _changes(
     return out
 
 
+def is_manual(opp: Opportunity) -> bool:
+    """Added by a member: private, or made public by an admin (the owner link
+    may be gone after the account was deleted; made_public_at stays)."""
+    return opp.visibility == "private" or opp.made_public_at is not None
+
+
 def own_item_out(opp: Opportunity, user_id: uuid.UUID | None) -> S.OwnItem | None:
     """Sharing state of the caller's own manual item (private or published)."""
     if user_id is None or opp.owner_user_id != user_id:
@@ -671,6 +689,7 @@ def opportunity_out(
         state=row.state,
         dismiss_reason=S.dismiss_reason_out(row.uo.dismiss_reason if row.uo else None),
         own_item=own_item_out(o, user_id),
+        is_manual=is_manual(o),
     )
     return S.OpportunityOut(**_item_fields(row, now), detail=detail)
 

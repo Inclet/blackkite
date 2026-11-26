@@ -343,3 +343,21 @@ def test_withdraw_losing_a_race_to_publish_is_409(
     }
     db.expire_all()
     assert db.get(Opportunity, uuid.UUID(oid)).share_consent_at is not None
+
+
+def test_detail_says_manual_and_formats_the_value(db, ana, ben, login):
+    make_user(db, "admin@example.com", role="admin")
+    a = login(ana.email)
+    oid = _item(a, value=6000000, currency="rwf")
+    d = a.get(f"/api/opportunities/{oid}").json()["detail"]
+    assert d["isManual"] is True
+    fields = {x["name"]: x for x in d["fields"]}
+    assert fields["valueAmount"]["display"] == "FRW 6,000,000"
+    assert float(fields["valueAmount"]["value"]) == 6000000
+    assert "display" not in fields["valueCurrency"]
+    _consent(a, oid, True)
+    login("admin@example.com").post(f"/api/admin/catalogue/{oid}/publish")
+    assert (
+        login(ben.email).get(f"/api/opportunities/{oid}").json()["detail"]["isManual"]
+    )
+    assert a.get(f"/api/opportunities/{oid}").json()["detail"]["isManual"]

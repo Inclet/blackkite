@@ -877,7 +877,10 @@ def test_opportunity_detail(db, ana, login):
         "name": "valueAmount",
         "value": "12000000.00",
         "snippet": "FRW 12,000,000",
+        "display": "FRW 12,000,000",
     }
+    assert "display" not in fields["eligibility"]
+    assert d["isManual"] is False
     assert fields["requirements"]["snippets"] == ["copies of vehicle logbooks"]
     assert "snippet" not in fields["organisation"]
     # The change from a hidden source is not shown.
