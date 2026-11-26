@@ -49,9 +49,10 @@ id, RFC 8601) reports ``dmarc=pass`` for the From domain, or ``dkim=pass`` with
 authserv-id are ignored. Without ``BK_INGEST_AUTHSERV_ID`` such a source refuses
 to run (CollectorError) rather than trust a header anyone could have written.
 
-Emails with no usable link (decision 49). In ``message`` mode an email that is
-this source's (sender, subject and authentication match) but has no link that
-passes ``check_url`` and ``link_pattern`` gives no item. It is still marked
+Emails with no usable link (decision 49), in both modes. An email that is this
+source's (sender, subject and authentication match) but yields no item (no link
+that passes ``check_url`` and ``link_pattern``; in ``links`` mode also none
+with a title of at least ``min_title_chars``) is still marked
 processed, and recorded in ``warnings`` (sender, subject, date; never the
 body), which the runner stores on the run (``source_run.warnings``) for the
 run's error log. The run still succeeds.
@@ -599,7 +600,7 @@ class EmailIngestCollector:
             if found is None:
                 continue  # not this source's mail: leave it for others
             done.append(uid)
-            if not found and cfg.parse_mode == "message":
+            if not found:
                 self.warnings.append(skipped_email(raw))
             for item in found:
                 if item.url not in seen:

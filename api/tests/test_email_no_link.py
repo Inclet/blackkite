@@ -1,4 +1,4 @@
-"""Decision 49: in message mode, an email with no usable link is skipped and
+"""Decision 49: in either mode, an email with no usable link is skipped and
 recorded in the run's warnings (sender, subject, date; never the body); the
 run still succeeds when other emails produced items. Offline: fake mailbox."""
 
@@ -90,12 +90,34 @@ def test_links_pattern_counts_as_no_usable_link():
     assert [w["subject"] for w in c.warnings] == ["New tenders this week"]
 
 
-def test_links_mode_records_no_warnings():
-    """Decision 49 is applied to message mode (the brief); links mode keeps its
-    behaviour."""
-    c = ei.EmailIngestCollector(lambda: inbox())
-    c.fetch(source({"sender": SENDER}))
-    assert c.warnings == []
+def test_links_mode_records_emails_with_no_usable_link():
+    """Links mode too: an email of this source that yields no item (no safe
+    link, or only links with too-short titles) is recorded, headers only; an
+    email with items is not, and neither is someone else's mail."""
+    box = FakeMailbox(
+        {
+            "1": mail(
+                subject="Tenders",
+                html='<a href="https://board.example/tender/9">'
+                "Supply of cold rooms to district hospitals</a>",
+            ),
+            "2": mail(subject="Round-up", text=BODY_SECRET),
+            "3": mail(
+                subject="Short titles only",
+                html=f'<p>{BODY_SECRET}</p><a href="https://board.example/t/1">More</a>',
+            ),
+            "4": mail(sender="news@other.example", text="no link here"),
+        }
+    )
+    c = ei.EmailIngestCollector(lambda: box)
+    items = c.fetch(source({"sender": SENDER}))
+    assert [i.url for i in items] == ["https://board.example/tender/9"]
+    assert [(w["kind"], w["subject"]) for w in c.warnings] == [
+        ("email_no_link", "Round-up"),
+        ("email_no_link", "Short titles only"),
+    ]
+    assert all(w["sender"] == SENDER and w["date"] for w in c.warnings)
+    assert BODY_SECRET not in json.dumps(c.warnings)
 
 
 def test_run_succeeds_and_stores_the_warnings(db, monkeypatch):
