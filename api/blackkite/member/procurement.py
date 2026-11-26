@@ -155,13 +155,23 @@ class PlansOut(CamelModel):
 # --- benchmarks ------------------------------------------------------------------
 
 
-def _visible_award() -> sa.ColumnElement[bool]:
+def listed_by_visible_source(model) -> sa.ColumnElement[bool]:
+    """An award or plan item is shown while any source that listed it
+    (``source_ids``, or the first ``source_id``) is active or paused, so
+    retiring one source does not hide a record another still lists."""
     return sa.exists(
         sa.select(sa.literal(1)).where(
-            Source.id == Award.source_id,
+            sa.or_(
+                Source.id == model.source_id,
+                Source.id == sa.any_(model.source_ids),
+            ),
             Source.status.in_(MEMBER_VISIBLE_SOURCE_STATUSES),
         )
     )
+
+
+def _visible_award() -> sa.ColumnElement[bool]:
+    return listed_by_visible_source(Award)
 
 
 def award_filters(
@@ -548,12 +558,7 @@ def plans_for(
             ProcurementPlanItem.planned_end >= today,
             ProcurementPlanItem.planned_start <= until,
             sa.not_(advertised),
-            sa.exists(
-                sa.select(sa.literal(1)).where(
-                    Source.id == ProcurementPlanItem.source_id,
-                    Source.status.in_(MEMBER_VISIBLE_SOURCE_STATUSES),
-                )
-            ),
+            listed_by_visible_source(ProcurementPlanItem),
         )
         .order_by(
             ProcurementPlanItem.planned_start,

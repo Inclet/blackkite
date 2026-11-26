@@ -30,7 +30,7 @@ from blackkite.db.models import ProcurementPlanItem, Source
 from blackkite.llm.embeddings import Embedder, EmbeddingError
 from blackkite.pipeline import categories
 from blackkite.pipeline import procurement as P
-from blackkite.pipeline.awards import money_with_cell
+from blackkite.pipeline.awards import add_source_id, money_with_cell
 
 log = logging.getLogger("blackkite.pipeline")
 
@@ -166,6 +166,58 @@ def embedding_text(plan: ProcurementPlanItem) -> str:
     return "\n".join(parts)
 
 
+def find_plan(session: Session, n: NormalisedPlan) -> ProcurementPlanItem | None:
+    """The stored plan item this listing is, merging what a listing left out:
+
+    1. same (entity, description, fiscal year);
+    2. the listing states a fiscal year and the same entity and description is
+       stored without one: that row (it takes the year);
+    3. the listing states no fiscal year and exactly one row has the same entity
+       and description: that row;
+    4. the listing has a tender ref and exactly one row of the same entity has
+       that ref, with the same or no fiscal year: that row.
+    """
+    same = sa.and_(
+        ProcurementPlanItem.entity_key == n.entity_key,
+        ProcurementPlanItem.description_key == n.description_key,
+    )
+    row = session.scalar(
+        sa.select(ProcurementPlanItem).where(
+            same, ProcurementPlanItem.fiscal_year.is_not_distinct_from(n.fiscal_year)
+        )
+    )
+    if row is not None:
+        return row
+    if n.fiscal_year is not None:
+        row = session.scalar(
+            sa.select(ProcurementPlanItem).where(
+                same, ProcurementPlanItem.fiscal_year.is_(None)
+            )
+        )
+        if row is not None:
+            return row
+    else:
+        rows = session.scalars(sa.select(ProcurementPlanItem).where(same)).all()
+        if len(rows) == 1:
+            return rows[0]
+    if n.tender_ref:
+        q = sa.select(ProcurementPlanItem).where(
+            ProcurementPlanItem.entity_key == n.entity_key,
+            sa.func.lower(ProcurementPlanItem.tender_ref) == n.tender_ref.lower(),
+        )
+        if n.fiscal_year is not None:
+            q = q.where(
+                sa.or_(
+                    ProcurementPlanItem.fiscal_year.is_(None),
+                    ProcurementPlanItem.fiscal_year == n.fiscal_year,
+                )
+            )
+        rows = session.scalars(q).all()
+        if len(rows) == 1:
+            return rows[0]
+    return None
+
+
 def upsert_plan(
     session: Session,
     source: Source,
@@ -174,13 +226,7 @@ def upsert_plan(
     *,
     embedder: Embedder | None = None,
 ) -> tuple[ProcurementPlanItem, bool]:
-    row = session.scalar(
-        sa.select(ProcurementPlanItem).where(
-            ProcurementPlanItem.entity_key == n.entity_key,
-            ProcurementPlanItem.description_key == n.description_key,
-            ProcurementPlanItem.fiscal_year.is_not_distinct_from(n.fiscal_year),
-        )
-    )
+    row = find_plan(session, n)
     created = row is None
     if row is None:
         row = ProcurementPlanItem(
@@ -201,6 +247,7 @@ def upsert_plan(
     if n.estimated_amount is not None or created:
         row.estimated_amount, row.currency = n.estimated_amount, n.currency
     row.source_id = row.source_id or source.id
+    row.source_ids = add_source_id(row.source_ids, row.source_id, source.id)
     row.raw = n.raw
     row.last_seen = now
     if embedder is not None and (changed_text or row.embedding is None):

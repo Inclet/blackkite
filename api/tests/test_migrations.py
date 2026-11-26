@@ -405,3 +405,28 @@ def test_0018_existing_awards_get_unique_keys(make_database):
     command.downgrade(cfg, "0017")
     assert _exec(url, "SELECT count(*) FROM award") == [(3,)]
     command.upgrade(cfg, "head")
+
+
+def test_0019_records_keep_their_first_source(make_database):
+    url = make_database("bk_migr")
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0018")
+    _exec(
+        url,
+        "INSERT INTO source (name, home_url, streams, kind, collector_type) VALUES "
+        "('S', 'https://s.example/', '{tender}', 'original', 'custom')",
+    )
+    _exec(
+        url,
+        "INSERT INTO award (ref_key, source_id) SELECT 'r1', id FROM source; "
+        "INSERT INTO award (ref_key) VALUES ('r2')",
+    )
+    command.upgrade(cfg, "0019")
+    rows = _exec(
+        url,
+        "SELECT ref_key, cardinality(source_ids), source_ids[1] = source_id "
+        "FROM award ORDER BY ref_key",
+    )
+    assert rows == [("r1", 1, True), ("r2", 0, None)]
+    command.downgrade(cfg, "0018")
+    command.upgrade(cfg, "head")

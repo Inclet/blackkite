@@ -317,3 +317,140 @@ def test_test_run_previews_records_and_writes_nothing(admin, db, config, kind):
         assert first["estimatedValue"] == "40000000.00"
     for model in (Award, ProcurementPlanItem, Opportunity):
         assert db.scalar(sa.select(sa.func.count()).select_from(model)) == 0
+
+
+# --- re-listing by another source; merging what a first listing left out --------
+
+
+def _award(db, src, **kw):
+    raw = RawAward(source_id=src.id, url="https://x.example/a", fetched_at=NOW, **kw)
+    return A.upsert_award(db, src, A.normalise_award(raw, Formats(), TODAY), NOW)
+
+
+def _plan(db, src, **kw):
+    kw.setdefault("entity", "Example Board (fictional)")
+    kw.setdefault("description", "Transport of grain to stores")
+    raw = RawPlan(source_id=src.id, url="https://x.example/p", fetched_at=NOW, **kw)
+    return PL.upsert_plan(db, src, PL.normalise_plan(raw, Formats(), TODAY), NOW)
+
+
+def test_record_relisted_by_another_source_stays_visible_when_the_first_retires(
+    db, client, outbox
+):
+    from blackkite.routes.member import now_utc
+
+    first = add_source(db, AWARDS_CFG, name="First portal")
+    second = add_source(db, AWARDS_CFG, name="Second portal")
+    first.status = second.status = "active"
+    for i in range(3):
+        _award(
+            db,
+            first,
+            tender_ref=f"EX/{i}/2026",
+            title="Transport of maize",
+            entity="Example Board (fictional)",
+            amount="1,000,000",
+            currency="RWF",
+        )
+    a, created = _award(
+        db,
+        second,
+        tender_ref="EX/0/2026",
+        title="Transport of maize",
+        entity="Example Board (fictional)",
+    )
+    assert not created
+    assert a.source_id == first.id and a.source_ids == [first.id, second.id]
+    p, _ = _plan(db, first, fiscal_year="2026/27", planned_date="15 Jan 2027")
+    p2, created = _plan(db, second, fiscal_year="2026/27")
+    assert p2.id == p.id and not created and p.source_ids == [first.id, second.id]
+    first.status = "retired"
+    db.commit()
+
+    client.app.dependency_overrides[now_utc] = lambda: NOW
+    make_user(db, "ana@example.com")
+    db.commit()
+    c = sign_in(client, outbox, "ana@example.com")
+    cats = c.get("/api/benchmarks").json()["categories"]
+    # Only the award the second source also listed is still shown.
+    assert sum(x["awards"] for x in cats) == 1
+    second.status = "retired"
+    db.commit()
+    assert c.get("/api/benchmarks").json()["categories"] == []
+
+
+def test_award_listing_that_adds_the_entity_merges(db):
+    src = add_source(db, AWARDS_CFG)
+    a, created = _award(db, src, tender_ref="EX/7/2026", title="Supply of desks")
+    assert created and a.entity_key == ""
+    b, created = _award(
+        db,
+        src,
+        tender_ref="EX/7/2026",
+        title="Supply of desks",
+        entity="Example Ministry (fictional)",
+        amount="900,000",
+        currency="RWF",
+    )
+    assert not created and b.id == a.id
+    assert b.entity == "Example Ministry (fictional)" and b.entity_key != ""
+    # A later listing without the entity again still lands on the same row.
+    c, created = _award(db, src, tender_ref="EX/7/2026", winner="Example Co")
+    assert not created and c.id == a.id and c.entity_key == b.entity_key
+    assert db.scalar(sa.select(sa.func.count()).select_from(Award)) == 1
+
+
+def test_award_listing_without_entity_is_ambiguous_across_entities(db):
+    src = add_source(db, AWARDS_CFG)
+    _award(db, src, tender_ref="EX/8/2026", entity="Entity A (fictional)")
+    _award(db, src, tender_ref="EX/8/2026", entity="Entity B (fictional)")
+    _, created = _award(db, src, tender_ref="EX/8/2026")
+    assert created  # two candidates: never guessed
+    assert db.scalar(sa.select(sa.func.count()).select_from(Award)) == 3
+
+
+def test_award_listing_that_adds_the_ref_merges_into_the_title_row(db):
+    src = add_source(db, AWARDS_CFG)
+    a, _ = _award(
+        db, src, title="Supply of office desks", entity="Example Ministry (fictional)"
+    )
+    assert a.ref_key.startswith("title:")
+    b, created = _award(
+        db,
+        src,
+        tender_ref="EX/9/2026",
+        title="Supply of office desks",
+        entity="Example Ministry (fictional)",
+    )
+    assert not created and b.id == a.id and b.ref_key == "ex/9/2026"
+    assert b.tender_ref == "EX/9/2026"
+
+
+def test_plan_listing_that_adds_the_fiscal_year_merges(db):
+    src = add_source(db, PLANS_CFG)
+    p, created = _plan(db, src)
+    assert created and p.fiscal_year is None
+    q, created = _plan(db, src, fiscal_year="FY 2026/2027", estimated_value="5,000,000")
+    assert not created and q.id == p.id and q.fiscal_year == "2026/27"
+    r, created = _plan(db, src)  # the year left out again: same row
+    assert not created and r.id == p.id and r.fiscal_year == "2026/27"
+    # Another year is another plan item.
+    _, created = _plan(db, src, fiscal_year="2027/28")
+    assert created
+    # Now two years: a listing without one is ambiguous and stored apart.
+    _, created = _plan(db, src)
+    assert created
+    assert db.scalar(sa.select(sa.func.count()).select_from(ProcurementPlanItem)) == 3
+
+
+def test_plan_matched_on_tender_ref_when_the_description_changes(db):
+    src = add_source(db, PLANS_CFG)
+    p, _ = _plan(db, src, tender_ref="PLAN/22/2026", fiscal_year="2026/27")
+    q, created = _plan(
+        db,
+        src,
+        description="Transport of grain to regional stores (lot 2)",
+        tender_ref="plan/22/2026",
+    )
+    assert not created and q.id == p.id
+    assert q.description == "Transport of grain to regional stores (lot 2)"

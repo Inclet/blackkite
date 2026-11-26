@@ -169,15 +169,53 @@ UPDATABLE = (
 )
 
 
+def _title_ref_key(title: str | None) -> str | None:
+    tk = title_key(title)
+    return f"title:{tk}"[:300] if tk else None
+
+
+def find_award(session: Session, n: NormalisedAward) -> Award | None:
+    """The stored award this listing is, merging what a listing left out:
+
+    1. same (ref_key, entity_key);
+    2. the listing names the entity and a row with the same ref has none: that
+       row (it takes the entity);
+    3. the listing names no entity and exactly one row has the same ref: that row;
+    4. the listing has a tender ref and a row keyed on the same title (listed
+       without a ref) has the same entity, or no entity: that row (it takes the
+       ref).
+    """
+
+    def by(ref_key: str, *where) -> list[Award]:
+        return list(
+            session.scalars(sa.select(Award).where(Award.ref_key == ref_key, *where))
+        )
+
+    exact = by(n.ref_key, Award.entity_key == n.entity_key)
+    if exact:
+        return exact[0]
+    if n.entity_key:
+        blank = by(n.ref_key, Award.entity_key == "")
+        if blank:
+            return blank[0]
+    else:
+        named = by(n.ref_key)
+        if len(named) == 1:
+            return named[0]
+    tkey = _title_ref_key(n.title)
+    if not n.ref_key.startswith("title:") and tkey:
+        for row in by(tkey, Award.entity_key.in_({n.entity_key, ""})):
+            return row
+    return None
+
+
 def upsert_award(
     session: Session, source: Source, n: NormalisedAward, now: datetime
 ) -> tuple[Award, bool]:
-    """(row, created). Values the new listing leaves empty keep the old ones."""
-    row = session.scalar(
-        sa.select(Award).where(
-            Award.ref_key == n.ref_key, Award.entity_key == n.entity_key
-        )
-    )
+    """(row, created). Values the new listing leaves empty keep the old ones; a
+    listing that adds a missing entity or tender ref merges into the row
+    (``find_award``). Every listing source is kept in ``source_ids``."""
+    row = find_award(session, n)
     created = row is None
     if row is None:
         row = Award(
@@ -187,6 +225,11 @@ def upsert_award(
             source_id=source.id,
         )
         session.add(row)
+    else:
+        if n.entity_key and not row.entity_key:
+            row.entity_key = n.entity_key
+        if row.ref_key.startswith("title:") and not n.ref_key.startswith("title:"):
+            row.ref_key = n.ref_key
     for f in UPDATABLE:
         value = getattr(n, f)
         if value is not None or created:
@@ -200,10 +243,20 @@ def upsert_award(
     if n.title is not None or created:
         row.category, row.tags = n.category, n.tags
     row.source_id = row.source_id or source.id
+    row.source_ids = add_source_id(row.source_ids, row.source_id, source.id)
     row.raw = n.raw
     row.last_seen = now
     session.flush()
     return row, created
+
+
+def add_source_id(ids, *new) -> list:
+    """``ids`` with each of ``new`` appended once, order kept."""
+    out = list(ids or [])
+    for i in new:
+        if i is not None and i not in out:
+            out.append(i)
+    return out
 
 
 def today_of(now: datetime) -> date:
