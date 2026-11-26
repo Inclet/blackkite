@@ -20,8 +20,11 @@ from pydantic.alias_generators import to_camel
 from blackkite.member import profiles as P
 from blackkite.member import schemas as S
 from blackkite.routes import source_schemas as SS
-from blackkite.routes.catalogue import CataloguePage
+from blackkite.member.items import ItemIn, ItemPatch
+from blackkite.routes.calendar import FeedLinkOut
+from blackkite.routes.catalogue import CataloguePage, CatalogueItem
 from blackkite.routes.digest_settings import DigestSettingsIn, DigestSettingsOut
+from blackkite.routes.items import ShareConsentIn, ShareConsentOut
 from blackkite.routes.schemas import AdminUserOut, InviteOut, UserOut, UserPatch
 
 MODELS = {
@@ -58,6 +61,15 @@ MODELS = {
     "StatusIn": SS.StatusIn,
     "SuggestionIn": SS.SuggestionIn,
     "UserPatch": UserPatch,
+    # M4 (docs/api-contract.md section 5): responses.
+    "CalendarOut": S.CalendarOut,
+    "FeedLinkOut": FeedLinkOut,
+    "ShareConsentOut": ShareConsentOut,
+    "CatalogueItem": CatalogueItem,
+    # M4: request bodies.
+    "ItemIn": ItemIn,
+    "ItemPatch": ItemPatch,
+    "ShareConsentIn": ShareConsentIn,
 }
 
 
