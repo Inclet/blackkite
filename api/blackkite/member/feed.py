@@ -145,7 +145,7 @@ def feed_rows(
         closed_opps = [o for o in opps if is_closed(o, now)]
     else:
         open_opps, closed_opps = opps, []
-    rows = load_rows(db, user, open_opps, profile_id=f.profile_id)
+    rows = load_rows(db, user, open_opps, profile_id=f.profile_id, keep_own=True)
     if closed_opps:
         # Closed items the caller tracks keep their deadline-passed rows.
         rows += [
