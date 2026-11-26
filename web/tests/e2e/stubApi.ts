@@ -25,6 +25,9 @@ import { defaultAwards, defaultPlans, m5DetailExtras, m5Member, type StubAward, 
  * POST /api/unsubscribe answers with or without a session (see unsubscribe below).
  */
 
+/** The stub's calendar feed body (GET /api/calendar.ics). */
+export const CALENDAR_ICS = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//blackkite e2e stub//EN\r\nEND:VCALENDAR\r\n';
+
 export const STUB_COOKIE = 'bk_stub';
 
 interface Item {
@@ -981,6 +984,11 @@ export function startStubApi(port: number): Promise<{ port: number; close: () =>
       }
       if (method === 'POST' && path === '/auth/verify') return send(res, 200, { redirect: '/shortlist' });
       // One-click unsubscribe (decision 43) needs no session: the token is the authority.
+      // The personal calendar feed needs no session: the token is the authority (contract section 5).
+      if (method === 'GET' && path === '/api/calendar.ics') {
+        res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end(CALENDAR_ICS);
+      }
       if (path === '/api/unsubscribe') return unsubscribe(method, req.headers['content-type'] ?? '', body, id ? session(id) : undefined, res);
       if (!id) return send(res, 401, { detail: 'Sign in first.' });
       member(session(id), method, path, body, res, url);

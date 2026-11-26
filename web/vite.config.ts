@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { apiProxy } from './apiProxy.ts';
+import { referrerPolicyFor, workboxOptions } from './pwa.ts';
 
 const designDir = fileURLToPath(new URL('../design', import.meta.url));
 
@@ -22,8 +23,20 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    {
+      // The preview server sends Referrer-Policy as the edge server does, so e2e can tell
+      // a network response from the service worker's cached index.html.
+      name: 'bk-preview-referrer-policy',
+      configurePreviewServer(server) {
+        server.middlewares.use((req, res, next) => {
+          res.setHeader('Referrer-Policy', referrerPolicyFor(new URL(req.url ?? '/', 'http://x').pathname));
+          next();
+        });
+      },
+    },
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: workboxOptions,
       includeAssets: ['fonts/*.woff2', 'fonts/google-figtree.css'],
       manifest: {
         name: 'Blackkite',
