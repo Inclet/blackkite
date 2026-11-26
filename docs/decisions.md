@@ -57,3 +57,4 @@ Answers to the Phase 0 questions, 2026-11-24. Conflict numbers refer to `PLAN.md
 | 51 | Published private items (orchestrator) | Once an admin publishes an item with the owner's consent, the owner can't withdraw consent, edit or delete it; the owner is kept for attribution and cleared if the account is deleted. |
 | 52 | Calendar feed (orchestrator) | A personal `.ics` link with saved and acting items' deadlines and events: titles, organisations, dates and the app link only. Its own secret (`BK_CALENDAR_SECRET`) and per-user nonce; rotating revokes the old link. |
 | 53 | Admin names on member pages (orchestrator) | Change history shown to members never names the admin who made a change. |
+| 54 | Unchosen investment kinds | Left out of the weekly digest and urgent alerts; still listed (ranked lower) in the full feed, hidden under that profile filter. Unrecognised kinds and own items stay. |
