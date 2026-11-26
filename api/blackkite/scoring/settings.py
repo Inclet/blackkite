@@ -88,8 +88,9 @@ class ScoringSettings(BaseSettings):
     # Investments (spec 7.1 ranks them on time, verification and source): the
     # fit of an item whose instrument kind the profile chose, and of one whose
     # kind it did not (scoring/instruments.py). The gap (x the fit weight) is
-    # larger than the time and source weights together, so an unchosen kind
-    # always ranks below a chosen one. Unknown kind or no instruments: 0.4.
+    # larger than the time and source weights together, so in practice an
+    # unchosen kind ranks lower than a chosen one; it is not a guarantee, as
+    # eligibility and value still count. Unknown kind or no instruments: 0.4.
     instrument_chosen_fit: float = Field(default=0.8, ge=0, le=1)
     instrument_other_fit: float = Field(default=0.1, ge=0, le=1)
 

@@ -36,7 +36,8 @@ KINDS = (
 )
 
 # Read in this order: the first kind that matches an item's text wins, so
-# "corporate bond" is checked before a bare "bond", and treasury before equity.
+# "corporate bond" is checked before a bare "bond", and every bond word before
+# equity (``_first_kind``): an RSE bond listing is a bond.
 _WORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "corporate_bond",
@@ -58,7 +59,7 @@ _WORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
         (
             r"\bshares?\b",
             r"\bequit(?:y|ies)\b",
-            r"\bstocks?\b",
+            r"\bstocks?\b(?! exchanges?\b)",  # "stock exchange" alone: no kind
             r"\bipos?\b",
             r"\binitial public offer(?:ing)?\b",
             r"\brights issues?\b",
@@ -133,11 +134,26 @@ def chosen_kinds(profile_data: dict[str, Any] | None) -> set[str] | None:
     return out or None
 
 
-def _first_kind(text: str | None) -> str | None:
+_BOND_KINDS = ("corporate_bond", "treasury")
+
+
+def _bond_kind(issuer: str) -> str:
+    """The kind of a bond that names neither kind, from its issuer."""
+    return "treasury" if _GOVERNMENT.search(issuer) else "corporate_bond"
+
+
+def _first_kind(text: str | None, issuer: str) -> str | None:
+    """The first kind ``text`` names; bond words before any other kind, so a
+    "Rwanda Stock Exchange listing of ... bond" is a bond."""
     if not text:
         return None
     for k, p in _PATTERNS:
-        if p.search(text):
+        if k in _BOND_KINDS and p.search(text):
+            return k
+    if _BOND.search(text):
+        return _bond_kind(issuer)
+    for k, p in _PATTERNS:
+        if k not in _BOND_KINDS and p.search(text):
             return k
     return None
 
@@ -147,14 +163,11 @@ def item_kind(opp: Any) -> str | None:
     if getattr(opp, "stream", None) != "investment":
         return None
     tags = [t.split(":", 1)[-1] for t in (getattr(opp, "tags", None) or [])]
+    issuer = f"{opp.organisation or ''} {opp.organisation_short or ''}"
     for text in (getattr(opp, "subtype", None), " | ".join(tags), opp.title):
-        kind = _first_kind(text)
+        kind = _first_kind(text, issuer)
         if kind:
             return kind
-    texts = " ".join(t for t in (opp.subtype, opp.title, *tags) if t)
-    if _BOND.search(texts):
-        issuer = f"{opp.organisation or ''} {opp.organisation_short or ''}"
-        return "treasury" if _GOVERNMENT.search(issuer) else "corporate_bond"
     return None
 
 
