@@ -17,8 +17,10 @@ test('feed: loads from the API and ranks closing soonest first', async ({ page }
   await expect(page.locator(rows).nth(1)).toContainText('ABH Summit');
   await expect(page.locator(rows).nth(2)).toContainText('Transition to Scale');
   await expect(page.locator(rows).nth(3)).toContainText('Five-year treasury bond');
-  const urls = (await api.seen()).map((r) => `${r.method} ${r.url}`);
-  expect(urls).toEqual(expect.arrayContaining(['GET /api/feed', 'GET /api/shortlist', 'GET /api/profiles']));
+  // The rows prove the feed came back, not that the shortlist and profiles requests have reached the stub yet.
+  await expect
+    .poll(async () => (await api.seen()).map((r) => `${r.method} ${r.url}`))
+    .toEqual(expect.arrayContaining(['GET /api/feed', 'GET /api/shortlist', 'GET /api/profiles']));
 });
 
 test('save persists across a reload, and shows on the shortlist', async ({ page }, testInfo) => {
@@ -28,6 +30,7 @@ test('save persists across a reload, and shows on the shortlist', async ({ page 
   const save = page.getByRole('article').getByRole('button', { name: 'Save to shortlist' });
   await expect(save).toHaveAttribute('aria-pressed', 'false');
   await expect(save.locator('svg')).toHaveCount(0);
+  const saved = page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().endsWith('/api/opportunities/wfp-logistics/state'));
   await page.keyboard.press('s');
   await expect(save).toHaveAttribute('aria-pressed', 'true');
   // Saved: the secondary look with the check icon before the same label.
@@ -36,6 +39,8 @@ test('save persists across a reload, and shows on the shortlist', async ({ page 
   await expect.poll(async () => (await api.seen()).filter((r) => r.method === 'PUT').map((r) => [r.url, JSON.parse(r.body)])).toEqual([
     ['/api/opportunities/wfp-logistics/state', { state: 'saved' }],
   ]);
+  // The button turns at once (optimistic); reload only once the server has answered.
+  expect((await saved).ok()).toBe(true);
 
   await page.reload();
   await expect(page.getByRole('article').getByRole('button', { name: 'Save to shortlist' })).toHaveAttribute('aria-pressed', 'true');
@@ -55,12 +60,14 @@ test('dismiss persists across a reload; a note is saved', async ({ page }, testI
   await page.getByRole('button', { name: 'Save note' }).click();
   await expect(page.getByText('Note saved.')).toBeVisible();
   await page.locator('h1').click();
+  // The row goes at once (optimistic); reloading before the PUT has answered could cancel it.
+  const dismissed = page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().endsWith('/api/opportunities/wfp-logistics/state'));
   await page.keyboard.press('x');
   await expect(page.locator(rows)).toHaveCount(3);
-  await expect.poll(async () => {
-    await page.reload();
-    return page.locator(rows).count();
-  }).toBe(3);
+  expect((await dismissed).ok()).toBe(true);
+  await page.reload();
+  await expect(page.getByText('This usually takes a moment.')).toHaveCount(0);
+  await expect(page.locator(rows)).toHaveCount(3);
   await open(page, '/o/wfp-logistics');
   await expect(page.getByText('We could not find that item.')).toBeVisible();
 });
