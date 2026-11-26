@@ -1,7 +1,7 @@
 # Blackkite developer tasks. Run from the repo root.
 API := cd api &&
 
-.PHONY: install migrate downgrade-base test bootstrap seed-sources demo-seed worker dev up down
+.PHONY: install migrate downgrade-base test bootstrap seed-sources demo-seed worker renderer dev up down
 
 install:        ## install API dependencies
 	$(API) uv sync
@@ -27,10 +27,13 @@ demo-seed:      ## dev only (BK_ENV=dev): fictional demo catalogue, rules-only s
 worker:         ## run the scheduler locally (active/testing sources on their schedules)
 	$(API) uv run bk worker
 
+renderer:       ## run the renderer service locally (needs BK_RENDERER_TOKEN in the shell; no .env is read)
+	$(API) uv run bk renderer
+
 dev:            ## run the API locally with reload
 	$(API) uv run uvicorn blackkite.app:app --reload --port 8000
 
-up:             ## compose: db + api + mailpit
+up:             ## compose: db + renderer + api + mailpit
 	docker compose --profile dev up -d --build
 
 down:
