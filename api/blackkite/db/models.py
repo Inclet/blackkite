@@ -106,6 +106,16 @@ class User(Base):
         default=new_unsubscribe_nonce,
         server_default=sa.text(UNSUBSCRIBE_NONCE_SQL),
     )
+    # Per-user part of the signed calendar feed link (member/calendar_feed.py);
+    # a new value revokes the old link. Separate from the unsubscribe nonce.
+    calendar_nonce: Mapped[str] = mapped_column(
+        sa.String(32),
+        nullable=False,
+        default=new_unsubscribe_nonce,
+        server_default=sa.text(UNSUBSCRIBE_NONCE_SQL),
+    )
+    # When the calendar link was last revoked; NULL = never.
+    calendar_nonce_rotated_at: Mapped[datetime | None] = _ts()
     # When a session was last started (magic link spent). For the admin users
     # screen; NULL = never signed in.
     last_sign_in_at: Mapped[datetime | None] = _ts()

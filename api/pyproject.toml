@@ -48,6 +48,7 @@ filterwarnings = [
 
 [dependency-groups]
 dev = [
+    "icalendar>=7.3.2",
     "pytest>=9.2.0",
 ]
 

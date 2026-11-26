@@ -2,7 +2,11 @@
 
 from fastapi import FastAPI
 
-from blackkite.auth.ratelimit import LinkRequestLimiter, UnsubscribeLimiter
+from blackkite.auth.ratelimit import (
+    LinkRequestLimiter,
+    SlidingWindowLimiter,
+    UnsubscribeLimiter,
+)
 from blackkite.config import Settings, get_settings, warn_ignored_env
 from blackkite.routes import (
     admin,
@@ -35,6 +39,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         per_token=settings.unsubscribe_rate_per_token_per_hour,
         per_ip=settings.unsubscribe_rate_per_ip_per_hour,
     )
+    # Calendar feed (no session): per link, keyed by the token's hash.
+    app.state.calendar_limiter = SlidingWindowLimiter(
+        settings.calendar_rate_per_token_per_hour
+    )
     # Admin test runs in flight at once (every collector type counts).
     app.state.test_run_gate = TestRunGate(settings.test_runs_max_concurrent)
     app.include_router(auth.router)
@@ -47,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(sources.admin_router, prefix=API_PREFIX)
     app.include_router(member.router, prefix=API_PREFIX)
     app.include_router(calendar.router, prefix=API_PREFIX)
+    app.include_router(calendar.feed_router, prefix=API_PREFIX)
     app.include_router(catalogue.router, prefix=API_PREFIX)
     app.include_router(profiles.router, prefix=API_PREFIX)
     app.include_router(digest_settings.router, prefix=API_PREFIX)
