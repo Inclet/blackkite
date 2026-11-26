@@ -108,3 +108,41 @@ export async function anonymousSeen(): Promise<Seen[]> {
 function stubOrigin(): string {
   return `http://127.0.0.1:${process.env.BK_E2E_API_PORT}`;
 }
+
+export interface Gap {
+  label: string;
+  height: number;
+  content: number;
+}
+
+/**
+ * Elements taller than their content: list items, and children of a column flex
+ * container that carry a length flex-basis (a basis there becomes a minimum height).
+ * `content` is the span of the element's children plus its own padding and border.
+ */
+export function blankGaps(page: Page, slack = 8): Promise<Gap[]> {
+  return page.evaluate((slack) => {
+    const out: { label: string; height: number; content: number }[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>('body *')) {
+      const r = el.getBoundingClientRect();
+      if (r.height === 0 || r.width === 0 || el.children.length === 0) continue;
+      const parent = el.parentElement;
+      const ps = parent ? getComputedStyle(parent) : null;
+      const inColumn = !!ps && ps.display.includes('flex') && ps.flexDirection.startsWith('column');
+      const s = getComputedStyle(el);
+      const lengthBasis = /^[1-9][\d.]*px$/.test(s.flexBasis);
+      if (el.tagName !== 'LI' && !(inColumn && lengthBasis)) continue;
+      if (s.display === 'contents' || [...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim())) continue;
+      const kids = [...el.children].map((c) => c.getBoundingClientRect()).filter((k) => k.height > 0);
+      if (kids.length === 0) continue;
+      const top = Math.min(...kids.map((k) => k.top));
+      const bottom = Math.max(...kids.map((k) => k.bottom));
+      const chrome = [s.paddingTop, s.paddingBottom, s.borderTopWidth, s.borderBottomWidth].reduce((n, v) => n + (parseFloat(v) || 0), 0);
+      const content = bottom - top + chrome;
+      if (r.height > content + slack) {
+        out.push({ label: `${el.tagName.toLowerCase()}.${el.className} "${(el.textContent ?? '').trim().slice(0, 40)}"`, height: r.height, content });
+      }
+    }
+    return out;
+  }, slack);
+}

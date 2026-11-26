@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { interactiveBoxes, open, stubSession } from './helpers';
+import { blankGaps, interactiveBoxes, open, stubSession } from './helpers';
 
 const WIDTHS = [360, 768, 1024, 1440, 1920];
 const ROUTES = [
@@ -55,7 +55,7 @@ const minBoxes = (route: string) => (route.startsWith('/auth/confirm') || route.
 
 for (const width of WIDTHS) {
   for (const route of ROUTES) {
-    test(`${width}px ${route}: no sideways scroll, no overlaps, 44px targets`, async ({ page }, testInfo) => {
+    test(`${width}px ${route}: no sideways scroll, no overlaps, no blank gaps, 44px targets`, async ({ page }, testInfo) => {
       await stubSession(page, testInfo.testId);
       await page.setViewportSize({ width, height: 900 });
       await open(page, route);
@@ -67,6 +67,7 @@ for (const width of WIDTHS) {
         innerWidth: window.innerWidth,
       }));
       expect(scrollWidth, 'no horizontal page scroll').toBeLessThanOrEqual(innerWidth);
+      expect(await blankGaps(page), 'no row or list item taller than its content').toEqual([]);
 
       const boxes = await interactiveBoxes(page);
       expect(boxes.length).toBeGreaterThanOrEqual(minBoxes(route));

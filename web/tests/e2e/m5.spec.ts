@@ -168,3 +168,29 @@ test('second user: a member with an NGO profile and a personal profile, through 
   await open(page, '/benchmarks');
   await expect(page.getByRole('region', { name: 'Categories' })).toBeVisible();
 });
+
+test('stacked rows size to their content: Coming up and a category\'s awards', async ({ page }, testInfo) => {
+  await stubSession(page, testInfo.testId);
+  for (const size of [desktop, phone]) {
+    await page.setViewportSize(size);
+    for (const [route, list] of [
+      ['/calendar', page.getByRole('region', { name: 'Coming up' }).getByRole('listitem')],
+      ['/shortlist', page.getByRole('region', { name: 'Coming up' }).getByRole('listitem')],
+      ['/benchmarks/freight', page.getByRole('main').getByRole('listitem')],
+    ] as const) {
+      await open(page, route);
+      await expect(list.first()).toBeVisible();
+      const rows = await list.evaluateAll((els) =>
+        els.map((el) => ({
+          height: el.getBoundingClientRect().height,
+          children: [...el.children].reduce((n, c) => n + c.getBoundingClientRect().height, 0),
+        })),
+      );
+      expect(rows.length).toBeGreaterThan(0);
+      for (const r of rows) {
+        expect(r.height, `${route}: a row is no taller than twice its content`).toBeLessThan(2 * r.children);
+        expect(r.height, `${route}: a row is under 200px`).toBeLessThan(200);
+      }
+    }
+  }
+});
