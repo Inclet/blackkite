@@ -19,6 +19,16 @@ real one. Its rules (spec 10: admin-entered config is untrusted):
   host name mapped to nothing and a proxy that does not exist, so a request the
   route misses fails closed. Redirects are handed back to Chromium, which
   requests the next hop through the route again.
+- robots.txt for every main-frame navigation (decision 48): inside the browser
+  process the route checks robots.txt (per origin, cached, RFC 9309 rules as in
+  ``FetchClient``) before it fetches the requested page, each redirect target
+  and any page a script navigates to. A disallowed navigation is aborted and
+  recorded; when it was the page being loaded (or a redirect on the way) the
+  render fails with ``RobotsDisallowed``. Crawl-delay values seen are reported.
+- Every request is recorded in a request log returned with the page
+  (``RenderedPage.request_log``).
+- Per-render limits: ``render(..., limits=)`` may tighten the renderer's limits
+  for one page (``RenderLimits.within``), never loosen them.
 - Images, media, fonts and stylesheets are not fetched (not needed to read the
   DOM). Only GET, HEAD and POST are passed on. WebSockets are refused,
   service workers blocked.
@@ -49,7 +59,7 @@ import signal
 import time
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Protocol
 from urllib.parse import urljoin, urlsplit
 
@@ -62,10 +72,13 @@ from blackkite.collectors.html_list import HtmlListCollector, HtmlListConfig, _c
 from blackkite.collectors.http import (
     ACCEPT_ENCODING,
     REDIRECT_CODES,
+    ROBOTS_MAX_BYTES,
+    ROBOTS_TTL_SECONDS,
     FetchClient,
     FetchError,
     RobotsDisallowed,
     _BoundedBody,
+    _Robots,
 )
 from blackkite.sources.urlsafety import (
     GuardedTransport,
@@ -159,6 +172,11 @@ class RenderedPage:
     html: str
     requests: int = 0
     blocked: tuple[str, ...] = ()  # URLs refused by the guard (first few)
+    # One entry per request the page made (first REQUEST_LOG_MAX):
+    # {url, method, type, outcome, status?}; outcome is fulfilled, redirected,
+    # blocked (URL guard), robots (robots.txt), refused (type/method/download),
+    # limit (request or time budget) or failed.
+    request_log: tuple[dict[str, Any], ...] = ()
 
 
 class Renderer(Protocol):
@@ -175,6 +193,29 @@ class RenderLimits:
     subresource_delay: float = 0.25
     request_timeout: float = 20.0
 
+    def within(self, ceiling: RenderLimits) -> RenderLimits:
+        """These limits, never looser than ``ceiling``: sizes, counts and times
+        at most the ceiling's, the per-host delay at least the ceiling's."""
+        return RenderLimits(
+            timeout_seconds=min(self.timeout_seconds, ceiling.timeout_seconds),
+            max_bytes=min(self.max_bytes, ceiling.max_bytes),
+            total_bytes=min(self.total_bytes, ceiling.total_bytes),
+            max_requests=min(self.max_requests, ceiling.max_requests),
+            subresource_delay=max(self.subresource_delay, ceiling.subresource_delay),
+            request_timeout=min(self.request_timeout, ceiling.request_timeout),
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> RenderLimits:
+        names = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in d.items() if k in names})
+
+
+REQUEST_LOG_MAX = 300
+
 
 # --- the child process ---------------------------------------------------------------------
 
@@ -188,9 +229,25 @@ class _Budget:
     blocked: list[str] = field(default_factory=list)
     last_by_host: dict[str, float] = field(default_factory=dict)
     redirect_to: str | None = None  # main-frame redirect target
+    robots_blocked: str | None = None  # main-frame navigation robots.txt refused
+    log: list[dict[str, Any]] = field(default_factory=list)
+    crawl_delays: dict[str, float] = field(default_factory=dict)  # host -> s
 
     def remaining(self) -> float:
         return self.deadline - time.monotonic()
+
+    def record(self, req, url: str, outcome: str, status: int | None = None) -> None:
+        if len(self.log) >= REQUEST_LOG_MAX:
+            return
+        entry: dict[str, Any] = {
+            "url": url[:300],
+            "method": getattr(req, "method", "GET"),
+            "type": getattr(req, "resource_type", "other"),
+            "outcome": outcome,
+        }
+        if status is not None:
+            entry["status"] = status
+        self.log.append(entry)
 
 
 class _Refused(Exception):
@@ -272,6 +329,13 @@ def _is_main_navigation(req) -> bool:
         return False
 
 
+_OUTCOMES = {
+    "blockedbyclient": "blocked",
+    "timedout": "limit",
+    "failed": "failed",
+}
+
+
 def _fetch_for_browser(
     http: httpx.Client, route, budget: _Budget, user_agent: str
 ) -> None:
@@ -282,9 +346,14 @@ def _fetch_for_browser(
     route (in testing it went to the dead proxy instead), so redirects never
     reach it: a subresource's redirects are followed here, hop by hop, each hop
     guarded; for a main-frame navigation the target is recorded and the request
-    aborted, and ``_render_one`` navigates to the target (through the route)."""
+    aborted, and ``_render_one`` navigates to the target (through the route).
+
+    Decision 48: every main-frame navigation (the requested page, each redirect
+    target, a script's ``location = ...``) is checked against robots.txt first;
+    a disallowed one is aborted and recorded (``budget.robots_blocked``)."""
     req = route.request
     if req.resource_type in BLOCKED_RESOURCE_TYPES or req.method not in ALLOWED_METHODS:
+        budget.record(req, req.url, "refused")
         route.abort("blockedbyclient")
         return
     headers = {
@@ -297,17 +366,37 @@ def _fetch_for_browser(
     method = req.method
     body = req.post_data_buffer if method == "POST" else None
     url = req.url
+    main = _is_main_navigation(req)
     try:
+        if main:
+            try:
+                guard_check(url)  # an unsafe page is "blocked", not a robots case
+            except UnsafeURL:
+                budget.record(req, url, "blocked")
+                raise _block(budget, url) from None
+        if main and not _robots_allowed(http, url, budget, user_agent):
+            budget.robots_blocked = url
+            budget.record(req, url, "robots")
+            # "aborted", not "blockedbyclient": Chromium then stays on the page
+            # it was on instead of committing an error page.
+            route.abort("aborted")
+            return
         for _ in range(MAX_REDIRECTS + 1):
-            status, resp_headers, content = _send_once(
-                http, method, url, headers, body, budget
-            )
+            try:
+                status, resp_headers, content = _send_once(
+                    http, method, url, headers, body, budget
+                )
+            except _Refused as r:
+                budget.record(req, url, _OUTCOMES.get(r.reason, "refused"))
+                raise
             location = resp_headers.get("location")
             if status not in REDIRECT_CODES or not location:
+                budget.record(req, url, "fulfilled", status)
                 route.fulfill(status=status, headers=resp_headers, body=content)
                 return
+            budget.record(req, url, "redirected", status)
             target = urljoin(url, location.split("\n")[0].strip())
-            if _is_main_navigation(req):
+            if main:
                 budget.redirect_to = target
                 route.abort("aborted")
                 return
@@ -315,9 +404,59 @@ def _fetch_for_browser(
                 method, body = "GET", None
                 headers.pop("content-type", None)
             url = target
+        budget.record(req, url, "failed")
         route.abort("failed")  # too many redirects
     except _Refused as r:
         route.abort(r.reason)
+
+
+# robots.txt inside the browser process (decision 48), per origin, kept for
+# ROBOTS_TTL_SECONDS. Same rules as FetchClient (RFC 9309): 200 obeyed; 4xx other
+# than 429 no rules; 429, 5xx, unreachable, too large or refused by the guard:
+# everything disallowed. Crawl-delay is reported back with the render.
+_ROBOTS: dict[str, _Robots] = {}
+
+
+def _robots_allowed(http: httpx.Client, url: str, budget: _Budget, ua: str) -> bool:
+    parts = urlsplit(url)
+    origin = f"{parts.scheme}://{parts.netloc}"
+    entry = _ROBOTS.get(origin)
+    if entry is None or time.monotonic() - entry.fetched_at > ROBOTS_TTL_SECONDS:
+        entry = _load_robots(http, origin, budget, ua)
+        _ROBOTS[origin] = entry
+    delay = entry.crawl_delay()
+    if delay is not None:
+        host = (parts.hostname or "").lower()
+        budget.crawl_delays[host] = max(delay, budget.crawl_delays.get(host, 0.0))
+    return entry.allowed(url)
+
+
+def _load_robots(http: httpx.Client, origin: str, budget: _Budget, ua: str) -> _Robots:
+    from protego import Protego
+
+    now = time.monotonic()
+    url = origin + "/robots.txt"
+    headers = {"User-Agent": ua, "Accept-Encoding": ACCEPT_ENCODING}
+    try:
+        for _ in range(MAX_REDIRECTS + 1):
+            status, resp_headers, content = _send_once(
+                http, "GET", url, headers, None, budget
+            )
+            location = resp_headers.get("location")
+            if status in REDIRECT_CODES and location:
+                url = urljoin(url, location.split("\n")[0].strip())
+                continue
+            break
+        else:
+            return _Robots(None, False, now)
+    except _Refused:
+        return _Robots(None, False, now)  # unreachable: complete disallow
+    if status == 200:
+        text = content[:ROBOTS_MAX_BYTES].decode("utf-8", errors="replace")
+        return _Robots(Protego.parse(text), True, now)
+    if 400 <= status < 500 and status != 429:
+        return _Robots(None, True, now)
+    return _Robots(None, False, now)
 
 
 # The child process's guard (set once at start; module global so the route
@@ -331,10 +470,24 @@ def guard_check(url: str) -> None:
 
 
 def _render_one(browser, http, job: dict[str, Any], limits: RenderLimits, ua: str):
+    budget = _Budget(deadline=time.monotonic() + limits.timeout_seconds, limits=limits)
+    result = _render_with(browser, http, job, budget, ua)
+    result["request_log"] = list(budget.log)
+    result["crawl_delays"] = dict(budget.crawl_delays)
+    return result
+
+
+def _robots_error(budget: _Budget, requested: str) -> dict[str, Any]:
+    url = budget.robots_blocked or requested
+    via = "" if url == requested else f" (reached from {requested})"
+    return {"error": f"robots.txt disallows {url}{via}", "kind": "robots"}
+
+
+def _render_with(browser, http, job: dict[str, Any], budget: _Budget, ua: str):
     from playwright.sync_api import Error as PlaywrightError
     from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
-    budget = _Budget(deadline=time.monotonic() + limits.timeout_seconds, limits=limits)
+    limits = budget.limits
     context = browser.new_context(
         user_agent=ua,
         accept_downloads=False,
@@ -366,6 +519,8 @@ def _render_one(browser, http, job: dict[str, Any], limits: RenderLimits, ua: st
                     "error": f"{target} did not load in {limits.timeout_seconds:g} s"
                 }
             except PlaywrightError as e:
+                if budget.robots_blocked:
+                    return _robots_error(budget, job["url"])
                 if budget.redirect_to:
                     target = budget.redirect_to  # guarded again on the next goto
                     continue
@@ -390,6 +545,14 @@ def _render_one(browser, http, job: dict[str, Any], limits: RenderLimits, ua: st
             page.wait_for_load_state("networkidle", timeout=min(3000.0, ms()))
         except PlaywrightTimeout:
             pass  # pages that poll forever: read what is there
+        if budget.robots_blocked and page.url != budget.robots_blocked:
+            # A later script navigation was stopped; the page we are on was
+            # allowed. Recorded in the request log.
+            log.info(
+                "render of %s: stopped navigation to %s (robots.txt)",
+                job["url"],
+                budget.robots_blocked,
+            )
         html = page.content()
         if len(html.encode("utf-8", errors="replace")) > limits.max_bytes:
             return {"error": f"rendered {job['url']} exceeds {limits.max_bytes} bytes"}
@@ -431,8 +594,13 @@ def _child_main(
                 job = conn.recv()
                 if job is None:
                     break
+                job_limits = (
+                    RenderLimits.from_dict(job["limits"]).within(limits)
+                    if job.get("limits")
+                    else limits
+                )
                 try:
-                    result = _render_one(browser, http, job, limits, user_agent)
+                    result = _render_one(browser, http, job, job_limits, user_agent)
                 except Exception as e:  # noqa: BLE001 - reported; browser kept for the next job
                     result = {"error": f"render failed: {type(e).__name__}: {e}"[:500]}
                 conn.send(result)
@@ -482,6 +650,10 @@ class PlaywrightRenderer:
         self._proc = None
         self._conn = None
         self.tag = uuid.uuid4().hex
+        # From the last render, failed or not: robots.txt Crawl-delay per host
+        # seen in it, and its request log.
+        self.last_crawl_delays: dict[str, float] = {}
+        self.last_request_log: tuple[dict[str, Any], ...] = ()
 
     def _start(self) -> None:
         ctx = multiprocessing.get_context("spawn")
@@ -523,32 +695,50 @@ class PlaywrightRenderer:
             except (ProcessLookupError, PermissionError):
                 pass
 
-    def render(self, url: str, *, wait_for: str | None = None) -> RenderedPage:
+    def render(
+        self,
+        url: str,
+        *,
+        wait_for: str | None = None,
+        limits: RenderLimits | None = None,
+    ) -> RenderedPage:
+        """Render ``url``. ``limits`` may tighten this renderer's own limits for
+        one page, never loosen them."""
         self.guard.check(url)  # the child checks every request again
-        return self._render_in_child(url, wait_for)
+        return self._render_in_child(url, wait_for, limits)
 
-    def _render_in_child(self, url: str, wait_for: str | None) -> RenderedPage:
+    def _render_in_child(
+        self, url: str, wait_for: str | None, limits: RenderLimits | None = None
+    ) -> RenderedPage:
+        limits = self.limits if limits is None else limits.within(self.limits)
         if self._proc is None:
             self._start()
         assert self._conn is not None
         try:
-            self._conn.send({"url": url, "wait_for": wait_for})
-            if not self._conn.poll(self.limits.timeout_seconds + 5):
+            self._conn.send(
+                {"url": url, "wait_for": wait_for, "limits": limits.as_dict()}
+            )
+            if not self._conn.poll(limits.timeout_seconds + 5):
                 self._kill()
                 raise CollectorError(
-                    f"rendering {url} took longer than {self.limits.timeout_seconds:g} s"
+                    f"rendering {url} took longer than {limits.timeout_seconds:g} s"
                 )
             result = self._conn.recv()
         except (EOFError, OSError, BrokenPipeError):
             self._kill()
             raise CollectorError(f"headless browser died rendering {url}") from None
+        self.last_crawl_delays = dict(result.get("crawl_delays") or {})
+        self.last_request_log = tuple(result.get("request_log") or ())
         if "error" in result:
+            if result.get("kind") == "robots":
+                raise RobotsDisallowed(result["error"])
             raise CollectorError(result["error"])
         return RenderedPage(
             url=result["url"],
             html=result["html"],
             requests=result["requests"],
             blocked=tuple(result["blocked"]),
+            request_log=self.last_request_log,
         )
 
     def close(self) -> None:
