@@ -1,0 +1,33 @@
+# Local testing only: never use this file on the VPS.
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml --profile dev up -d --build
+# Differences from production (docker-compose.yml):
+#   - BK_ENV=dev (bk demo-seed allowed), cookies without Secure, plain HTTP.
+#   - The proxy serves http://localhost:8080 (no certificate, no HSTS).
+#   - Mail goes to Mailpit (profile dev; UI and API on http://127.0.0.1:8025);
+#     BK_MAIL_ALLOW_REAL_SEND is forced off.
+#   - db and api are published on 127.0.0.1 for debugging.
+x-local-env: &local-env
+  BK_ENV: dev
+  BK_COOKIE_SECURE: "false"
+  BK_WEB_BASE_URL: http://localhost:8080
+  BK_MAIL_TRANSPORT: smtp
+  BK_SMTP_HOST: mailpit
+  BK_SMTP_PORT: "1025"
+  BK_SMTP_STARTTLS: "false"
+  BK_MAIL_ALLOW_REAL_SEND: "false"
+
+services:
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"
+  api:
+    environment: *local-env
+    ports:
+      - "127.0.0.1:8000:8000"
+  worker:
+    environment: *local-env
+  proxy:
+    environment:
+      BK_SITE_ADDRESS: ":80"
+    ports: !override
+      - "127.0.0.1:8080:80"
