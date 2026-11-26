@@ -213,7 +213,13 @@ NOT_MANUAL = "Only a member's own item can be made public this way."
 
 @router.post("/{opportunity_id}/publish", response_model=CatalogueItem)
 def publish(opportunity_id: uuid.UUID, admin: AdminUser, db: DbDep) -> CatalogueItem:
-    opp = db.scalar(sa.select(Opportunity).where(Opportunity.id == opportunity_id))
+    # Row lock first, clock after: an owner's edit that committed before us is
+    # dated before made_public_at, so it stays in the private history that only
+    # the owner sees (member/view.py private_history_hidden); one that waits on
+    # the lock finds the item public and is refused (member/items.py).
+    opp = db.scalar(
+        sa.select(Opportunity).where(Opportunity.id == opportunity_id).with_for_update()
+    )
     if opp is None:
         raise HTTPException(404, "Opportunity not found")
     if opp.visibility == "public" and opp.made_public_at is None:

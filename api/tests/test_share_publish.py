@@ -5,7 +5,7 @@ section 5): PUT /api/items/{id}/share-consent, POST
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
 
@@ -192,3 +192,172 @@ def test_published_item_is_scored_for_everyone_and_shows_in_feeds(
     }
     db.commit()
     assert str(oid) in [i["id"] for i in items(b)]
+
+
+def test_private_history_stays_the_owners_after_publishing(db, ana, ben, login):
+    """Reviewer's case: retitle and change the value while private, publish;
+    the second user and the admin see none of the private history, the owner
+    sees all of it, and later changes show to everyone."""
+    make_user(db, "admin@example.com", role="admin")
+    a = login(ana.email)
+    oid = _item(a, title="Secret first title", value=1000, currency="RWF")
+    r = a.patch(f"/api/items/{oid}", json={"title": "Public title", "value": 6000000})
+    assert r.status_code == 200, r.text
+    owner_before = r.json()["detail"]["changes"]
+    assert {c["field"] for c in owner_before} == {"title", "value_amount"}
+    _consent(a, oid, True)
+    admin = login("admin@example.com")
+    assert admin.post(f"/api/admin/catalogue/{oid}/publish").status_code == 200
+
+    def changes(c):
+        r = c.get(f"/api/opportunities/{oid}")
+        assert r.status_code == 200, r.text
+        return r.json()["detail"]["changes"]
+
+    for other in (login(ben.email), admin):
+        seen = changes(other)
+        assert [c["field"] for c in seen] == ["visibility"]
+        assert "Secret first title" not in str(seen) and "1000" not in str(seen)
+    page = admin.get("/api/admin/catalogue").json()
+    assert "Secret first title" not in str(page)
+    mine = changes(a)
+    assert {c["field"] for c in mine} == {"title", "value_amount", "visibility"}
+    assert "Secret first title" in str(mine)
+    # The rows are kept, and the owner's export carries them.
+    assert (
+        db.scalar(
+            sa.select(sa.func.count())
+            .select_from(ChangeEvent)
+            .where(ChangeEvent.opportunity_id == uuid.UUID(oid))
+        )
+        == 3
+    )
+    (pub,) = a.get("/api/me/export").json()["publishedItems"]
+    assert {c["field"] for c in pub["changes"]} == {"title", "value_amount"}
+    assert "Secret first title" in str(pub["changes"])
+    # A change after publication is public history.
+    opp = db.get(Opportunity, uuid.UUID(oid))
+    db.add(
+        ChangeEvent(
+            opportunity_id=opp.id,
+            field="status",
+            old="open",
+            new="expired",
+            at=opp.made_public_at + timedelta(days=1),
+        )
+    )
+    db.commit()
+    assert [c["field"] for c in changes(login(ben.email))] == ["status", "visibility"]
+
+
+def test_owner_gone_means_nobody_sees_the_private_history(Sessions, db, ana, login):
+    make_user(db, "admin@example.com", role="admin")
+    a = login(ana.email)
+    oid = _item(a, title="Secret first title")
+    a.patch(f"/api/items/{oid}", json={"title": "Public title"})
+    _consent(a, oid, True)
+    admin = login("admin@example.com")
+    admin.post(f"/api/admin/catalogue/{oid}/publish")
+    assert a.delete("/api/me").status_code in (200, 204)
+    seen = admin.get(f"/api/opportunities/{oid}").json()["detail"]["changes"]
+    assert [c["field"] for c in seen] == ["visibility"]
+
+
+def _publish_after_check(monkeypatch, Sessions):
+    """Make the route's ownership check pass on the private item, then publish
+    it from another connection before the write runs (the race)."""
+    from blackkite.member import items as I
+
+    real = I.owned_manual
+
+    def racing(db, user, item_id):
+        opp = real(db, user, item_id)
+        with Sessions() as other:
+            other.execute(
+                sa.update(Opportunity)
+                .where(Opportunity.id == item_id)
+                .values(visibility="public", made_public_at=sa.func.now())
+            )
+            other.commit()
+        return opp
+
+    monkeypatch.setattr(I, "owned_manual", racing)
+
+
+def test_edit_racing_a_publish_changes_nothing(monkeypatch, Sessions, db, ana, login):
+    a = login(ana.email)
+    oid = _item(a, title="Before", notes="mine")
+    _consent(a, oid, True)
+    _publish_after_check(monkeypatch, Sessions)
+    r = a.patch(f"/api/items/{oid}", json={"title": "After", "value": 5})
+    assert r.status_code == 409
+    assert r.json()["detail"].startswith("This item is public now, so it can't")
+    db.expire_all()
+    opp = db.get(Opportunity, uuid.UUID(oid))
+    assert opp.title == "Before" and opp.value_amount is None
+    assert not db.scalar(
+        sa.select(sa.func.count())
+        .select_from(ChangeEvent)
+        .where(ChangeEvent.opportunity_id == opp.id)
+    )
+
+
+def test_note_only_edit_racing_a_publish_is_refused(
+    monkeypatch, Sessions, db, ana, login
+):
+    a = login(ana.email)
+    oid = _item(a, notes="first")
+    _consent(a, oid, True)
+    _publish_after_check(monkeypatch, Sessions)
+    assert a.patch(f"/api/items/{oid}", json={"notes": "second"}).status_code == 409
+    monkeypatch.undo()
+    assert a.get(f"/api/opportunities/{oid}").json()["detail"]["note"] == "first"
+
+
+def test_delete_racing_a_publish_is_refused(monkeypatch, Sessions, db, ana, login):
+    a = login(ana.email)
+    oid = _item(a, notes="kept")
+    _consent(a, oid, True)
+    _publish_after_check(monkeypatch, Sessions)
+    r = a.delete(f"/api/items/{oid}")
+    assert r.status_code == 409
+    assert r.json()["detail"].startswith("This item is public now, so it can't")
+    monkeypatch.undo()
+    db.expire_all()
+    assert db.get(Opportunity, uuid.UUID(oid)) is not None
+    assert a.get(f"/api/opportunities/{oid}").json()["detail"]["note"] == "kept"
+
+
+def test_withdraw_losing_a_race_to_publish_is_409(
+    monkeypatch, Sessions, db, ana, login
+):
+    a = login(ana.email)
+    oid = _item(a)
+    _consent(a, oid, True)
+    _publish_after_check(monkeypatch, Sessions)
+    r = _consent(a, oid, False)
+    assert r.status_code == 409
+    assert r.json() == {
+        "detail": "This item is public now, so sharing can't be withdrawn. "
+        "Ask an admin if it should come down."
+    }
+    db.expire_all()
+    assert db.get(Opportunity, uuid.UUID(oid)).share_consent_at is not None
+
+
+def test_detail_says_manual_and_formats_the_value(db, ana, ben, login):
+    make_user(db, "admin@example.com", role="admin")
+    a = login(ana.email)
+    oid = _item(a, value=6000000, currency="rwf")
+    d = a.get(f"/api/opportunities/{oid}").json()["detail"]
+    assert d["isManual"] is True
+    fields = {x["name"]: x for x in d["fields"]}
+    assert fields["valueAmount"]["display"] == "FRW 6,000,000"
+    assert float(fields["valueAmount"]["value"]) == 6000000
+    assert "display" not in fields["valueCurrency"]
+    _consent(a, oid, True)
+    login("admin@example.com").post(f"/api/admin/catalogue/{oid}/publish")
+    assert (
+        login(ben.email).get(f"/api/opportunities/{oid}").json()["detail"]["isManual"]
+    )
+    assert a.get(f"/api/opportunities/{oid}").json()["detail"]["isManual"]

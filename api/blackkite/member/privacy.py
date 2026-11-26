@@ -2,7 +2,8 @@
 
 Export: everything stored about the caller, as JSON: account, profiles, digest
 settings, item states and notes, private items (with their link and share
-consent), items of theirs an admin made public, the calendar feed link's state
+consent and their edit history from while private), items of theirs an
+admin made public, the calendar feed link's state
 (when it was last revoked; the link itself is not exported), digest and alert
 logs, source suggestions and mutes. Numeric scores are internal (spec 12) and
 left out.
@@ -27,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from blackkite.db.models import (
     AlertLog,
+    ChangeEvent,
     DigestLog,
     DigestSetting,
     Invite,
@@ -86,11 +88,32 @@ def _json(v: Any) -> Any:
     return str(v)
 
 
-def _manual_item(o: Opportunity) -> dict[str, Any]:
+def _history(db: Session, o: Opportunity) -> list[dict[str, Any]]:
+    """The owner's edit history of their manual item: every change while it was
+    private (after publication, changes are the catalogue's, not theirs). Who
+    made a change (``*_by``: admin ids) is left out."""
+    where = [ChangeEvent.opportunity_id == o.id]
+    if o.made_public_at is not None:
+        where.append(ChangeEvent.at < o.made_public_at)
+    strip = lambda v: (
+        {k: x for k, x in v.items() if not k.endswith("_by")}
+        if isinstance(v, dict)
+        else v
+    )
+    return [
+        {"field": c.field, "old": strip(c.old), "new": strip(c.new), "at": c.at}
+        for c in db.scalars(
+            sa.select(ChangeEvent).where(*where).order_by(ChangeEvent.at)
+        )
+    ]
+
+
+def _manual_item(db: Session, o: Opportunity) -> dict[str, Any]:
     out = {_camel(k): getattr(o, k) for k in PRIVATE_ITEM_FIELDS}
     out["url"] = o.manual_url
     out["shareConsent"] = o.share_consent_at is not None
     out.update({_camel(k): getattr(o, k) for k in MANUAL_ITEM_FIELDS})
+    out["changes"] = _history(db, o)
     return out
 
 
@@ -181,10 +204,10 @@ def export(db: Session, user: User) -> dict[str, Any]:
                 for uo, title in states
             ],
             "privateItems": [
-                _manual_item(o) for o in manual if o.visibility == "private"
+                _manual_item(db, o) for o in manual if o.visibility == "private"
             ],
             "publishedItems": [
-                _manual_item(o) for o in manual if o.visibility == "public"
+                _manual_item(db, o) for o in manual if o.visibility == "public"
             ],
             "calendarFeed": {"rotatedAt": user.calendar_nonce_rotated_at},
             "digestLog": [

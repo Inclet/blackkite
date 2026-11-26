@@ -28,6 +28,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import unquote, urlsplit
@@ -50,6 +51,7 @@ from blackkite.db.models import (
     UserOpportunityScore,
     UserSourceMute,
 )
+from blackkite.delivery.wording import amount
 from blackkite.member import schemas as S
 from blackkite.member.trust import LinkInfo, trust_copy
 from blackkite.pipeline.dates import KIGALI, kigali_date
@@ -558,8 +560,18 @@ def _fields(opp: Opportunity) -> list[S.FieldOut]:
             )
             continue
         snippet = e.get("snippet") if isinstance(e.get("snippet"), str) else None
+        display = (
+            amount(Decimal(value), opp.value_currency)
+            if name == "value_amount"
+            else None
+        )
         out.append(
-            S.FieldOut(name=to_camel(name), value=_json_value(value), snippet=snippet)
+            S.FieldOut(
+                name=to_camel(name),
+                value=_json_value(value),
+                snippet=snippet,
+                display=display,
+            )
         )
     return out
 
@@ -571,10 +583,31 @@ def _document_name(d: Document) -> str:
     return PurePosixPath(path).name or urlsplit(d.url).hostname or "document"
 
 
-def _changes(db: Session, opp_id: uuid.UUID) -> list[S.ChangeOut]:
+def private_history_hidden(
+    opp: Opportunity, user_id: uuid.UUID | None
+) -> ColumnElement[bool] | None:
+    """Condition that leaves out a published manual item's private edit history
+    (change_event rows dated before ``made_public_at``) for anyone but its owner,
+    admins included. None when there is nothing to leave out."""
+    if opp.made_public_at is None:
+        return None
+    if user_id is not None and opp.owner_user_id == user_id:
+        return None
+    return ChangeEvent.at >= opp.made_public_at
+
+
+def _changes(
+    db: Session, opp: Opportunity, user_id: uuid.UUID | None
+) -> list[S.ChangeOut]:
     """Change history. Values that name a source show its name, and changes
     reported by a source the caller cannot see are left out. Who made a change
-    (``reviewed_by``, ``published_by``: admin ids) is not shown to members."""
+    (``reviewed_by``, ``published_by``: admin ids) is not shown to members. A
+    published manual item's history from while it was private is shown to its
+    owner only (private_history_hidden)."""
+    opp_id = opp.id
+    where: list[ColumnElement[bool]] = [ChangeEvent.opportunity_id == opp_id]
+    if (hide := private_history_hidden(opp, user_id)) is not None:
+        where.append(hide)
     visible = {
         str(sid): name
         for sid, name in db.execute(
@@ -585,9 +618,7 @@ def _changes(db: Session, opp_id: uuid.UUID) -> list[S.ChangeOut]:
     }
     out: list[S.ChangeOut] = []
     for c in db.scalars(
-        sa.select(ChangeEvent)
-        .where(ChangeEvent.opportunity_id == opp_id)
-        .order_by(ChangeEvent.at.desc())
+        sa.select(ChangeEvent).where(*where).order_by(ChangeEvent.at.desc())
     ):
         hidden = False
         values = []
@@ -610,6 +641,12 @@ def _changes(db: Session, opp_id: uuid.UUID) -> list[S.ChangeOut]:
                 S.ChangeOut(field=c.field, old=values[0], new=values[1], at=c.at)
             )
     return out
+
+
+def is_manual(opp: Opportunity) -> bool:
+    """Added by a member: private, or made public by an admin (the owner link
+    may be gone after the account was deleted; made_public_at stays)."""
+    return opp.visibility == "private" or opp.made_public_at is not None
 
 
 def own_item_out(opp: Opportunity, user_id: uuid.UUID | None) -> S.OwnItem | None:
@@ -647,11 +684,12 @@ def opportunity_out(
             for link in row.links
         ],
         documents=[S.DocumentOut(name=_document_name(d)) for d in docs],
-        changes=_changes(db, o.id),
+        changes=_changes(db, o, user_id),
         note=row.uo.note if row.uo else None,
         state=row.state,
         dismiss_reason=S.dismiss_reason_out(row.uo.dismiss_reason if row.uo else None),
         own_item=own_item_out(o, user_id),
+        is_manual=is_manual(o),
     )
     return S.OpportunityOut(**_item_fields(row, now), detail=detail)
 

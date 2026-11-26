@@ -156,12 +156,15 @@ class FeedContent(CamelModel):
 class FieldOut(CamelModel):
     """One extracted field with the passage that supports it."""
 
-    omit_if_none = frozenset({"snippet", "snippets"})
+    omit_if_none = frozenset({"snippet", "snippets", "display"})
 
     name: str
     value: Any
     snippet: str | None = None
     snippets: list[str] | None = None
+    # How to show the value, for amounts ("FRW 6,000,000", as in the digest);
+    # ``value`` stays the number. Left out for other fields.
+    display: str | None = None
 
 
 class SourceLinkOut(CamelModel):
@@ -205,6 +208,9 @@ class OpportunityDetail(FeedItemDetail):
     state: State
     dismiss_reason: DismissReason | None = None
     own_item: OwnItem | None = None
+    # A member added this item (spec 6), private or since made public; no
+    # source carries it, and originalUrl is the link they gave (if any).
+    is_manual: bool
 
 
 class OpportunityOut(FeedItem):
