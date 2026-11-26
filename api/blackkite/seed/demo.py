@@ -32,6 +32,7 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
+from blackkite.auth.service import check_email
 from blackkite.db.models import (
     Opportunity,
     OpportunitySource,
@@ -351,6 +352,12 @@ def demo_seed(
         raise DemoRefused(
             f"BK_ENV is {env!r}; the demo seed runs only when it is 'dev'"
         )
+    if not admin_email or not admin_email.strip():
+        raise DemoRefused("BK_FIRST_ADMIN_EMAIL is not set")
+    try:
+        check_email(admin_email, setting="BK_FIRST_ADMIN_EMAIL")
+    except ValueError as e:
+        raise DemoRefused(str(e)) from None
     n = non_demo_count(db)
     if n:
         raise DemoRefused(

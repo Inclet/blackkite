@@ -67,6 +67,13 @@ def test_refuses_without_admin_email(db):
         demo_seed(db, env="dev", admin_email=None, now=NOW)
 
 
+def test_refuses_a_special_use_admin_email(db):
+    with pytest.raises(DemoRefused, match=r"special-use domain \.test"):
+        demo_seed(db, env="dev", admin_email="owner@demo.test", now=NOW)
+    with pytest.raises(DemoRefused, match="not a valid email address"):
+        demo_seed(db, env="dev", admin_email="owner", now=NOW)
+
+
 def test_loads_a_fictional_catalogue_and_scores_it(db, settings):
     r = demo_seed(db, env="dev", admin_email=ADMIN, now=NOW)
     db.commit()

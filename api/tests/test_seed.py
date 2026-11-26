@@ -87,6 +87,24 @@ def test_bootstrap_requires_email(db):
         bootstrap(db, "  ")
 
 
+@pytest.mark.parametrize(
+    ("email", "message"),
+    [
+        ("owner@blackkite.test", "special-use domain .test"),
+        ("owner@box.local", "special-use domain .local"),
+        ("owner@localhost", "special-use domain .localhost"),
+        ("owner@site.invalid", "special-use domain .invalid"),
+        ("owner", "not a valid email address"),
+        ("owner@@example.com", "not a valid email address"),
+    ],
+)
+def test_bootstrap_refuses_addresses_sign_in_would_refuse(db, email, message):
+    with pytest.raises(ValueError, match=message) as e:
+        bootstrap(db, email)
+    assert "BK_FIRST_ADMIN_EMAIL" in str(e.value)
+    assert db.scalar(sa.select(sa.func.count()).select_from(User)) == 0
+
+
 def test_seed_sources_ten_rows_testing_idempotent(db):
     bootstrap(db, FIRST_ADMIN)
     created = seed_sources(db)
@@ -134,6 +152,11 @@ def test_cli_bootstrap_and_seed(db_url, engine, monkeypatch, tmp_path):
         get_settings.cache_clear()
         r4 = runner.invoke(cli.app, ["bootstrap"])
         assert r4.exit_code == 1
+        monkeypatch.setenv("BK_FIRST_ADMIN_EMAIL", "owner@blackkite.test")
+        get_settings.cache_clear()
+        r5 = runner.invoke(cli.app, ["bootstrap"])
+        assert r5.exit_code == 1
+        assert "special-use domain .test" in r5.output
     finally:
         get_engine().dispose()
         for f in (get_settings, get_engine, get_sessionmaker):
