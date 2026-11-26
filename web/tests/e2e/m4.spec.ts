@@ -88,7 +88,7 @@ async function addItem(page: import('@playwright/test').Page, title: string) {
   await form.getByRole('button', { name: 'Tenders' }).click();
   await form.getByLabel('Title').fill(title);
   await form.getByLabel('Organisation (optional)').fill('Kigali Bus');
-  await form.getByLabel('Deadline (optional)').fill('2026-12-10');
+  await form.getByLabel('Deadline (optional)').fill('10 Dec 2026, 5pm');
   await form.getByLabel('Value (optional)').fill('2,000,000');
   await form.getByLabel('Link (optional)').fill('https://example.rw/notice');
   await form.getByRole('button', { name: 'Add the item' }).click();
@@ -104,10 +104,11 @@ test('private item: create, edit, consent, admin publish locks it', async ({ pag
   await expect(pane.getByText('Private: only you can see this')).toBeVisible();
   await expect(pane).toContainText('You added this item yourself');
   const created = (await api.seen()).find((r) => r.method === 'POST' && r.url === '/api/items')!;
-  expect(JSON.parse(created.body)).toMatchObject({ stream: 'tender', title: 'Fuel supply', deadline: '2026-12-10', value: 2000000, currency: 'RWF' });
+  expect(JSON.parse(created.body)).toMatchObject({ stream: 'tender', title: 'Fuel supply', deadline: '2026-12-10T17:00', value: 2000000, currency: 'RWF' });
 
   await pane.getByRole('button', { name: 'Edit: Fuel supply' }).click();
   await expect(page.getByLabel('Title')).toHaveValue('Fuel supply');
+  await expect(page.getByLabel('Deadline (optional)')).toHaveValue('10 Dec 2026, 5pm');
   await page.getByLabel('Title').fill('Fuel supply, phase 2');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByRole('article').getByRole('heading', { name: 'Fuel supply, phase 2' })).toBeVisible();

@@ -70,7 +70,7 @@ test('add: errors in place, then creates and opens the item', async () => {
   fireEvent.click(form.getByRole('button', { name: 'Tenders' }));
   fireEvent.change(form.getByLabelText(ITEM_COPY.title), { target: { value: 'Fuel supply' } });
   fireEvent.change(form.getByLabelText(ITEM_COPY.organisation), { target: { value: 'Kigali Bus' } });
-  fireEvent.change(form.getByLabelText(ITEM_COPY.deadline), { target: { value: '2026-12-10' } });
+  fireEvent.change(form.getByLabelText(ITEM_COPY.deadline), { target: { value: '10 Dec 2026, 5pm' } });
   fireEvent.change(form.getByLabelText(ITEM_COPY.value), { target: { value: '2,000,000' } });
   fireEvent.click(form.getByRole('button', { name: 'USD' }));
   fireEvent.change(form.getByLabelText(ITEM_COPY.url), { target: { value: 'ftp://x' } });
@@ -83,7 +83,7 @@ test('add: errors in place, then creates and opens the item', async () => {
     stream: 'tender',
     title: 'Fuel supply',
     organisation: 'Kigali Bus',
-    deadline: '2026-12-10',
+    deadline: '2026-12-10T17:00',
     eventStart: null,
     eventEnd: null,
     value: 2000000,
@@ -99,9 +99,25 @@ test('events ask for start and end dates instead of a deadline', () => {
   mockApi({ 'GET /me': ME });
   renderAt('/items/new');
   fireEvent.click(screen.getByRole('button', { name: 'Events' }));
-  expect(screen.getByLabelText(ITEM_COPY.eventStart)).toHaveAttribute('type', 'date');
+  // Typed text, not a native date picker; the hint gives the format.
+  expect(screen.getByLabelText(ITEM_COPY.eventStart)).toHaveAttribute('type', 'text');
+  expect(screen.getByLabelText(ITEM_COPY.eventStart)).toHaveAccessibleDescription(ITEM_COPY.dateHint);
   expect(screen.getByLabelText(ITEM_COPY.eventEnd)).toBeInTheDocument();
   expect(screen.queryByLabelText(ITEM_COPY.deadline)).toBeNull();
+});
+
+test('a date without its year is caught before sending, with the format in the hint', async () => {
+  const api = mockApi({ 'GET /me': ME });
+  renderAt('/items/new');
+  fireEvent.click(screen.getByRole('button', { name: 'Tenders' }));
+  fireEvent.change(screen.getByLabelText(ITEM_COPY.title), { target: { value: 'Fuel supply' } });
+  const deadline = screen.getByLabelText(ITEM_COPY.deadline);
+  expect(ITEM_COPY.dateHint).toBe('With the year, such as 7 Dec 2026 or 7 Dec 2026, 5pm.');
+  fireEvent.change(deadline, { target: { value: '10 Dec' } });
+  fireEvent.click(screen.getByRole('button', { name: ITEM_COPY.create }));
+  expect(await screen.findByText(ITEM_ERRORS.date)).toBeInTheDocument();
+  expect(deadline).toHaveAttribute('aria-invalid', 'true');
+  expect(api.calls.some((c) => c.key.startsWith('POST'))).toBe(false);
 });
 
 test('a refused or unreachable save says so and keeps the form', async () => {

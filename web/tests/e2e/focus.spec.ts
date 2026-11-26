@@ -33,9 +33,9 @@ for (const [name, size, route, minStops] of [
   ['users', { width: 1440, height: 900 }, '/admin/users', 9],
   ['calendar month', { width: 1440, height: 900 }, '/calendar?month=2026-12', 12],
   ['calendar list, phone', { width: 390, height: 844 }, '/calendar', 10],
-  // The walk stops at the date input (its day, month and year parts are one element).
-  ['add an item', { width: 1440, height: 900 }, '/items/new', 12],
-  ['add an item, phone', { width: 390, height: 844 }, '/items/new', 8],
+  // The whole form, past the dates (typed text fields, one stop each) to the actions.
+  ['add an item', { width: 1440, height: 900 }, '/items/new', 22],
+  ['add an item, phone', { width: 390, height: 844 }, '/items/new', 21],
   ['admin shareable', { width: 390, height: 844 }, '/admin/shareable', 5],
   ['filtered feed', { width: 1440, height: 900 }, '/?fit=good', 10],
   ['phone opportunity sections', { width: 390, height: 844 }, '/o/wfp-logistics', 9],
