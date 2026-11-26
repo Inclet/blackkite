@@ -40,6 +40,10 @@ test('the panel applies each choice at once, in the URL and the API query; chips
   // Fit in words only.
   const fit = within(panel.getAllByRole('group')[3]!);
   expect(fit.getAllByRole('button').map((b) => b.textContent)).toEqual(['Any', 'Strong', 'Good and up', 'Possible and up']);
+  // One line under the legend says what Fit leaves alone, read with the group.
+  expect(FILTER_COPY.fitNote).toBe('Fit applies to tenders and funding; events and investments stay listed.');
+  expect(panel.getAllByRole('group')[3]).toHaveAccessibleDescription(FILTER_COPY.fitNote);
+  expect(panel.getAllByRole('group').filter((g) => g.textContent!.includes(FILTER_COPY.fitNote))).toHaveLength(1);
   fireEvent.click(fit.getByRole('button', { name: 'Strong' }));
   fireEvent.click(panel.getByRole('button', { name: 'This week' }));
   fireEvent.click(panel.getByRole('button', { name: 'Ironji-Trade' }));

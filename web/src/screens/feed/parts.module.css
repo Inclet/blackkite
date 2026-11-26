@@ -265,6 +265,10 @@
   gap: 6px;
 }
 
+.filterNote {
+  margin: 0;
+}
+
 .filterGroup {
   display: flex;
   flex-direction: column;

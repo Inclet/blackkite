@@ -96,8 +96,13 @@ function Tools({ className }: { className?: string }) {
         {open && (
           <Card padding="16px" gap={14} aria-label={FILTER_COPY.panel}>
             {FILTER_KEYS.map((k) => (
-              <fieldset key={k} className={styles.filterGroup}>
+              <fieldset key={k} className={styles.filterGroup} aria-describedby={k === 'fit' ? `${panelId}-fit-note` : undefined}>
                 <legend className={styles.filterLegend}>{FILTER_COPY.groups[k]}</legend>
+                {k === 'fit' && (
+                  <p id={`${panelId}-fit-note`} className={`${styles.liveText} ${styles.filterNote}`}>
+                    {FILTER_COPY.fitNote}
+                  </p>
+                )}
                 <div className={styles.progress}>
                   <FilterChip stream="all" label={choices[k].anyLabel} selected={!filters[k]} onClick={() => set(k, null)} />
                   {choices[k].options.map(([value, label]) => (
