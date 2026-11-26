@@ -2,6 +2,7 @@ import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { filterFeed, m4Admin, m4Member, ownExtras, type OwnRecord } from './stubM4';
+import { defaultAwards, defaultPlans, m5DetailExtras, m5Member, type StubAward, type StubPlan } from './stubM5';
 
 /**
  * A stub member API (docs/api-contract.md section 2) for the e2e run. One server
@@ -70,6 +71,16 @@ export interface Seed {
   own: Record<string, OwnRecord>;
   /** The personal calendar feed link's version; rotate bumps it. */
   feedLinkVersion: number;
+  /** Awarded contracts behind the benchmarks (contract section 6), with their category and currency. */
+  awards: StubAward[];
+  /** Planned tenders matching the session's profiles (GET /api/plans). */
+  plans: StubPlan[];
+  /**
+   * Award category of each catalogue tender, for `detail.benchmark`. Empty by default: the dumped
+   * OpportunityOut (api-schemas.json) does not have `benchmark` yet, so only M5 tests turn it on
+   * (seed `{ itemCategories: ITEM_CATEGORIES }`).
+   */
+  itemCategories: Record<string, string>;
 }
 
 export interface Seen {
@@ -288,6 +299,9 @@ export function defaultSeed(): Seed {
     invites: [],
     own: {},
     feedLinkVersion: 1,
+    awards: defaultAwards(),
+    plans: defaultPlans(),
+    itemCategories: {},
   };
 }
 
@@ -586,6 +600,7 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
   const prof = path.match(/^\/profiles\/([^/]+)$/);
   const q = new URLSearchParams(url.split('?')[1] ?? '');
   if (!path.startsWith('/admin') && m4Member(s, method, path, q, body, res)) return;
+  if (m5Member(s, method, path, q, res)) return;
 
   if (path.startsWith('/admin/') || path === '/admin') return admin(s, method, path, url, body, res);
   const mute = path.match(/^\/sources\/([^/]+)\/mute$/);
@@ -661,7 +676,7 @@ function member(s: Session, method: string, fullPath: string, body: unknown, res
     if (!item) return send(res, 404, { detail: 'Not found' });
     if (method === 'GET' && !opp[2]) {
       const out = opportunityBody(withState(item), s.notes[item.id] ?? null);
-      return send(res, 200, { ...out, detail: { ...(out.detail as object), ...ownExtras(s, item.id) } });
+      return send(res, 200, { ...out, detail: { ...(out.detail as object), ...ownExtras(s, item.id), ...m5DetailExtras(s, item.id) } });
     }
     if (method === 'PUT' && opp[2] === '/state') {
       const b = (body ?? {}) as { state?: string; dismissReason?: unknown };

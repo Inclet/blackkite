@@ -44,6 +44,13 @@ const checks: [string, { width: number; height: number }, string, string, number
   ['section toggle hint (slate on white)', { width: 390, height: 844 }, '/o/wfp-logistics', 'button:has-text("Details") span', 4.5],
   ['item form hint (slate on white)', { width: 1440, height: 900 }, '/items/new', 'text=With the year, such as 7 Dec 2026 or 7 Dec 2026, 5pm. >> nth=0', 4.5],
   ['shareable empty line (slate on white)', { width: 1440, height: 900 }, '/admin/shareable', 'text=No private items are waiting', 4.5],
+  ['benchmark sentence (slate on white)', { width: 1440, height: 900 }, '/benchmarks', 'text=Only 2 awards so far', 4.5],
+  ['benchmark help line (slate on white)', { width: 390, height: 844 }, '/benchmarks', 'text=Prices are the winning bids', 4.5],
+  ['award meta (slate on white)', { width: 390, height: 844 }, '/benchmarks/freight', 'text=Won by Kivu Haulage Ltd >> nth=0', 4.5],
+  ['bidders toggle (graphite on white)', { width: 1440, height: 900 }, '/benchmarks/freight', 'button:has-text("Show the 3 bidders") >> nth=0', 4.5],
+  ['coming up facts (slate on white)', { width: 1440, height: 900 }, '/calendar', 'text=Planned for Q1 2027', 4.5],
+  ['coming up description (graphite on white)', { width: 390, height: 844 }, '/shortlist', 'text=Cold-chain transport of vaccines', 4.5],
+  ['chip group hint (slate on white)', { width: 1440, height: 900 }, '/profiles/p1', 'text=Some calls are only for NGOs', 4.5],
 ];
 
 for (const [name, size, route, selector, min] of checks) {
