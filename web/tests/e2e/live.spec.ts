@@ -159,8 +159,8 @@ test('dismiss reason: X dismisses at once, "Why not? (optional)" sends the chose
   await expect(page.locator(rows)).toHaveCount(3);
   const why = page.getByRole('group', { name: 'Why not? (optional)' });
   await expect(why.getByRole('button')).toHaveText(['Not my sector', 'Too small', "Can't meet the requirements", 'Already knew about it', 'Other']);
-  // Reachable by keyboard: Tab from the last stream filter goes into the reasons.
-  await page.getByRole('group', { name: 'Filter by stream' }).getByRole('button', { name: 'Events' }).focus();
+  // Reachable by keyboard: Tab from the last control above the list (M4's "Add an item", after Filters) goes into the reasons.
+  await page.getByRole('button', { name: 'Add an item' }).focus();
   await page.keyboard.press('Tab');
   await expect(why.getByRole('button', { name: 'Not my sector' })).toBeFocused();
   await page.keyboard.press('Tab');

@@ -34,6 +34,14 @@ const ROUTES = [
   '/admin/suggestions',
   '/admin/review',
   '/admin/users',
+  // M4 (contract section 5).
+  '/calendar',
+  '/calendar?view=list',
+  '/calendar?month=2026-12&saved=1',
+  '/items/new',
+  '/admin/shareable',
+  '/?fit=good&window=7',
+  '/o/wfp-logistics?verification=unconfirmed',
 ];
 
 /** Fewest interactive elements each page must have (the sign-in and unsubscribe pages have one or two controls). */
