@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from blackkite.auth.deps import CurrentUser, DbDep, require_user
-from blackkite.db.models import VERIFICATIONS
+from blackkite.db.models import OPPORTUNITY_STATUSES, VERIFICATIONS
 from blackkite.member import feed as F
 from blackkite.member import schemas as S
 from blackkite.member.view import opportunity_out
@@ -20,6 +20,8 @@ router = APIRouter(dependencies=[Depends(require_user)])
 
 NOT_FOUND = "Opportunity not found"
 Verification = Literal[VERIFICATIONS]  # type: ignore[valid-type]
+Status = Literal[OPPORTUNITY_STATUSES]  # type: ignore[valid-type]
+FitFilter = Literal["strong", "good", "possible"]
 
 
 def now_utc() -> datetime:
@@ -41,6 +43,8 @@ def get_feed(
     verification: Verification | None = None,
     source: uuid.UUID | None = None,
     state: S.State | None = None,
+    status: Annotated[list[Status] | None, Query()] = None,
+    fit: FitFilter | None = None,
 ) -> S.FeedContent:
     filters = F.FeedFilters(
         stream=stream,
@@ -49,6 +53,8 @@ def get_feed(
         verification=verification,
         source_id=source,
         state=state,
+        statuses=tuple(status) if status else None,
+        fit=fit,
     )
     return F.feed_content(db, user, filters, now)
 

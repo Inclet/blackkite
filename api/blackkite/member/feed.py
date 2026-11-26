@@ -20,12 +20,15 @@ from blackkite.db.models import (
 from blackkite.member import schemas as S
 from blackkite.member.view import (
     CLOSED_STATUSES,
+    FIT_RANK,
     SCORED_STREAMS,
     SHORTLIST_STATES,
     Row,
     closing_soonest,
+    current_status,
     feed_item,
     first_name,
+    fit_for,
     get_visible,
     is_closed,
     kigali_today,
@@ -52,6 +55,14 @@ class FeedFilters:
     source_id: uuid.UUID | None = None
     # One state; when unset, dismissed items are left out.
     state: str | None = None
+    # Current statuses (view.current_status). Unset: open and closing soon.
+    # Closed statuses (expired, awarded, cancelled) list only the caller's own
+    # tracked items (saved, acting, done) and own private items: an untracked
+    # closed item is hard-filtered ("deadline passed", spec 7) and never shown.
+    statuses: tuple[str, ...] | None = None
+    # At least this fit word (strong > good > possible). Items without one
+    # (events, investments, not scored, closed) are left out when set.
+    fit: str | None = None
 
 
 def _state_clause(user_id: uuid.UUID, state: str | None) -> sa.ColumnElement[bool]:
@@ -65,13 +76,13 @@ def _state_clause(user_id: uuid.UUID, state: str | None) -> sa.ColumnElement[boo
     return Opportunity.id.in_(mine.where(UserOpportunity.state == state))
 
 
-def feed_rows(db: Session, user: User, f: FeedFilters, now: datetime) -> list[Row]:
+def _base_query(user: User, f: FeedFilters) -> sa.Select:
     q = sa.select(Opportunity).where(
         member_visible(user.id),
         not_only_muted(user.id),
         _state_clause(user.id, f.state),
     )
-    if f.state is None:
+    if f.state is None and f.statuses is None:
         # Closed items are hard-filtered ("deadline passed", spec 7); an explicit
         # state filter (for example done) still shows them.
         q = q.where(Opportunity.status.not_in(CLOSED_STATUSES))
@@ -89,17 +100,49 @@ def feed_rows(db: Session, user: User, f: FeedFilters, now: datetime) -> list[Ro
                 )
             )
         )
-    opps = db.scalars(q).all()
-    if f.state is None:
+    return q
+
+
+def _in_window(opps: list[Opportunity], window: int, now: datetime) -> list:
+    today = kigali_today(now)
+    last = today + timedelta(days=window)
+    return [o for o in opps if (d := sort_date(o)) is not None and today <= d <= last]
+
+
+def _tracked_or_own(row: Row, user_id: uuid.UUID) -> bool:
+    return row.state in KEPT_STATES or (
+        row.opp.visibility == "private" and row.opp.owner_user_id == user_id
+    )
+
+
+def _at_least(fit: str | None, wanted: str) -> bool:
+    return fit in FIT_RANK and FIT_RANK[fit] >= FIT_RANK[wanted]
+
+
+def feed_rows(db: Session, user: User, f: FeedFilters, now: datetime) -> list[Row]:
+    opps = list(db.scalars(_base_query(user, f)).all())
+    if f.statuses is not None:
+        opps = [o for o in opps if current_status(o, now) in f.statuses]
+    elif f.state is None:
         opps = [o for o in opps if not is_closed(o, now)]
     if f.window is not None:
-        today = kigali_today(now)
-        last = today + timedelta(days=f.window)
-        opps = [
-            o for o in opps if (d := sort_date(o)) is not None and today <= d <= last
+        opps = _in_window(opps, f.window, now)
+    if f.statuses is not None:
+        open_opps = [o for o in opps if not is_closed(o, now)]
+        closed_opps = [o for o in opps if is_closed(o, now)]
+    else:
+        open_opps, closed_opps = opps, []
+    rows = load_rows(db, user, open_opps, profile_id=f.profile_id)
+    if closed_opps:
+        # Closed items the caller tracks keep their deadline-passed rows.
+        rows += [
+            r
+            for r in load_rows(db, user, closed_opps, keep_filtered=True)
+            if _tracked_or_own(r, user.id)
         ]
-    rows = load_rows(db, user, opps, profile_id=f.profile_id)
     rows = [r for r in rows if not _hidden_without_fit_word(r, user.id)]
+    if f.fit is not None:
+        rows = [r for r in rows if _at_least(fit_for(r, now), f.fit)]
     return closing_soonest(rows, now)[:FEED_LIMIT]
 
 

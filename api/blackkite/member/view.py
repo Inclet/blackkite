@@ -53,7 +53,7 @@ from blackkite.db.models import (
 from blackkite.member import schemas as S
 from blackkite.member.trust import LinkInfo, trust_copy
 from blackkite.pipeline.dates import KIGALI, kigali_date
-from blackkite.pipeline.validate import trust_state
+from blackkite.pipeline.validate import status_for, trust_state
 from blackkite.pipeline.visibility import (
     MEMBER_VISIBLE_SOURCE_STATUSES,
     own_private,
@@ -339,6 +339,16 @@ def is_closed(opp: Opportunity, now: datetime) -> bool:
         return True
     end = end_of(opp)
     return end is not None and end < now
+
+
+def current_status(opp: Opportunity, now: datetime) -> str:
+    """The item's status now: a stored closed status stands; otherwise it is
+    worked out from its dates (the stored one moves on once a day)."""
+    if opp.status in CLOSED_STATUSES:
+        return opp.status
+    return status_for(
+        opp.status, opp.stream, opp.deadline_at, opp.event_start, opp.event_end, now
+    )
 
 
 def uses_event_dates(opp: Opportunity) -> bool:
