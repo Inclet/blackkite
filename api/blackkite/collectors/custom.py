@@ -17,7 +17,9 @@ A custom collector class has:
   fetching only through the guarded ``FetchClient``.
 
 Shipped: ``jsonld_events``, schema.org Event objects from a listing page's
-JSON-LD (spec 4.5: Eventbrite and 10times listing pages carry them); and
+JSON-LD (spec 4.5: Eventbrite and 10times listing pages carry them);
+``umucyo_awards`` and ``umucyo_plans`` (collectors/umucyo.py), procurement
+records (awards, plan items) exposed as ``records`` rather than RawItems; and
 ``demo_fictional``, a no-op for the fictional sources of ``bk demo-seed`` (no
 fetch, no items), so a run of a demo source succeeds instead of failing.
 
@@ -46,6 +48,7 @@ from blackkite.collectors.common import (
 )
 from blackkite.collectors.http import FetchClient
 from blackkite.collectors.problems import ConfigInvalid, from_validation
+from blackkite.collectors.umucyo import UmucyoAwardsCollector, UmucyoPlansCollector
 
 # --- JSON-LD events ---------------------------------------------------------------------
 
@@ -319,6 +322,8 @@ class DemoFictionalCollector:
 
 CUSTOM_COLLECTORS: dict[str, type] = {
     JsonLdEventsCollector.name: JsonLdEventsCollector,
+    UmucyoAwardsCollector.name: UmucyoAwardsCollector,
+    UmucyoPlansCollector.name: UmucyoPlansCollector,
     DemoFictionalCollector.name: DemoFictionalCollector,
 }
 # Collectors that exist only when BK_ENV=dev.
@@ -391,11 +396,20 @@ class CustomCollector:
     def __init__(self, client: FetchClient, *, preview: bool = False) -> None:
         self.client = client
         self.preview = preview
+        self.inner: Any = None
 
     def fetch(self, source) -> list[RawItem]:
-        return build(self.client, source.config or {}, preview=self.preview).fetch(
-            source
-        )
+        self.inner = build(self.client, source.config or {}, preview=self.preview)
+        return self.inner.fetch(source)
+
+    @property
+    def records(self):
+        """The chosen class's procurement records (umucyo_awards, umucyo_plans)."""
+        return getattr(self.inner, "records", None)
+
+    @property
+    def warnings(self) -> list[dict]:
+        return list(getattr(self.inner, "warnings", None) or [])
 
 
 def option_forms(env: str | None = None) -> dict[str, dict[str, Any]]:

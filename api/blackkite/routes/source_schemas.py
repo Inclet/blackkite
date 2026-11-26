@@ -352,16 +352,30 @@ class ConfigFieldOut(CamelModel):
     fields: list[ConfigFieldOut] | None = None  # kinds "object", "object_list"
 
 
+class CustomCollectorOut(CamelModel):
+    """An allowlisted ``custom`` collector: ``name`` goes in ``config.collector``,
+    ``fields`` describe ``config.options`` (same field format as above)."""
+
+    model_config = ConfigDict(from_attributes=True)
+    name: str
+    help: str
+    fields: list[ConfigFieldOut]
+
+
 class CollectorTypeOut(CamelModel):
     """GET /api/admin/collector-types: the config form for each type (spec 4.2).
     ``schemaSource`` is always "model" now: every type's fields are read from its
     collector's config model. "declared" stays in the type for older clients."""
 
     model_config = ConfigDict(from_attributes=True)
+    omit_if_none = frozenset({"collectors"})
     type: CollectorType
     implemented: bool
     schema_source: Literal["model", "declared"]
     fields: list[ConfigFieldOut]
+    # ``custom`` only (left out for the other types): each allowlisted
+    # collector with the fields of its options.
+    collectors: list[CustomCollectorOut] | None = None
 
 
 class SuggestionIn(CamelIn):

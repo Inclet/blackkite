@@ -17,6 +17,9 @@ H = "events.example"
 CFG = {"collector": "jsonld_events", "options": {"list_url": f"https://{H}/kigali"}}
 
 
+SHIPPED = ["jsonld_events", "umucyo_awards", "umucyo_plans"]
+
+
 def source(config=CFG) -> Source:
     return Source(
         id=uuid.uuid4(),
@@ -133,7 +136,7 @@ def test_config_normalised_and_form():
     form = registry.config_form("custom")
     (collector,) = [f for f in form["fields"] if f["name"] == "collector"]
     assert collector["type"] == "enum"
-    assert collector["choices"] == ["demo_fictional", "jsonld_events"]
+    assert collector["choices"] == ["demo_fictional", *SHIPPED]
     assert set(form["collectors"]) == set(custom.CUSTOM_COLLECTORS)
     names = {f["name"] for f in form["collectors"]["jsonld_events"]["fields"]}
     assert {"list_url", "max_items"} <= names
@@ -173,9 +176,7 @@ def test_demo_fictional_exists_only_in_dev(bk_env, env):
     schema_enum = form["json_schema"]["properties"]["collector"]["enum"]
     if env == "dev":
         assert validate_config("custom", cfg) == cfg
-        assert (
-            collector["choices"] == schema_enum == ["demo_fictional", "jsonld_events"]
-        )
+        assert collector["choices"] == schema_enum == ["demo_fictional", *SHIPPED]
         assert "demo_fictional" in form["collectors"]
         assert (
             build_collector("custom", make_client(FakeWeb())).fetch(source(cfg)) == []
@@ -183,9 +184,9 @@ def test_demo_fictional_exists_only_in_dev(bk_env, env):
         return
     with pytest.raises(ValueError, match="unknown custom collector 'demo_fictional'"):
         validate_config("custom", cfg)
-    assert collector["choices"] == schema_enum == ["jsonld_events"]
+    assert collector["choices"] == schema_enum == SHIPPED
     assert "demo_fictional" not in collector["help"]
-    assert set(form["collectors"]) == {"jsonld_events"}
+    assert set(form["collectors"]) == set(SHIPPED)
     # a stray demo row fails its run instead of silently succeeding
     with pytest.raises(CollectorError, match="unknown custom collector"):
         build_collector("custom", make_client(FakeWeb())).fetch(source(cfg))

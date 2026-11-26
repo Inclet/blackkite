@@ -30,6 +30,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Literal
 
+from blackkite.collectors.base import Formats
 from blackkite.pipeline.dates import kigali_date, parse_date
 from blackkite.pipeline.dedupe import org_key, title_key
 from blackkite.pipeline.extract import normalise_currency
@@ -49,17 +50,6 @@ _CURRENCY = re.compile(
     re.IGNORECASE,
 )
 _NUMBER = re.compile(r"\d[\d.,\s'’]*")
-
-
-@dataclass(frozen=True)
-class Formats:
-    """How a source writes amounts and dates (from its collector config)."""
-
-    date_formats: tuple[str, ...] = ()
-    decimal_separator: str = "."
-    thousands_separators: tuple[str, ...] = (",", " ")
-    currency: str | None = None  # stated in the config for amounts that name none
-    quarter_basis: QuarterBasis | None = None
 
 
 @dataclass

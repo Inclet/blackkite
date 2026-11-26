@@ -41,11 +41,23 @@ class ConfigField:
 
 
 @dataclass
+class CustomCollectorSchema:
+    """One allowlisted ``custom`` collector: its name (``config.collector``),
+    help line and the fields of its ``config.options``."""
+
+    name: str
+    help: str
+    fields: list[ConfigField] = field(default_factory=list)
+
+
+@dataclass
 class CollectorTypeSchema:
     type: str
     implemented: bool
     schema_source: str  # always "model": every type has a config model
     fields: list[ConfigField] = field(default_factory=list)
+    # ``custom`` only: the allowlisted collectors available under BK_ENV.
+    collectors: list[CustomCollectorSchema] | None = None
 
 
 def _names(fields: list[dict[str, Any]]) -> str:
@@ -152,7 +164,23 @@ def collector_type_schemas() -> list[CollectorTypeSchema]:
     implemented = set(registry.IMPLEMENTED)
     return [
         CollectorTypeSchema(
-            ctype, ctype in implemented, "model", form_fields(forms[ctype])
+            ctype,
+            ctype in implemented,
+            "model",
+            form_fields(forms[ctype]),
+            custom_collectors(forms[ctype]),
         )
         for ctype in COLLECTOR_TYPES
+    ]
+
+
+def custom_collectors(form: dict[str, Any]) -> list[CustomCollectorSchema] | None:
+    collectors = form.get("collectors")
+    if not collectors:
+        return None
+    return [
+        CustomCollectorSchema(
+            name, c["help"], [to_field(f) for f in c.get("fields") or []]
+        )
+        for name, c in sorted(collectors.items())
     ]
