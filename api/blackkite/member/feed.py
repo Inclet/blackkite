@@ -60,8 +60,10 @@ class FeedFilters:
     # tracked items (saved, acting, done) and own private items: an untracked
     # closed item is hard-filtered ("deadline passed", spec 7) and never shown.
     statuses: tuple[str, ...] | None = None
-    # At least this fit word (strong > good > possible). Items without one
-    # (events, investments, not scored, closed) are left out when set.
+    # At least this fit word (strong > good > possible). Narrows tenders and
+    # funding only: those without a word (not scored, below "possible",
+    # closed, own private items with no word) are left out when set. Events
+    # and investments never carry a word (decision 24) and pass through.
     fit: str | None = None
 
 
@@ -119,6 +121,13 @@ def _at_least(fit: str | None, wanted: str) -> bool:
     return fit in FIT_RANK and FIT_RANK[fit] >= FIT_RANK[wanted]
 
 
+def _passes_fit(row: Row, wanted: str, now: datetime) -> bool:
+    """The fit filter narrows the scored streams only (tender, funding)."""
+    if row.opp.stream not in SCORED_STREAMS:
+        return True
+    return _at_least(fit_for(row, now), wanted)
+
+
 def feed_rows(
     db: Session,
     user: User,
@@ -155,7 +164,7 @@ def feed_rows(
         ]
     rows = [r for r in rows if not _hidden_without_fit_word(r, user.id)]
     if f.fit is not None:
-        rows = [r for r in rows if _at_least(fit_for(r, now), f.fit)]
+        rows = [r for r in rows if _passes_fit(r, f.fit, now)]
     return closing_soonest(rows, now)[:limit]
 
 
