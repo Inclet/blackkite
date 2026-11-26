@@ -81,3 +81,7 @@ Anything built without a reference board. Built from existing components and tok
 | Feed filters | M4 | "Filters" / "Filters (n)" opens a Card "Filter the feed": Profile, Status (Open / Closing soon / Closed), Deadline (This week / 2 weeks / Month), Fit (Strong / Good and up / Possible and up), Source, Trust (Confirmed / Not yet confirmed / Sources disagree), each with "Any"; applied filters as one-shot chips "Group: value" under "Applied filters. Press one to remove it."; "Clear filters" |
 | Admin shareable `/admin/shareable` | M4 | Cards: stream Tag, "Date {d}" Tag, title, organisation, "The owner agreed to share it on {date}.", primary "Make public"; "Made public: {title}.", "{title}: The owner no longer allows this, so it stays private.", unreachable and empty lines |
 | AppShell wide | M4 | Unlimited content width, month grid only |
+| Sources wording on items added by hand | M4 fixes | No sources — owner: "No source carries this item. You added it yourself."; others on a member's item: "A member added this item; no collected source carries it."; any other item: "No sources to show." |
+| Link out on items added by hand | M4 fixes | Owner: "Open your link"; others: "Open the link added with this item" |
+| Item form dates | M4 fixes | Text fields (not date pickers), hint "With the year, such as 7 Dec 2026 or 7 Dec 2026, 5pm." |
+| Fit filter note | M4 fixes | "Fit applies to tenders and funding; events and investments stay listed." |
