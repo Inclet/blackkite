@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { Profile } from '../../api/types';
 import { mockApi, status } from '../../test/mockApi';
@@ -261,4 +261,39 @@ test('capacity: a new business profile starts collapsed', async () => {
   await screen.findByRole('heading', { level: 1, name: EDITOR_COPY.newBusiness });
   expect(screen.getByRole('button', { name: EDITOR_COPY.showCapacity })).toBeInTheDocument();
   expect(screen.getByLabelText(EDITOR_COPY.trucks)).not.toBeVisible();
+});
+
+test('a reload of the list landing after typing does not wipe the edits (the editor opens from the cached list)', async () => {
+  const api = mockApi({ 'GET /api/profiles': [IRONJI], 'GET /me': ME });
+  renderAt('/profiles');
+  const edit = await screen.findByRole('link', { name: 'Edit Ironji-Trade' });
+  // The editor's own reload is held back until after the member has typed.
+  let answer!: (v: unknown) => void;
+  api.on('GET /api/profiles', () => new Promise((r) => (answer = r)));
+  fireEvent.click(edit);
+  await screen.findByRole('heading', { level: 1, name: 'Ironji-Trade' });
+  await waitFor(() => expect(answer).toBeTypeOf('function'));
+  type(EDITOR_COPY.tonnageMin, 'about thirty');
+  expect(api.calls.filter((c) => c.key === 'GET /api/profiles')).toHaveLength(2);
+  // The fresh copy lands (fetch, JSON, state) before Save is pressed.
+  await act(async () => {
+    answer([{ ...IRONJI }]);
+    await new Promise((r) => setTimeout(r, 50));
+  });
+  expect(field(EDITOR_COPY.tonnageMin)).toHaveValue('about thirty');
+  fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.save }));
+  expect(field(EDITOR_COPY.tonnageMin)).toHaveAttribute('aria-invalid', 'true');
+  expect(api.calls.some((c) => c.key.startsWith('PATCH'))).toBe(false);
+});
+
+test('after a save, the fresh copy from the server resets the form', async () => {
+  const saved = { ...IRONJI, version: 2, data: { ...IRONJI.data, services: ['dry freight', 'cold chain', 'warehousing'] } };
+  const api = mockApi({ 'GET /api/profiles': [IRONJI], 'GET /me': ME, 'PATCH /api/profiles/p1': saved });
+  renderAt('/profiles/p1');
+  await screen.findByRole('heading', { level: 1, name: 'Ironji-Trade' });
+  type(EDITOR_COPY.services, 'dry freight, cold chain, warehousing ');
+  api.on('GET /api/profiles', [saved]);
+  fireEvent.click(screen.getByRole('button', { name: EDITOR_COPY.save }));
+  expect(await screen.findByText(EDITOR_COPY.saved)).toBeInTheDocument();
+  await waitFor(() => expect(field(EDITOR_COPY.services)).toHaveValue('dry freight, cold chain, warehousing'));
 });

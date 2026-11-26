@@ -183,15 +183,23 @@ function Editor({ profile, type, onSaved }: { profile: Profile | null; type: Pro
     setCapacityOpen(open);
   };
 
-  // A fresh copy from the server (after save) resets the form; the copy it started from does not.
+  // A fresh copy from the server resets the form only while it holds no unsaved
+  // edits. The editor opens from the cached list and the list reloads behind it;
+  // that copy must not wipe what the member has typed since (it used to, so a
+  // slow reload could clear a field between typing and pressing Save).
+  // Saving clears the edits, so the reload after a save resets the form.
   const shown = useRef(profile);
+  const dirty = useRef(false);
+  const latest = useRef(form);
+  latest.current = form;
   useEffect(() => {
-    if (!profile || profile === shown.current) return;
+    if (!profile || profile === shown.current || dirty.current) return;
     shown.current = profile;
     setForm(toForm(profile, profile.type));
   }, [profile]);
 
   const set = <K extends keyof ProfileForm>(key: K, value: ProfileForm[K]) => {
+    dirty.current = true;
     setForm((f) => ({ ...f, [key]: value }));
     if (status === 'saved') setStatus('idle');
   };
@@ -221,9 +229,12 @@ function Editor({ profile, type, onSaved }: { profile: Profile | null; type: Pro
     }
     setStatus('saving');
     const input = toInput(form, profile?.data);
+    const sent = form;
     try {
       if (profile) {
         await api.updateProfile(profile.id, input);
+        // Edits made while the save was in flight stay unsaved.
+        if (latest.current === sent) dirty.current = false;
         setStatus('saved');
         onSaved();
       } else {
