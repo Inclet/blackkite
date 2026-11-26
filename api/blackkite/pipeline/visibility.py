@@ -11,6 +11,9 @@ members"):
   longer counts (so a testing source that is retired without ever being promoted
   never leaks its items).
 * A member sees a private opportunity only if they own it (spec 6).
+* A private manual item an admin made public with its owner's consent
+  (``made_public_at`` set) is seen by every member, though no source carries
+  it (``published_manual``).
 * An **admin** sees every public opportunity, including testing-only ones, plus
   their own private items; never other users' private items (spec 10).
 
@@ -55,6 +58,21 @@ def carried_by_visible_source() -> ColumnElement[bool]:
     )
 
 
+def published_manual() -> ColumnElement[bool]:
+    """A member's manual item an admin made public (spec 6)."""
+    return sa.and_(
+        Opportunity.visibility == "public", Opportunity.made_public_at.is_not(None)
+    )
+
+
+def member_visible_public() -> ColumnElement[bool]:
+    """WHERE clause on ``Opportunity``: a public item members may see."""
+    return sa.and_(
+        Opportunity.visibility == "public",
+        sa.or_(carried_by_visible_source(), published_manual()),
+    )
+
+
 def visible_source_link() -> ColumnElement[bool]:
     """WHERE clause on ``Source`` (joined to opportunity_source): the carrying sources
     a member may see listed on an opportunity."""
@@ -69,9 +87,7 @@ def own_private(user_id: uuid.UUID) -> ColumnElement[bool]:
 
 def visible_to(user_id: uuid.UUID, *, is_admin: bool) -> ColumnElement[bool]:
     """WHERE clause on ``Opportunity`` for what this caller may see."""
-    public = Opportunity.visibility == "public"
-    if not is_admin:
-        public = sa.and_(public, carried_by_visible_source())
+    public = Opportunity.visibility == "public" if is_admin else member_visible_public()
     return sa.or_(public, own_private(user_id))
 
 

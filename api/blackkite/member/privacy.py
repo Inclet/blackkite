@@ -1,12 +1,16 @@
 """Account export and deletion (spec 10: "allow account export and deletion").
 
 Export: everything stored about the caller, as JSON: account, profiles, digest
-settings, item states and notes, private items, digest and alert logs, source
-suggestions and mutes. Numeric scores are internal (spec 12) and left out.
+settings, item states and notes, private items (with their link and share
+consent), items of theirs an admin made public, the calendar feed link's state
+(when it was last revoked; the link itself is not exported), digest and alert
+logs, source suggestions and mutes. Numeric scores are internal (spec 12) and
+left out.
 
 Deletion: the user row and, through ON DELETE CASCADE, every per-user row
 (sessions, login tokens, profiles and their scores, digest settings, states and
 notes, digest and alert logs, suggestions, mutes) and the private items they own.
+Items of theirs an admin made public stay public, with the owner link cleared.
 Shared catalogue rows stay; references to the user from shared rows (who added a
 source, who invited whom, who reviewed a suggestion) become NULL. Invites sent to
 the user's address are deleted too, since they hold the address. The last active
@@ -61,6 +65,8 @@ PRIVATE_ITEM_FIELDS = (
     "created_at",
     "updated_at",
 )
+# Sharing (spec 6), exported with each of the caller's manual items.
+MANUAL_ITEM_FIELDS = ("share_consent_at", "made_public_at")
 
 
 def _camel(name: str) -> str:
@@ -80,6 +86,14 @@ def _json(v: Any) -> Any:
     return str(v)
 
 
+def _manual_item(o: Opportunity) -> dict[str, Any]:
+    out = {_camel(k): getattr(o, k) for k in PRIVATE_ITEM_FIELDS}
+    out["url"] = o.manual_url
+    out["shareConsent"] = o.share_consent_at is not None
+    out.update({_camel(k): getattr(o, k) for k in MANUAL_ITEM_FIELDS})
+    return out
+
+
 def export(db: Session, user: User) -> dict[str, Any]:
     uid = user.id
     profiles = db.scalars(
@@ -92,11 +106,17 @@ def export(db: Session, user: User) -> dict[str, Any]:
         .where(UserOpportunity.user_id == uid)
         .order_by(UserOpportunity.created_at)
     ).all()
-    private = db.scalars(
+    manual = db.scalars(
         sa.select(Opportunity)
-        .where(Opportunity.visibility == "private", Opportunity.owner_user_id == uid)
+        .where(
+            Opportunity.owner_user_id == uid,
+            sa.or_(
+                Opportunity.visibility == "private",
+                Opportunity.made_public_at.is_not(None),
+            ),
+        )
         .order_by(Opportunity.created_at)
-    )
+    ).all()
     digests = db.scalars(
         sa.select(DigestLog).where(DigestLog.user_id == uid).order_by(DigestLog.sent_at)
     )
@@ -161,8 +181,12 @@ def export(db: Session, user: User) -> dict[str, Any]:
                 for uo, title in states
             ],
             "privateItems": [
-                {_camel(k): getattr(o, k) for k in PRIVATE_ITEM_FIELDS} for o in private
+                _manual_item(o) for o in manual if o.visibility == "private"
             ],
+            "publishedItems": [
+                _manual_item(o) for o in manual if o.visibility == "public"
+            ],
+            "calendarFeed": {"rotatedAt": user.calendar_nonce_rotated_at},
             "digestLog": [
                 {
                     "digestDate": d.digest_date.isoformat(),
@@ -205,6 +229,14 @@ def delete_account(db: Session, user: User) -> None:
             raise LastAdmin
     db.execute(
         sa.delete(Invite).where(sa.func.lower(Invite.email) == user.email.lower())
+    )
+    # Published items stay public; only the owner link goes. (Private ones go
+    # with the user: ON DELETE CASCADE.)
+    db.execute(
+        sa.update(Opportunity)
+        .where(Opportunity.owner_user_id == user.id, Opportunity.visibility == "public")
+        .values(owner_user_id=None)
+        .execution_options(synchronize_session=False)
     )
     db.execute(sa.delete(User).where(User.id == user.id))
     db.commit()

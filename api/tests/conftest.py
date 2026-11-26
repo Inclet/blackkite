@@ -32,6 +32,8 @@ from tests.pgcluster import ThrowawayCluster
 
 # Test-only signing key for unsubscribe links (never a real secret).
 TEST_UNSUBSCRIBE_SECRET = "test-unsubscribe-secret-0123456789abcdef"
+# Test-only signing key for calendar feed links (never a real secret).
+TEST_CALENDAR_SECRET = "test-calendar-secret-fedcba9876543210zyxw"
 
 API_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -154,6 +156,7 @@ def settings(db_url: str) -> Settings:
         cookie_secure=True,
         mail_transport="console",
         unsubscribe_secret=TEST_UNSUBSCRIBE_SECRET,
+        calendar_secret=TEST_CALENDAR_SECRET,
         _env_file=None,
     )
 

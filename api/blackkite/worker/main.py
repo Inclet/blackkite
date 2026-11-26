@@ -14,6 +14,9 @@ holding the source's lock, they are marked failed with "worker stopped".
 A second job runs once a day (and once at start-up) to move catalogue statuses on
 as deadlines pass (open -> closing_soon -> expired), under its own advisory lock.
 
+Queued items (worker/item_scores.py: private items created or edited, items
+made public) are scored after the backfills, on the same terms.
+
 Pending profile backfills (worker/backfills.py: new or edited profiles, mute
 changes) run on every tick after the sources and their alerts, at most
 ``BK_BACKFILL_PER_TICK`` profiles a tick, debounced, backed off on failure and under
@@ -43,6 +46,7 @@ from blackkite.config import Settings
 from blackkite.delivery.jobs import alerts_job, weekly_digest_job
 from blackkite.delivery.mail import MailTransport, make_transport
 from blackkite.worker.backfills import run_pending_backfills
+from blackkite.worker.item_scores import run_pending_item_scores
 from blackkite.worker.runner import (
     fail_stale_runs,
     refresh_statuses_locked,
@@ -93,8 +97,22 @@ def tick(
     if any(o.status == "succeeded" for o in outcomes):
         alerts(sessions, settings, transport)
     # Last, so a backlog of profile backfills never delays collection or alerts.
-    if backfills(sessions, settings):
+    scored = backfills(sessions, settings)
+    # Queued items: private items created or edited (their owner only) and
+    # items made public (everyone).
+    scored += item_scores(sessions)
+    if scored:
         alerts(sessions, settings, transport)
+
+
+def item_scores(sessions: sessionmaker[Session]) -> int:
+    """Queued item scoring (worker/item_scores.py). Never stops the tick."""
+    try:
+        done = run_pending_item_scores(sessions)
+    except Exception:
+        log.exception("queued item scoring failed")
+        return 0
+    return len(done)
 
 
 def backfills(sessions: sessionmaker[Session], settings: Settings) -> int:

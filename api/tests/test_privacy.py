@@ -155,3 +155,58 @@ def test_last_admin_cannot_delete_themselves(db, client, outbox):
 def test_need_a_session(client):
     assert client.get("/api/me/export").status_code == 401
     assert client.delete("/api/me").status_code == 401
+
+
+def _manual(db, u, other):
+    """A private item with consent, and one an admin made public."""
+    now = f.NOW
+    consented = f.opportunity(
+        db,
+        "Consented",
+        visibility="private",
+        owner_user_id=u.id,
+        manual_url="https://example.org/c",
+        share_consent_at=now,
+    )
+    published = f.opportunity(
+        db,
+        "Published",
+        visibility="public",
+        owner_user_id=u.id,
+        share_consent_at=now,
+        made_public_at=now,
+        made_public_by=other.id,
+    )
+    db.commit()
+    return consented, published
+
+
+def test_export_has_manual_items_consents_and_calendar_state(db, client, pair):
+    u, other = pair
+    _manual(db, u, other)
+    assert client.post("/api/calendar/feed-link/rotate").status_code == 200
+    body = client.get("/api/me/export").json()
+    (item,) = body["privateItems"]
+    assert item["title"] == "Consented"
+    assert item["url"] == "https://example.org/c"
+    assert item["shareConsent"] is True and item["shareConsentAt"]
+    assert item["madePublicAt"] is None
+    (pub,) = body["publishedItems"]
+    assert pub["title"] == "Published" and pub["madePublicAt"]
+    assert body["calendarFeed"]["rotatedAt"] is not None
+    text = str(body)
+    assert db.get(User, u.id).calendar_nonce not in text  # the link is not exported
+    assert str(other.id) not in text  # who published is not the user's data
+
+
+def test_delete_keeps_published_items_public_without_the_owner(db, client, pair):
+    u, other = pair
+    consented, published = _manual(db, u, other)
+    cid, pid = consented.id, published.id
+    assert client.delete("/api/me").status_code == 204
+    db.expunge_all()
+    assert db.get(Opportunity, cid) is None
+    kept = db.get(Opportunity, pid)
+    assert kept is not None
+    assert (kept.visibility, kept.owner_user_id) == ("public", None)
+    assert kept.made_public_at is not None

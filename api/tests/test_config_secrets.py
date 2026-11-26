@@ -80,6 +80,7 @@ def test_env_example_secrets_are_empty_or_refused():
     for name in (
         "POSTGRES_PASSWORD",
         "BK_UNSUBSCRIBE_SECRET",
+        "BK_CALENDAR_SECRET",
         "BK_SMTP_PASSWORD",
         "BK_INGEST_IMAP_PASSWORD",
         "BK_RENDERER_TOKEN",

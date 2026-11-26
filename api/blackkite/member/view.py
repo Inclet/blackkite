@@ -53,10 +53,12 @@ from blackkite.db.models import (
 from blackkite.member import schemas as S
 from blackkite.member.trust import LinkInfo, trust_copy
 from blackkite.pipeline.dates import KIGALI, kigali_date
-from blackkite.pipeline.validate import trust_state
+from blackkite.pipeline.validate import status_for, trust_state
 from blackkite.pipeline.visibility import (
     MEMBER_VISIBLE_SOURCE_STATUSES,
+    carried_by_visible_source,
     own_private,
+    published_manual,
     visible_source_link,
     visible_to,
 )
@@ -165,7 +167,9 @@ def not_only_muted(user_id: uuid.UUID) -> ColumnElement[bool]:
             OpportunitySource.source_id.not_in(muted),
         )
     )
-    return sa.or_(own_private(user_id), unmuted_carrier)
+    # A published manual item no visible source carries has nothing to mute.
+    uncarried_manual = sa.and_(published_manual(), ~carried_by_visible_source())
+    return sa.or_(own_private(user_id), unmuted_carrier, uncarried_manual)
 
 
 MUTED_SOURCE_ONLY = "muted_source_only"
@@ -341,6 +345,16 @@ def is_closed(opp: Opportunity, now: datetime) -> bool:
     return end is not None and end < now
 
 
+def current_status(opp: Opportunity, now: datetime) -> str:
+    """The item's status now: a stored closed status stands; otherwise it is
+    worked out from its dates (the stored one moves on once a day)."""
+    if opp.status in CLOSED_STATUSES:
+        return opp.status
+    return status_for(
+        opp.status, opp.stream, opp.deadline_at, opp.event_start, opp.event_end, now
+    )
+
+
 def uses_event_dates(opp: Opportunity) -> bool:
     return opp.stream == "event" and opp.event_start is not None
 
@@ -382,7 +396,8 @@ def _topic(opp: Opportunity) -> str | None:
 
 def _original_url(row: Row) -> str:
     if not row.links:
-        return ""
+        # A manual item's own link (spec 6); else nothing.
+        return row.opp.manual_url or ""
     original = next((link for link in row.links if link.is_original), None)
     return (original or row.links[0]).url
 
@@ -545,7 +560,8 @@ def _document_name(d: Document) -> str:
 
 def _changes(db: Session, opp_id: uuid.UUID) -> list[S.ChangeOut]:
     """Change history. Values that name a source show its name, and changes
-    reported by a source the caller cannot see are left out."""
+    reported by a source the caller cannot see are left out. Who made a change
+    (``reviewed_by``, ``published_by``: admin ids) is not shown to members."""
     visible = {
         str(sid): name
         for sid, name in db.execute(
@@ -573,6 +589,8 @@ def _changes(db: Session, opp_id: uuid.UUID) -> list[S.ChangeOut]:
                     )
                     for k, x in v.items()
                 }
+            if isinstance(v, dict):
+                v = {k: x for k, x in v.items() if not k.endswith("_by")}
             values.append(v)
         if not hidden:
             out.append(
@@ -581,7 +599,21 @@ def _changes(db: Session, opp_id: uuid.UUID) -> list[S.ChangeOut]:
     return out
 
 
-def opportunity_out(db: Session, row: Row, now: datetime) -> S.OpportunityOut:
+def own_item_out(opp: Opportunity, user_id: uuid.UUID | None) -> S.OwnItem | None:
+    """Sharing state of the caller's own manual item (private or published)."""
+    if user_id is None or opp.owner_user_id != user_id:
+        return None
+    if opp.visibility != "private" and opp.made_public_at is None:
+        return None
+    return S.OwnItem(
+        share_consent=opp.share_consent_at is not None,
+        published=opp.made_public_at is not None,
+    )
+
+
+def opportunity_out(
+    db: Session, row: Row, now: datetime, *, user_id: uuid.UUID | None = None
+) -> S.OpportunityOut:
     o = row.opp
     docs = db.scalars(
         sa.select(Document)
@@ -606,6 +638,7 @@ def opportunity_out(db: Session, row: Row, now: datetime) -> S.OpportunityOut:
         note=row.uo.note if row.uo else None,
         state=row.state,
         dismiss_reason=S.dismiss_reason_out(row.uo.dismiss_reason if row.uo else None),
+        own_item=own_item_out(o, user_id),
     )
     return S.OpportunityOut(**_item_fields(row, now), detail=detail)
 

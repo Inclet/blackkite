@@ -153,6 +153,14 @@ class Settings(BaseSettings):
     # Optional address for a List-Unsubscribe mailto: link. Unset: no mailto.
     unsubscribe_mailto: str | None = None
 
+    # Personal calendar feeds (GET /api/calendar.ics?token=...). Links are
+    # HMAC-signed with this secret (at least 32 characters); unset, no feed link
+    # is offered. Changing it revokes every calendar link handed out.
+    calendar_secret: SecretStr | None = None
+    # Requests to one calendar link per hour (calendar apps poll every
+    # 15 minutes to a few hours); more get 429.
+    calendar_rate_per_token_per_hour: int = Field(default=60, ge=1)
+
     # Weekly digest: Mondays at this hour, Africa/Kigali (decision 18).
     digest_hour: int = Field(default=7, ge=0, le=23)
 
@@ -213,6 +221,13 @@ class Settings(BaseSettings):
             raise ValueError(f"BK_UNSUBSCRIBE_SECRET {problem}; {GENERATE_HINT}")
         return v
 
+    @field_validator("calendar_secret")
+    @classmethod
+    def _real_calendar_secret(cls, v: SecretStr | None) -> SecretStr | None:
+        if v is not None and (problem := secret_problem(v.get_secret_value())):
+            raise ValueError(f"BK_CALENDAR_SECRET {problem}; {GENERATE_HINT}")
+        return v
+
     @field_validator("renderer_token")
     @classmethod
     def _real_renderer_token(cls, v: SecretStr | None) -> SecretStr | None:
@@ -264,6 +279,7 @@ class Settings(BaseSettings):
 
     @field_validator(
         "unsubscribe_secret",
+        "calendar_secret",
         "api_public_url",
         "unsubscribe_mailto",
         "resend_api_key",
