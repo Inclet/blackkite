@@ -1,0 +1,8 @@
+/* Not on any board (design review). Everything else comes from Sources.module.css. */
+
+/* A list that reads as rows, not bullets (the awards). */
+.plainList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}

@@ -2,6 +2,7 @@ import { Kite } from '../../components/Kite/Kite';
 import { NavItem } from '../../components/NavItem/NavItem';
 import { Wordmark } from '../../components/Wordmark/Wordmark';
 import { nextDigest } from '../../lib/feed';
+import { useFixture } from '../../lib/fixture';
 import { useAppLink } from '../../lib/useAppLink';
 import styles from './Sidebar.module.css';
 import { useIsAdmin } from './useIsAdmin';
@@ -15,18 +16,22 @@ export const SIDEBAR_NAV = [
   { label: 'Profiles', to: '/profiles' },
 ] as const;
 
+/** Added after the board's five items for every live session (never on fixtures, so the board's sidebar is unchanged). Design review. */
+export const BENCHMARKS_NAV = { label: 'Benchmarks', to: '/benchmarks' } as const;
+
 /** Added after the board's five items for live admin sessions only (never on fixtures). Design review. */
 export const ADMIN_NAV = { label: 'Admin', to: '/admin' } as const;
 
 /**
  * feed-desktop.html's sidebar: lockup, the five items and the "Next digest" footer
- * (plus "Admin" for a live admin session).
+ * (plus "Benchmarks" for a live session and "Admin" for a live admin session).
  * Used by the feed and by every other desktop screen (AppShell), so they match.
  */
 export function Sidebar({ current, channel }: { current: string | null; channel: string }) {
   const link = useAppLink();
   const admin = useIsAdmin();
-  const items = admin ? [...SIDEBAR_NAV, ADMIN_NAV] : SIDEBAR_NAV;
+  const live = useFixture() === null;
+  const items = [...SIDEBAR_NAV, ...(live ? [BENCHMARKS_NAV] : []), ...(admin ? [ADMIN_NAV] : [])];
   return (
     <nav aria-label="Main" className={styles.nav}>
       <div className={styles.lockup}>
