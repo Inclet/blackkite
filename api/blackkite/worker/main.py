@@ -207,13 +207,32 @@ def build_scheduler(
     return sched
 
 
-def main(settings: Settings, sessions: sessionmaker[Session]) -> None:
+def run_once(
+    sessions: sessionmaker[Session],
+    settings: Settings,
+    client: FetchClient | None = None,
+    transport: MailTransport | None = None,
+) -> None:
+    """``bk worker --once``: exactly one tick (stale runs, due sources, alerts,
+    backfills, queued item scores), then return. No scheduler, so the daily
+    status refresh and the weekly digest do not run."""
+    client = client or make_fetch_client(settings, cache=DbHttpCache(sessions))
+    tick(sessions, client, settings, transport or make_transport(settings))
+
+
+def main(
+    settings: Settings, sessions: sessionmaker[Session], *, once: bool = False
+) -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
     logredact.install()
     if not settings.bot_contact_url:
         log.warning("BK_BOT_CONTACT_URL is not set; the User-Agent has no contact URL")
+    if once:
+        run_once(sessions, settings)  # tick() closes stale runs itself
+        log.info("worker: one tick done")
+        return
     close_stale_runs(sessions, settings)  # runs left by a worker that stopped
     sched = build_scheduler(sessions, settings)
     log.info("worker started; checking sources every %ds", TICK_SECONDS)
