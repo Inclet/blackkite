@@ -59,7 +59,7 @@ from blackkite.pipeline.validate import status_for, trust_state
 from blackkite.pipeline.visibility import (
     MEMBER_VISIBLE_SOURCE_STATUSES,
     carried_by_visible_source,
-    own_private,
+    own_item,
     published_manual,
     visible_source_link,
     visible_to,
@@ -171,7 +171,8 @@ def not_only_muted(user_id: uuid.UUID) -> ColumnElement[bool]:
     )
     # A published manual item no visible source carries has nothing to mute.
     uncarried_manual = sa.and_(published_manual(), ~carried_by_visible_source())
-    return sa.or_(own_private(user_id), unmuted_carrier, uncarried_manual)
+    # The caller's own items (private or published) bypass hard filters.
+    return sa.or_(own_item(user_id), unmuted_carrier, uncarried_manual)
 
 
 MUTED_SOURCE_ONLY = "muted_source_only"
@@ -295,8 +296,8 @@ def load_rows(
     ``keep_filtered``. With ``profile_id``, only that profile's row counts, and
     items it did not score (or filtered) are dropped.
 
-    ``keep_own`` (feed and calendar; orchestrator decision 2026-11-26): the
-    caller's own private items are never dropped for hard filters (stream not
+    ``keep_own`` (feed and calendar; decision 50): the caller's own items
+    (private, or published with the caller still the owner) are never dropped for hard filters (stream not
     selected, outside Rwanda, below minimum value, ...); with ``profile_id``
     they stay when that profile scored them at all, filtered or not. Digests
     and alerts do not pass it: they still need a fit word.
@@ -326,7 +327,7 @@ def load_rows(
             rows = [r for r in rows if r.hard_filtered != MUTED_SOURCE_ONLY]
         shown = [r for r in rows if not r.hard_filtered]
         all_filtered = bool(rows) and not shown and not pending
-        own = keep_own and o.visibility == "private" and o.owner_user_id == user.id
+        own = keep_own and is_own_item(o, user.id)
         if (
             profile_id is not None
             and not shown
@@ -647,6 +648,11 @@ def is_manual(opp: Opportunity) -> bool:
     """Added by a member: private, or made public by an admin (the owner link
     may be gone after the account was deleted; made_public_at stays)."""
     return opp.visibility == "private" or opp.made_public_at is not None
+
+
+def is_own_item(opp: Opportunity, user_id: uuid.UUID | None) -> bool:
+    """The caller's own manual item, private or published (decision 50)."""
+    return user_id is not None and opp.owner_user_id == user_id and is_manual(opp)
 
 
 def own_item_out(opp: Opportunity, user_id: uuid.UUID | None) -> S.OwnItem | None:
