@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import dotenv_values
-from pydantic import AliasChoices, Field, SecretStr, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Secrets (spec 10): values copied from .env.example or docs, and strings with
@@ -177,6 +177,14 @@ class Settings(BaseSettings):
     backfill_per_tick: int = Field(default=5, ge=1)
     backfill_max_attempts: int = Field(default=6, ge=1)
 
+    # Renderer service (decision 46): browser_list pages are rendered by the
+    # separate `renderer` container (`bk renderer`), reached at this URL with
+    # this shared token (the same BK_RENDERER_TOKEN the renderer has; at least
+    # 32 random characters). Unset URL: browser_list refuses to run, except with
+    # BK_ENV=dev, where a local headless Chromium is used.
+    renderer_url: str | None = None
+    renderer_token: SecretStr | None = None
+
     # Models (decision 14)
     model_extract: str = "claude-haiku-5-5"
     model_score: str = "claude-haiku-5-5"
@@ -205,6 +213,37 @@ class Settings(BaseSettings):
             raise ValueError(f"BK_UNSUBSCRIBE_SECRET {problem}; {GENERATE_HINT}")
         return v
 
+    @field_validator("renderer_token")
+    @classmethod
+    def _real_renderer_token(cls, v: SecretStr | None) -> SecretStr | None:
+        if v is not None and (problem := secret_problem(v.get_secret_value())):
+            raise ValueError(f"BK_RENDERER_TOKEN {problem}; {GENERATE_HINT}")
+        return v
+
+    @field_validator("renderer_url")
+    @classmethod
+    def _renderer_url(cls, v: str | None) -> str | None:
+        from urllib.parse import urlsplit
+
+        if v is None:
+            return v
+        parts = urlsplit(v.strip())
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise ValueError(
+                "BK_RENDERER_URL must be an http(s) URL, e.g. http://renderer:8100"
+            )
+        if parts.username or parts.password:
+            raise ValueError(
+                "BK_RENDERER_URL must not carry credentials; use BK_RENDERER_TOKEN"
+            )
+        return v.strip().rstrip("/")
+
+    @model_validator(mode="after")
+    def _renderer_needs_token(self) -> "Settings":
+        if self.renderer_url and self.renderer_token is None:
+            raise ValueError("BK_RENDERER_URL is set but BK_RENDERER_TOKEN is not")
+        return self
+
     @field_validator("database_url")
     @classmethod
     def _real_database_password(cls, v: str) -> str:
@@ -228,6 +267,8 @@ class Settings(BaseSettings):
         "api_public_url",
         "unsubscribe_mailto",
         "resend_api_key",
+        "renderer_url",
+        "renderer_token",
         mode="before",
     )
     @classmethod

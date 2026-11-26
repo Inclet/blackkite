@@ -12,10 +12,12 @@ API_DIR = Path(__file__).resolve().parent.parent
 
 
 @app.callback()
-def _startup() -> None:
+def _startup(ctx: typer.Context) -> None:
     # Runs before every command, so any command that sends mail (now or later)
     # warns about an old BK_PUBLIC_BASE_URL that would otherwise go unnoticed.
-    warn_ignored_env()
+    # Not for the renderer: it reads no .env file at all (decision 46).
+    if ctx.invoked_subcommand != "renderer":
+        warn_ignored_env()
 
 
 def _alembic_config():
@@ -489,6 +491,37 @@ def worker() -> None:
     from blackkite.worker.main import main as worker_main
 
     worker_main(get_settings(), get_sessionmaker())
+
+
+@app.command()
+def renderer(
+    host: str = typer.Option("127.0.0.1", help="Address to listen on."),
+    port: int = typer.Option(8100, help="Port to listen on."),
+) -> None:
+    """Run the renderer service (decision 46): headless Chromium for
+    browser_list, holding no secrets. Needs BK_RENDERER_TOKEN; refuses to start
+    if a database URL, API key or password is in its environment."""
+    from pydantic import ValidationError
+
+    from blackkite.renderer.service import RendererConfigError, create_app
+
+    try:
+        application = create_app()
+    except RendererConfigError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(2) from None
+    except ValidationError as e:
+        for err in e.errors():
+            where = ".".join(str(x) for x in err["loc"]) or "settings"
+            name = f"BK_RENDERER_{where.upper()}" if where != "settings" else where
+            msg = err["msg"].removeprefix("Value error, ")
+            typer.echo(f"error: {name}: {msg}", err=True)
+        raise typer.Exit(2) from None
+    import uvicorn
+
+    uvicorn.run(
+        application, host=host, port=port, server_header=False, proxy_headers=False
+    )
 
 
 def main() -> None:

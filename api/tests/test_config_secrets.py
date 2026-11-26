@@ -82,6 +82,7 @@ def test_env_example_secrets_are_empty_or_refused():
         "BK_UNSUBSCRIBE_SECRET",
         "BK_SMTP_PASSWORD",
         "BK_INGEST_IMAP_PASSWORD",
+        "BK_RENDERER_TOKEN",
         "ANTHROPIC_API_KEY",
         "VOYAGE_API_KEY",
         "BRAVE_API_KEY",
@@ -89,7 +90,7 @@ def test_env_example_secrets_are_empty_or_refused():
     ):
         assert values[name] == "", name
     for name, value in values.items():
-        if name.endswith(("_PASSWORD", "_SECRET", "_KEY")):
+        if name.endswith(("_PASSWORD", "_SECRET", "_KEY", "_TOKEN")):
             assert not value, name
     # Example URLs carry no password that would be accepted.
     url = values.get("BK_DATABASE_URL")

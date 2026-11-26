@@ -44,6 +44,13 @@ real one. Its rules (spec 10: admin-entered config is untrusted):
   JavaScript dialogs dismissed, popups closed, a fresh non-persistent browser
   context per page (no profile on disk is reused).
 
+Where it runs (decision 46): in production the API and worker never start a
+browser. ``default_renderer`` returns a ``RemoteRenderer``
+(``blackkite.renderer.client``) that sends each page to the separate,
+secret-free ``renderer`` service (``bk renderer``), which runs
+``PlaywrightRenderer`` with all the rules above applied on its side. Without
+BK_RENDERER_URL, browser_list refuses to run unless BK_ENV=dev.
+
 The browser binary must already be installed (``PLAYWRIGHT_BROWSERS_PATH``);
 nothing here downloads one. ``RequestGuard`` is picklable so the child process
 gets the same guard; tests substitute a loopback-only guard of their own to
@@ -755,15 +762,33 @@ class PlaywrightRenderer:
 RendererFactory = Callable[[FetchClient], Renderer]
 
 
-def default_renderer(client: FetchClient) -> Renderer:
-    return PlaywrightRenderer(
-        client.user_agent,
-        RenderLimits(
-            max_bytes=client.max_bytes,
-            total_bytes=4 * client.max_bytes,
-            request_timeout=client.timeout,
-        ),
+NO_RENDERER = (
+    "browser_list needs the renderer service: set BK_RENDERER_URL and "
+    "BK_RENDERER_TOKEN (a local headless browser is used only with BK_ENV=dev)"
+)
+
+
+def default_renderer(client: FetchClient, settings=None) -> Renderer:
+    """The renderer for a run (decision 46): the ``renderer`` service when
+    BK_RENDERER_URL is set; a local headless Chromium only with BK_ENV=dev;
+    otherwise a CollectorError (no silent local fallback in production)."""
+    from blackkite import config
+
+    settings = settings or config.get_settings()
+    limits = RenderLimits(
+        max_bytes=client.max_bytes,
+        total_bytes=4 * client.max_bytes,
+        request_timeout=client.timeout,
     )
+    if settings.renderer_url:
+        from blackkite.renderer.client import RemoteRenderer
+
+        assert settings.renderer_token is not None  # Settings requires it
+        return RemoteRenderer(settings.renderer_url, settings.renderer_token, limits)
+    if settings.env == "dev":
+        log.info("BK_RENDERER_URL unset: rendering with a local browser (dev only)")
+        return PlaywrightRenderer(client.user_agent, limits)
+    raise CollectorError(NO_RENDERER)
 
 
 # --- the collector -------------------------------------------------------------------------
@@ -798,6 +823,10 @@ class BrowserListCollector(HtmlListCollector):
 
     def fetch(self, source) -> list[RawItem]:
         try:
+            self._config(source.config or {})  # a bad config fails first
+            if self._renderer is None:
+                # Before any request: a missing renderer fails the run cleanly.
+                self._renderer = self.renderer_factory(self.client)
             return super().fetch(source)
         finally:
             if self._renderer is not None:
