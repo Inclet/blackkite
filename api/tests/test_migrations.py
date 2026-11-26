@@ -430,3 +430,76 @@ def test_0019_records_keep_their_first_source(make_database):
     assert rows == [("r1", 1, True), ("r2", 0, None)]
     command.downgrade(cfg, "0018")
     command.upgrade(cfg, "head")
+
+
+def _indexes(url: str, like: str) -> set[str]:
+    return {
+        r[0]
+        for r in _exec(
+            url, "SELECT indexname FROM pg_indexes WHERE indexname LIKE :p", p=like
+        )
+    }
+
+
+TRGM_INDEXES = {
+    "ix_award_entity_key_trgm",
+    "ix_award_title_trgm",
+    "ix_procurement_plan_item_entity_key_trgm",
+    "ix_procurement_plan_item_description_key_trgm",
+}
+HAS_TRGM = "SELECT count(*) FROM pg_extension WHERE extname = 'pg_trgm'"
+
+
+def test_0020_trigram_indexes_and_the_extension_it_created(make_database):
+    url = make_database("bk_migr")
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "head")
+    assert _indexes(url, "%_trgm") == TRGM_INDEXES
+    assert len(_indexes(url, "%_entity_initials")) == 2
+    command.downgrade(cfg, "0019")
+    assert _indexes(url, "%_trgm") == set() and _exec(url, HAS_TRGM) == [(0,)]
+    # An extension that was already there is left in place.
+    _exec(url, "CREATE EXTENSION pg_trgm")
+    command.upgrade(cfg, "head")
+    assert _indexes(url, "%_trgm") == TRGM_INDEXES
+    command.downgrade(cfg, "0019")
+    assert _exec(url, HAS_TRGM) == [(1,)]
+    command.upgrade(cfg, "head")
+    command.check(cfg)
+
+
+def test_0020_without_the_right_to_create_pg_trgm(make_database):
+    """A database user without CREATE on the database: the migration skips the
+    trigram indexes with a warning, and linking falls back to a full check."""
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.orm import Session
+
+    from blackkite.db import trgm
+
+    url = make_database("bk_migr")
+    role = f"bk_lim_{make_url(url).database[-8:]}"
+    _exec(url, "CREATE EXTENSION vector")
+    _exec(url, f"CREATE ROLE {role} LOGIN PASSWORD 'x'")
+    _exec(url, f"GRANT ALL ON SCHEMA public TO {role}")
+    _exec(url, f"REVOKE CREATE ON DATABASE {make_url(url).database} FROM PUBLIC")
+    limited = (
+        make_url(url)
+        .set(username=role, password="x")
+        .render_as_string(hide_password=False)
+    )
+    try:
+        cfg = alembic_config(limited)
+        command.upgrade(cfg, "head")
+        assert _exec(url, HAS_TRGM) == [(0,)]
+        assert _indexes(url, "%_trgm") == set()
+        assert len(_indexes(url, "%_entity_initials")) == 2
+        command.check(cfg)
+        eng = sa.create_engine(limited)
+        try:
+            with Session(eng) as s:
+                assert trgm.available(s) is False
+        finally:
+            eng.dispose()
+    finally:
+        _exec(url, f"DROP OWNED BY {role}")
+        _exec(url, f"DROP ROLE {role}")

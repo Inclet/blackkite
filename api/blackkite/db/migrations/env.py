@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, pool
 from blackkite.config import get_settings
 from blackkite.db import models  # noqa: F401  (registers tables)
 from blackkite.db.base import Base
+from blackkite.db.trgm import MIGRATION_ONLY_INDEXES
 
 config = context.config
 if config.config_file_name is not None and config.attributes.get(
@@ -16,6 +17,12 @@ if config.config_file_name is not None and config.attributes.get(
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
+
+
+def include_object(obj, name, type_, reflected, compare_to) -> bool:
+    """Indexes created only by a migration (trigram and initials indexes, which
+    depend on pg_trgm being installable: blackkite/db/trgm.py) are not drift."""
+    return not (type_ == "index" and name in MIGRATION_ONLY_INDEXES)
 
 
 def _url() -> str:
@@ -28,6 +35,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         compare_type=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -37,7 +45,10 @@ def run_migrations_online() -> None:
     engine = create_engine(_url(), poolclass=pool.NullPool)
     with engine.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata, compare_type=True
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            include_object=include_object,
         )
         with context.begin_transaction():
             context.run_migrations()
