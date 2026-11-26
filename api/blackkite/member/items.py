@@ -220,7 +220,8 @@ def owned_manual(db: Session, user: User, item_id: uuid.UUID) -> Opportunity | N
 
 class AlreadyPublic(Exception):
     """The item is public now: its owner can no longer edit, delete it or
-    withdraw consent."""
+    withdraw consent. Also raised when a publish wins a race with the write
+    (the guarded statement matched no row); the caller rolls back."""
 
 
 def set_share_consent(
@@ -235,7 +236,7 @@ def set_share_consent(
         return
     if allow == (opp.share_consent_at is not None):
         return
-    db.execute(
+    done = db.execute(
         sa.update(Opportunity)
         .where(
             Opportunity.id == opp.id,
@@ -247,9 +248,12 @@ def set_share_consent(
             updated_at=Opportunity.updated_at,
         )
         .execution_options(synchronize_session=False)
-    )
+    ).rowcount
     db.flush()
     db.refresh(opp)
+    # Lost a race to a publish: the item is public now.
+    if not done and opp.made_public_at is not None and not allow:
+        raise AlreadyPublic
 
 
 def _set_note(db: Session, user: User, opp: Opportunity, notes: str | None) -> None:
@@ -314,39 +318,87 @@ def _json(v: Any) -> Any:
 def update_item(
     db: Session, user: User, opp: Opportunity, body: ItemPatch, now: datetime
 ) -> Opportunity:
+    """Edit the caller's private item. The UPDATE itself is guarded by
+    (owner, private), so an edit racing a publish never changes the
+    just-published item: raises AlreadyPublic (nothing written) instead."""
     data = body.model_dump(include=body.model_fields_set)
     values = _values(data, opp, now)
-    changed = False
+    changes: dict[str, Any] = {}
     for column, new in values.items():
         old = getattr(opp, column)
         if column == "value_amount" and old is not None and new is not None:
             same = Decimal(old) == Decimal(new)
         else:
             same = old == new
-        if same:
-            continue
-        db.add(
-            ChangeEvent(
-                opportunity_id=opp.id,
-                field=column,
-                old=_json(old),
-                new=_json(new),
-                at=now,
-            )
+        if not same:
+            changes[column] = new
+    if changes:
+        final = {c: changes.get(c, getattr(opp, c)) for c in _STATUS_COLUMNS}
+        status = status_for(
+            "open" if opp.status == "expired" else opp.status,
+            final["stream"],
+            final["deadline_at"],
+            final["event_start"],
+            final["event_end"],
+            now,
         )
-        setattr(opp, column, new)
-        changed = True
-    if changed:
-        _refresh_status(opp, now)
-        request_scoring(opp, now)
+        done = db.execute(
+            sa.update(Opportunity)
+            .where(
+                Opportunity.id == opp.id,
+                Opportunity.owner_user_id == user.id,
+                Opportunity.visibility == "private",
+            )
+            .values(**changes, status=status, score_requested_at=now)
+            .execution_options(synchronize_session=False)
+        ).rowcount
+        if not done:
+            raise AlreadyPublic
+        for column, new in changes.items():
+            db.add(
+                ChangeEvent(
+                    opportunity_id=opp.id,
+                    field=column,
+                    old=_json(getattr(opp, column)),
+                    new=_json(new),
+                    at=now,
+                )
+            )
+    elif not _still_private(db, user, opp):
+        raise AlreadyPublic
     if "notes" in data:
         _set_note(db, user, opp, data["notes"])
     db.flush()
+    if changes:
+        db.refresh(opp)
     return opp
 
 
+_STATUS_COLUMNS = ("stream", "deadline_at", "event_start", "event_end")
+
+
+def _still_private(db: Session, user: User, opp: Opportunity) -> bool:
+    """Lock the caller's item and check it is still private (for writes that do
+    not touch the item row itself, such as a note-only edit)."""
+    return (
+        db.scalar(
+            sa.select(Opportunity.id)
+            .where(
+                Opportunity.id == opp.id,
+                Opportunity.owner_user_id == user.id,
+                Opportunity.visibility == "private",
+            )
+            .with_for_update()
+        )
+        is not None
+    )
+
+
 def delete_item(db: Session, user: User, opp: Opportunity) -> None:
-    """Delete the item and the owner's per-user rows on it."""
+    """Delete the item and the owner's per-user rows on it. Raises AlreadyPublic
+    (caller rolls back) when a publish got there first."""
+    if not _still_private(db, user, opp):
+        raise AlreadyPublic
     for table in (UserOpportunity, UserOpportunityScore, AlertLog):
         db.execute(
             sa.delete(table).where(

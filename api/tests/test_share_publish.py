@@ -261,3 +261,85 @@ def test_owner_gone_means_nobody_sees_the_private_history(Sessions, db, ana, log
     assert a.delete("/api/me").status_code in (200, 204)
     seen = admin.get(f"/api/opportunities/{oid}").json()["detail"]["changes"]
     assert [c["field"] for c in seen] == ["visibility"]
+
+
+def _publish_after_check(monkeypatch, Sessions):
+    """Make the route's ownership check pass on the private item, then publish
+    it from another connection before the write runs (the race)."""
+    from blackkite.member import items as I
+
+    real = I.owned_manual
+
+    def racing(db, user, item_id):
+        opp = real(db, user, item_id)
+        with Sessions() as other:
+            other.execute(
+                sa.update(Opportunity)
+                .where(Opportunity.id == item_id)
+                .values(visibility="public", made_public_at=sa.func.now())
+            )
+            other.commit()
+        return opp
+
+    monkeypatch.setattr(I, "owned_manual", racing)
+
+
+def test_edit_racing_a_publish_changes_nothing(monkeypatch, Sessions, db, ana, login):
+    a = login(ana.email)
+    oid = _item(a, title="Before", notes="mine")
+    _consent(a, oid, True)
+    _publish_after_check(monkeypatch, Sessions)
+    r = a.patch(f"/api/items/{oid}", json={"title": "After", "value": 5})
+    assert r.status_code == 409
+    assert r.json()["detail"].startswith("This item is public now, so it can't")
+    db.expire_all()
+    opp = db.get(Opportunity, uuid.UUID(oid))
+    assert opp.title == "Before" and opp.value_amount is None
+    assert not db.scalar(
+        sa.select(sa.func.count())
+        .select_from(ChangeEvent)
+        .where(ChangeEvent.opportunity_id == opp.id)
+    )
+
+
+def test_note_only_edit_racing_a_publish_is_refused(
+    monkeypatch, Sessions, db, ana, login
+):
+    a = login(ana.email)
+    oid = _item(a, notes="first")
+    _consent(a, oid, True)
+    _publish_after_check(monkeypatch, Sessions)
+    assert a.patch(f"/api/items/{oid}", json={"notes": "second"}).status_code == 409
+    monkeypatch.undo()
+    assert a.get(f"/api/opportunities/{oid}").json()["detail"]["note"] == "first"
+
+
+def test_delete_racing_a_publish_is_refused(monkeypatch, Sessions, db, ana, login):
+    a = login(ana.email)
+    oid = _item(a, notes="kept")
+    _consent(a, oid, True)
+    _publish_after_check(monkeypatch, Sessions)
+    r = a.delete(f"/api/items/{oid}")
+    assert r.status_code == 409
+    assert r.json()["detail"].startswith("This item is public now, so it can't")
+    monkeypatch.undo()
+    db.expire_all()
+    assert db.get(Opportunity, uuid.UUID(oid)) is not None
+    assert a.get(f"/api/opportunities/{oid}").json()["detail"]["note"] == "kept"
+
+
+def test_withdraw_losing_a_race_to_publish_is_409(
+    monkeypatch, Sessions, db, ana, login
+):
+    a = login(ana.email)
+    oid = _item(a)
+    _consent(a, oid, True)
+    _publish_after_check(monkeypatch, Sessions)
+    r = _consent(a, oid, False)
+    assert r.status_code == 409
+    assert r.json() == {
+        "detail": "This item is public now, so sharing can't be withdrawn. "
+        "Ask an admin if it should come down."
+    }
+    db.expire_all()
+    assert db.get(Opportunity, uuid.UUID(oid)).share_consent_at is not None

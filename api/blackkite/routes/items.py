@@ -80,6 +80,9 @@ def update_item(
     except I.ItemInvalid as e:
         db.rollback()
         raise Refusal(422, e.problems) from None
+    except I.AlreadyPublic:  # published between the check above and the write
+        db.rollback()
+        raise HTTPException(409, PUBLIC_NOW) from None
     db.commit()
     return _out(db, user, opp.id, now)
 
@@ -87,7 +90,11 @@ def update_item(
 @router.delete("/{item_id}", status_code=204)
 def delete_item(item_id: uuid.UUID, user: CurrentUser, db: DbDep) -> Response:
     opp = _own(db, user, item_id)
-    I.delete_item(db, user, opp)
+    try:
+        I.delete_item(db, user, opp)
+    except I.AlreadyPublic:  # published between the check above and the delete
+        db.rollback()
+        raise HTTPException(409, PUBLIC_NOW) from None
     db.commit()
     return Response(status_code=204)
 
@@ -102,6 +109,7 @@ def put_share_consent(
     try:
         I.set_share_consent(db, user, opp, body.allow, now)
     except I.AlreadyPublic:
+        db.rollback()
         raise HTTPException(409, CONSENT_LOCKED) from None
     db.commit()
     return ShareConsentOut(
