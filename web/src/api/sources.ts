@@ -114,6 +114,19 @@ export interface SourceRun {
   itemsNew: number;
   itemsFailed: number;
   error: string | null;
+  /** What the run skipped without failing (decision 49); `[]` when none. Older answers leave it out: read as `[]`. */
+  warnings: RunWarning[];
+}
+
+/** One thing a run (or a test run) skipped without failing (api RunWarningOut). */
+export interface RunWarning {
+  /** `email_no_link`: an email_ingest email with no usable link. Other kinds: show `message`. */
+  kind: string;
+  message: string;
+  sender: string | null;
+  subject: string | null;
+  /** ISO 8601 when it parsed, else as written. */
+  date: string | null;
 }
 
 export interface PreviewItem {
@@ -132,6 +145,8 @@ export interface Preview {
   error: string | null;
   /** When the config itself was refused: one entry per field (api FieldErrorOut); otherwise empty. Older answers leave it out. */
   errors?: FieldError[];
+  /** What the test run skipped without failing, same shape as a run's; `[]` when none. */
+  warnings: RunWarning[];
   items: PreviewItem[];
   totalParsed: number;
   requestsMade: number;
@@ -293,8 +308,8 @@ const post = async <T>(path: string, body?: unknown) => camel<T>(await request<u
 /** A RunPage, or a bare list of runs (earlier answers). */
 function runPage(raw: unknown): RunPage {
   const page = camel<RunPage | SourceRun[]>(raw);
-  if (Array.isArray(page)) return { total: page.length, items: page };
-  return { total: page?.total ?? 0, items: page?.items ?? [] };
+  const items = (Array.isArray(page) ? page : (page?.items ?? [])).map((r) => ({ ...r, warnings: Array.isArray(r.warnings) ? r.warnings : [] }));
+  return { total: Array.isArray(page) ? page.length : (page?.total ?? 0), items };
 }
 
 export const sourcesApi = {
@@ -312,10 +327,11 @@ export const sourcesApi = {
   updateSource: async (id: string, body: Partial<SourceBody>) =>
     camel<SourceDetail>(await request<unknown>(`/api/admin/sources/${enc(id)}`, { method: 'PATCH', body })),
   setStatus: (id: string, status: SourceStatus) => post<SourceDetail>(`/api/admin/sources/${enc(id)}/status`, { status }),
-  /** The run history, newest first; `failed` gives the error log. */
-  runs: async (id: string, opts: { failed?: boolean; limit?: number } = {}, signal?: AbortSignal) => {
+  /** The run history, newest first; `problems` gives the error log (failed runs and runs with warnings), `failed` failed runs only. */
+  runs: async (id: string, opts: { failed?: boolean; problems?: boolean; limit?: number } = {}, signal?: AbortSignal) => {
     const q = new URLSearchParams();
     if (opts.failed) q.set('status', 'failed');
+    if (opts.problems) q.set('problems', 'true');
     q.set('limit', String(opts.limit ?? 20));
     return runPage(await request<unknown>(`/api/admin/sources/${enc(id)}/runs?${q}`, { signal }));
   },

@@ -238,8 +238,19 @@ export function defaultSeed(): Seed {
     ],
     runs: {
       'src-umucyo': [
-        { id: 'run-2', startedAt: '2026-11-24T04:00:00Z', finishedAt: '2026-11-24T04:01:00Z', status: 'succeeded', itemsFound: 9, itemsNew: 2, itemsFailed: 0, error: null },
-        { id: 'run-1', startedAt: '2026-11-23T22:00:00Z', finishedAt: '2026-11-23T22:00:30Z', status: 'failed', itemsFound: 0, itemsNew: 0, itemsFailed: 0, error: 'HTTP 503 from www.umucyo.gov.rw' },
+        {
+          id: 'run-2',
+          startedAt: '2026-11-24T04:00:00Z',
+          finishedAt: '2026-11-24T04:01:00Z',
+          status: 'succeeded',
+          itemsFound: 9,
+          itemsNew: 2,
+          itemsFailed: 0,
+          error: null,
+          // A run that skipped something still succeeded (decision 49).
+          warnings: [{ kind: 'email_no_link', message: 'email has no usable link', sender: 'alerts@jobinrwanda.com', subject: 'New tenders this week', date: '2026-11-24T03:30:00Z' }],
+        },
+        { id: 'run-1', startedAt: '2026-11-23T22:00:00Z', finishedAt: '2026-11-23T22:00:30Z', status: 'failed', itemsFound: 0, itemsNew: 0, itemsFailed: 0, error: 'HTTP 503 from www.umucyo.gov.rw', warnings: [] },
       ],
     },
     history: {
@@ -448,16 +459,21 @@ const TEST_RUN_BUSY = 'Another test run is in progress; try again in a minute.';
 /** BK_SUGGESTIONS_PER_USER_PER_DAY's default. */
 const SUGGESTIONS_PER_DAY = 10;
 
-/** POST …/test-run: a config whose first URL contains "fail" fails; anything else parses two items. */
+/** POST …/test-run: a config whose first URL contains "fail" fails; anything else parses two items. An email_ingest
+ * config (it has a sender) also skips one email with no usable link, as a PreviewOut warning (decision 49). */
 function preview(config: Record<string, unknown>): Record<string, unknown> {
   const url = String(config.list_url ?? config.feed_url ?? config.endpoint ?? '');
   if (url.includes('fail')) {
-    return { ok: false, error: `HTTP 403 from ${url.replace(/^https?:\/\//, '').split('/')[0]}`, errors: [], items: [], totalParsed: 0, requestsMade: 1, elapsedSeconds: 0.4 };
+    return { ok: false, error: `HTTP 403 from ${url.replace(/^https?:\/\//, '').split('/')[0]}`, errors: [], items: [], totalParsed: 0, requestsMade: 1, elapsedSeconds: 0.4, warnings: [] };
   }
+  const warnings = config.sender
+    ? [{ kind: 'email_no_link', message: 'email has no usable link', sender: String(config.sender), subject: 'Weekly tender digest', date: '2026-11-24T03:30:00Z' }]
+    : [];
   return {
     ok: true,
     error: null,
     errors: [],
+    warnings,
     items: [
       {
         url: 'https://www.ncst.gov.rw/calls/1',
@@ -759,7 +775,11 @@ function admin(s: Session, method: string, path: string, fullPath: string, body:
     if (method === 'GET' && !src[2]) return send(res, 200, detail(s, row));
     if (method === 'GET' && src[2] === '/runs') {
       const status = query.get('status');
-      const all = (s.runs[id] ?? []).filter((r) => !status || r.status === status);
+      // problems=true is the error log: failed runs and runs with warnings.
+      const problems = query.get('problems') === 'true';
+      const all = (s.runs[id] ?? [])
+        .filter((r) => !status || r.status === status)
+        .filter((r) => !problems || r.status === 'failed' || (Array.isArray(r.warnings) && r.warnings.length > 0));
       const offset = Number(query.get('offset') ?? 0);
       const limit = Number(query.get('limit') ?? 50);
       return send(res, 200, { total: all.length, items: all.slice(offset, offset + limit) });
@@ -768,7 +788,7 @@ function admin(s: Session, method: string, path: string, fullPath: string, body:
       if (s.testRunBusy) return send(res, 429, { detail: TEST_RUN_BUSY });
       // A stored config the API now refuses: PreviewOut with the sentences in error and the fields in errors.
       const bad = configProblems((row.config ?? {}) as Record<string, unknown>);
-      if (bad.length) return send(res, 200, { ok: false, error: refusal(bad).detail, errors: bad, items: [], totalParsed: 0, requestsMade: 0, elapsedSeconds: 0 });
+      if (bad.length) return send(res, 200, { ok: false, error: refusal(bad).detail, errors: bad, items: [], totalParsed: 0, requestsMade: 0, elapsedSeconds: 0, warnings: [] });
       return send(res, 200, preview(row.config as Record<string, unknown>));
     }
     if (method === 'PATCH' && !src[2]) {

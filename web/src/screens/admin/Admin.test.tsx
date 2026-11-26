@@ -9,7 +9,8 @@ import { REVIEW_COPY } from './AdminReview';
 import { SUGGESTIONS_COPY } from './AdminSuggestions';
 import { USERS_COPY } from './AdminUsers';
 import { EDITOR_COPY } from './SourceEditor';
-import { ADMIN_ME, adminSource, COLLECTOR_TYPES, FAILED_RUNS, INVITES, MEMBER_ME, PREVIEW, REVIEW_ITEM, RUNS, SUGGESTION, USERS } from './testData';
+import { RUN_WORDS } from '../sources/words';
+import { ADMIN_ME, adminSource, COLLECTOR_TYPES, INVITES, MEMBER_ME, PREVIEW, NO_LINK_WARNING, PROBLEM_RUNS, REVIEW_ITEM, RUN_ITEMS, RUNS, SUGGESTION, USERS } from './testData';
 
 beforeEach(() => setViewport('desktop'));
 afterEach(() => vi.unstubAllGlobals());
@@ -73,7 +74,7 @@ function editorRoutes(extra: Record<string, unknown> = {}) {
     'GET /me': ADMIN_ME,
     'GET /api/admin/collector-types': COLLECTOR_TYPES,
     'GET /api/admin/sources/src-1': adminSource(),
-    'GET /api/admin/sources/src-1/runs': (_b: unknown, url: string) => (url.includes('status=failed') ? FAILED_RUNS : RUNS),
+    'GET /api/admin/sources/src-1/runs': (_b: unknown, url: string) => (url.includes('problems=true') ? PROBLEM_RUNS : RUNS),
     ...extra,
   });
 }
@@ -109,6 +110,7 @@ test('new source: the config form is rendered from collector-types; a test run p
   expect(preview.getByText('Published 20 Nov 2026 · Closes 8 Dec 2026')).toBeInTheDocument();
   expect(preview.getByText('Parsed 14 items with 1 request in 1.2 s. Showing the first 1.')).toBeInTheDocument();
   expect(preview.getByText(EDITOR_COPY.previewNothingSaved)).toBeInTheDocument();
+  expect(preview.queryByText(EDITOR_COPY.previewWarnings)).toBeNull();
   expect(api.calls.find((c) => c.key === 'POST /api/admin/sources/test-run')!.body).toEqual({
     collectorType: 'html_list',
     config: { list_url: 'https://www.ncst.gov.rw/calls', selectors: { item: 'article', title: 'h2 a' } },
@@ -340,10 +342,44 @@ test('run history and error log', async () => {
   expect(screen.getByRole('link', { name: 'Back to sources' })).toHaveAttribute('href', '/admin/sources');
   expect(runs.getByText('24 Nov 2026, 06:00')).toBeInTheDocument();
   expect(runs.getByText('9 found · 2 new')).toBeInTheDocument();
-  expect(runs.getByText('Worked')).toBeInTheDocument();
+  expect(runs.getAllByText('Worked')).toHaveLength(2);
   expect(runs.getByText('Failed')).toBeInTheDocument();
+  expect(runs.getByText('3 found · 1 new · 2 warnings')).toBeInTheDocument();
   const log = within(screen.getByRole('region', { name: EDITOR_COPY.errors }));
   expect(log.getByText('HTTP 503 from www.umucyo.gov.rw')).toBeInTheDocument();
+  // A run with warnings still worked: no error line, its warnings in plain words (Kigali time); unknown kinds show the message.
+  expect(log.getByText('Skipped an email with no usable link: "New tenders this week" from alerts@jobinrwanda.com, 24 Nov 2026, 07:30.')).toBeInTheDocument();
+  expect(log.getByText('Attachment too large to read.')).toBeInTheDocument();
+  expect(log.queryByText(RUN_WORDS.failed!)).toBeNull();
+});
+
+test('the error log asks for problems=true; an empty one says no failures and no warnings', async () => {
+  const api = editorRoutes({ 'GET /api/admin/sources/src-1/runs': { total: 1, items: [{ ...RUN_ITEMS[1], warnings: undefined }] } });
+  renderAt('/admin/sources/src-1');
+  const runs = within(await screen.findByRole('region', { name: EDITOR_COPY.runs }));
+  // An older answer without warnings reads as none.
+  expect(runs.getByText('9 found · 2 new')).toBeInTheDocument();
+  const urls = api.fetch.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/runs'));
+  expect(urls).toContain('/api/admin/sources/src-1/runs?problems=true&limit=20');
+  expect(urls.some((u) => u.includes('status=failed'))).toBe(false);
+});
+
+test('run warnings in words: missing parts are left out, a date that did not parse is shown as written', () => {
+  const w = { kind: 'email_no_link', message: 'x', sender: null, subject: null, date: null };
+  expect(EDITOR_COPY.warning(w)).toBe('Skipped an email with no usable link.');
+  expect(EDITOR_COPY.warning({ ...w, sender: 'a@b.rw', date: 'Mon, 24 Nov' })).toBe('Skipped an email with no usable link: from a@b.rw, Mon, 24 Nov.');
+  expect(EDITOR_COPY.warning({ ...w, subject: 'Calls', date: '2026-11-24' })).toBe('Skipped an email with no usable link: "Calls", 24 Nov 2026.');
+  expect(EDITOR_COPY.warning({ ...w, kind: 'other', message: 'Done already.' })).toBe('Done already.');
+  expect(EDITOR_COPY.warning({ ...w, kind: 'other', message: '' })).toBe('Skipped something without failing.');
+});
+
+test('a test run that skipped emails lists its warnings; one without warnings shows none', async () => {
+  editorRoutes({ 'POST /api/admin/sources/test-run': { ...PREVIEW, warnings: [NO_LINK_WARNING] } });
+  renderAt('/admin/sources/src-1');
+  fireEvent.click(await screen.findByRole('button', { name: EDITOR_COPY.testRun }));
+  const preview = within(await screen.findByRole('region', { name: EDITOR_COPY.previewLabel }));
+  expect(preview.getByText(EDITOR_COPY.previewWarnings)).toBeInTheDocument();
+  expect(preview.getByText('Skipped an email with no usable link: "New tenders this week" from alerts@jobinrwanda.com, 24 Nov 2026, 07:30.')).toBeInTheDocument();
 });
 
 test('collector types that fail to load: the config is edited as JSON', async () => {

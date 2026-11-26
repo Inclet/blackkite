@@ -83,6 +83,11 @@ test('admin source routes, with the bodies the editor builds', async () => {
   const ran = await call('c2', 'POST', '/api/admin/sources/test-run', preview);
   expect(fits(ran.json, 'PreviewOut')).toEqual([]);
   expect(fits((await call('c2', 'POST', '/api/admin/sources/src-umucyo/test-run')).json, 'PreviewOut')).toEqual([]);
+  // An email_ingest test run that skipped an email: PreviewOut.warnings, same shape as a run's.
+  const mail = { collectorType: 'email_ingest', config: { sender: 'alerts@jobinrwanda.com' }, homeUrl: null, streams: ['tender'], rateLimit: null };
+  const mailed = (await call('c2', 'POST', '/api/admin/sources/test-run', mail)).json as { warnings: { kind: string }[] };
+  expect(fits(mailed, 'PreviewOut')).toEqual([]);
+  expect(mailed.warnings.map((w) => w.kind)).toEqual(['email_no_link']);
 
   const created = await call('c2', 'POST', '/api/admin/sources', body);
   expect(created.status).toBe(201);
@@ -101,6 +106,10 @@ test('admin source routes, with the bodies the editor builds', async () => {
   expect(runs.total).toBe(2);
   const failed = (await call('c2', 'GET', '/api/admin/sources/src-umucyo/runs?status=failed&limit=20')).json as { items: { status: string }[] };
   expect(failed.items.map((r) => r.status)).toEqual(['failed']);
+  // problems=true (the error log): failed runs and runs that succeeded with warnings.
+  const problems = (await call('c2', 'GET', '/api/admin/sources/src-umucyo/runs?problems=true&limit=20')).json as { items: { status: string; warnings: unknown[] }[] };
+  expect(fits(problems, 'RunPage')).toEqual([]);
+  expect(problems.items.map((r) => [r.status, r.warnings.length])).toEqual([['succeeded', 1], ['failed', 0]]);
 });
 
 test('the promotion gate refuses with its numbers; old /admin API paths are gone', async () => {

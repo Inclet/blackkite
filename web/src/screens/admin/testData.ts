@@ -35,16 +35,27 @@ export function adminSource(over: Record<string, unknown> = {}) {
   };
 }
 
+export const NO_LINK_WARNING = {
+  kind: 'email_no_link',
+  message: 'email has no usable link',
+  sender: 'alerts@jobinrwanda.com',
+  subject: 'New tenders this week',
+  date: '2026-11-24T05:30:00Z',
+};
+
 export const RUN_ITEMS = [
-  { id: 'r2', startedAt: '2026-11-24T04:00:00Z', finishedAt: '2026-11-24T04:01:00Z', status: 'succeeded', itemsFound: 9, itemsNew: 2, itemsFailed: 0, error: null },
-  { id: 'r1', startedAt: '2026-11-23T22:00:00Z', finishedAt: '2026-11-23T22:00:30Z', status: 'failed', itemsFound: 0, itemsNew: 0, itemsFailed: 0, error: 'HTTP 503 from www.umucyo.gov.rw' },
+  { id: 'r3', startedAt: '2026-11-24T08:00:00Z', finishedAt: '2026-11-24T08:01:00Z', status: 'succeeded', itemsFound: 3, itemsNew: 1, itemsFailed: 0, error: null, warnings: [NO_LINK_WARNING, { kind: 'something_new', message: 'Attachment too large to read', sender: null, subject: null, date: null }] },
+  { id: 'r2', startedAt: '2026-11-24T04:00:00Z', finishedAt: '2026-11-24T04:01:00Z', status: 'succeeded', itemsFound: 9, itemsNew: 2, itemsFailed: 0, error: null, warnings: [] },
+  { id: 'r1', startedAt: '2026-11-23T22:00:00Z', finishedAt: '2026-11-23T22:00:30Z', status: 'failed', itemsFound: 0, itemsNew: 0, itemsFailed: 0, error: 'HTTP 503 from www.umucyo.gov.rw', warnings: [] },
 ];
-export const RUNS = { total: 2, items: RUN_ITEMS };
-export const FAILED_RUNS = { total: 1, items: RUN_ITEMS.filter((r) => r.status === 'failed') };
+export const RUNS = { total: 3, items: RUN_ITEMS };
+/** `?problems=true`: failed runs and runs with warnings. */
+export const PROBLEM_RUNS = { total: 2, items: RUN_ITEMS.filter((r) => r.status === 'failed' || r.warnings.length > 0) };
 
 export const PREVIEW = {
   ok: true,
   error: null,
+  warnings: [] as unknown[],
   items: [
     {
       url: 'https://www.umucyo.gov.rw/t/1',

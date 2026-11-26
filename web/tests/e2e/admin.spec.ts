@@ -169,8 +169,11 @@ test('admin: promotion is refused with the gate explained; run history and error
   await expect(status.getByText(/Needs 2 good runs since the last config change: 1 so far\./)).toBeVisible();
   await status.getByRole('button', { name: 'Make active' }).click();
   await expect(status.getByText('Not changed: it stays testing. Needs 2 good runs since the last config change: 1 so far.')).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Error log' }).getByText('HTTP 503 from www.umucyo.gov.rw')).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Run history' }).getByText('9 found · 2 new')).toBeVisible();
+  const log = page.getByRole('region', { name: 'Error log' });
+  await expect(log.getByText('HTTP 503 from www.umucyo.gov.rw')).toBeVisible();
+  // problems=true: the run that worked but skipped an email is in the log too, in plain words.
+  await expect(log.getByText('Skipped an email with no usable link: "New tenders this week" from alerts@jobinrwanda.com, 24 Nov 2026, 05:30.')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Run history' }).getByText('9 found · 2 new · 1 warning')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Status history' }).getByText('Created as testing')).toBeVisible();
   // Every collector is built now: JSON API renders its mapping and pagination fields, with no "not built" note.
   const form = page.getByRole('form', { name: 'Umucyo e-procurement' });

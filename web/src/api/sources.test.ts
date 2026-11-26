@@ -57,7 +57,7 @@ test('paths: members under /api, admins under /api/admin; bodies as the API take
     'POST /api/source-suggestions': { id: 'g', url: 'https://x.rw', status: 'suggested', created_at: 't' },
     'GET /api/admin/sources/s': { id: 's', promotion_runs: 1, config: { list_url: 'u' } },
     'POST /api/admin/sources/s/status': { id: 's', status: 'paused' },
-    'POST /api/admin/sources/test-run': { ok: true, items: [], totalParsed: 0 },
+    'POST /api/admin/sources/test-run': { ok: true, items: [], totalParsed: 0, warnings: [] },
     'GET /api/admin/collector-types': [{ type: 'rss', implemented: false, schemaSource: 'declared', fields: [] }],
     'PATCH /api/admin/users/u2': { id: 'u2', role: 'admin' },
     'GET /api/admin/catalogue': { total: 0, items: [] },
@@ -73,7 +73,7 @@ test('paths: members under /api, admins under /api/admin; bodies as the API take
   expect(await sourcesApi.collectorTypes()).toEqual([{ type: 'rss', label: null, implemented: false, schemaSource: 'declared', fields: [] }]);
   await sourcesApi.reviewQueue();
   await sourcesApi.invite('a@b.rw');
-  expect(await sourcesApi.runs('s', { failed: true })).toEqual({ total: 3, items: [{ id: 'r', status: 'failed' }] });
+  expect(await sourcesApi.runs('s', { failed: true })).toEqual({ total: 3, items: [{ id: 'r', status: 'failed', warnings: [] }] });
   expect((await sourcesApi.setRole('u2', 'admin')).role).toBe('admin');
   expect(api.calls).toEqual([
     { key: 'GET /api/sources', body: undefined },
@@ -91,4 +91,12 @@ test('paths: members under /api, admins under /api/admin; bodies as the API take
   ]);
   expect(api.fetch.mock.calls[10]![0]).toBe('/api/admin/sources/s/runs?status=failed&limit=20');
   expect(api.fetch.mock.calls[8]![0]).toBe('/api/admin/catalogue?needsReview=true');
+});
+
+test('runs(): problems=true for the error log; runs without warnings (older answers, bare lists) read as none', async () => {
+  const api = mockApi({ 'GET /api/admin/sources/s/runs': [{ id: 'r', status: 'succeeded' }, { id: 'q', status: 'succeeded', warnings: [{ kind: 'email_no_link', message: 'm', sender: null, subject: null, date: null }] }] });
+  const page = await sourcesApi.runs('s', { problems: true, limit: 5 });
+  expect(page.total).toBe(2);
+  expect(page.items.map((r) => r.warnings.length)).toEqual([0, 1]);
+  expect(api.fetch.mock.calls[0]![0]).toBe('/api/admin/sources/s/runs?problems=true&limit=5');
 });

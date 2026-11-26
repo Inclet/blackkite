@@ -11,6 +11,7 @@ import {
   type ConfigField,
   type Preview,
   type RunPage,
+  type RunWarning,
   type SourceRun,
   type SourceStatus,
   type Suggestion,
@@ -31,6 +32,7 @@ import { AppShell } from '../shell/AppShell';
 import styles from '../sources/Sources.module.css';
 import {
   COLLECTOR_WORDS,
+  formatDay,
   formatWhen,
   GATE_HELP,
   gateText,
@@ -63,6 +65,29 @@ import {
   type FormErrors,
   type SourceForm,
 } from './sourceForm';
+
+function warningsCount(n: number): string {
+  return n === 1 ? '1 warning' : `${n} warnings`;
+}
+
+/** A warning's date: ISO 8601 in Kigali time, anything else as the email wrote it. */
+function warningDate(date: string): string {
+  if (/^\d{4}-\d{2}-\d{2}T/.test(date)) return formatWhen(date);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return formatDay(date);
+  return date;
+}
+
+/** One run warning in plain words (api RunWarningOut). Unknown kinds show the API's message. */
+function warningText(w: RunWarning): string {
+  if (w.kind === 'email_no_link') {
+    const who = [w.subject ? `"${w.subject}"` : null, w.sender ? `from ${w.sender}` : null].filter(Boolean).join(' ');
+    const parts = [who, w.date ? warningDate(w.date) : null].filter(Boolean).join(', ');
+    return `Skipped an email with no usable link${parts ? `: ${parts}` : ''}.`;
+  }
+  const m = (w.message ?? '').trim();
+  if (!m) return 'Skipped something without failing.';
+  return /[.!?]$/.test(m) ? m : `${m}.`;
+}
 
 export const EDITOR_COPY = {
   newTitle: 'New source',
@@ -126,9 +151,13 @@ export const EDITOR_COPY = {
   runs: 'Run history',
   noRuns: 'No runs yet. It runs on its schedule once saved.',
   runLine: (r: SourceRun) =>
-    `${r.itemsFound} found · ${r.itemsNew} new${r.itemsFailed ? ` · ${r.itemsFailed} could not be read` : ''}`,
+    `${r.itemsFound} found · ${r.itemsNew} new${r.itemsFailed ? ` · ${r.itemsFailed} could not be read` : ''}${
+      r.warnings?.length ? ` · ${warningsCount(r.warnings.length)}` : ''
+    }`,
   errors: 'Error log',
-  noErrors: 'No failed runs.',
+  noErrors: 'No failed runs and no warnings.',
+  warning: warningText,
+  previewWarnings: 'Skipped without failing:',
   moreRuns: (shown: number, total: number) => `Showing the latest ${shown} of ${total}.`,
   history: 'Status history',
   historyLine: (from: string | null, to: string, reason: string | null) =>
@@ -173,7 +202,7 @@ function Existing({ id }: { id: string }) {
   const source = useResource(`admin-source-${id}`, (s) => sourcesApi.adminSource(id, s));
   const types = useResource('collector-types', (s) => sourcesApi.collectorTypes(s));
   const runs = useResource(`admin-runs-${id}`, (s) => sourcesApi.runs(id, {}, s));
-  const errorLog = useResource(`admin-run-errors-${id}`, (s) => sourcesApi.runs(id, { failed: true }, s));
+  const errorLog = useResource(`admin-run-errors-${id}`, (s) => sourcesApi.runs(id, { problems: true }, s));
   const path = `/admin/sources/${id}`;
   const failed = adminFailure(path, source.error, types.error, runs.error);
   if (failed) return failed;
@@ -548,6 +577,16 @@ function TestResult({ test }: { test: TestState }) {
         {p.ok && p.items.length === 0 && <div className={styles.alertStatus}>{EDITOR_COPY.previewEmpty}</div>}
         <div className={styles.status}>{EDITOR_COPY.previewSummary(p.totalParsed, p.items.length, p.requestsMade, p.elapsedSeconds)}</div>
         <div className={styles.status}>{EDITOR_COPY.previewNothingSaved}</div>
+        {p.warnings.length > 0 && (
+          <>
+            <div className={styles.status}>{EDITOR_COPY.previewWarnings}</div>
+            {p.warnings.map((w, i) => (
+              <div key={i} className={styles.note}>
+                {EDITOR_COPY.warning(w)}
+              </div>
+            ))}
+          </>
+        )}
       </div>
       {p.items.length > 0 && (
         <div className={styles.rows}>
@@ -688,7 +727,12 @@ function Runs({ runs, errorLog }: { runs: RunPage | undefined; errorLog: RunPage
               {errorLog.items.map((r) => (
                 <div key={r.id} className={styles.stackRow}>
                   <span className={styles.rowTitle}>{formatWhen(r.startedAt)}</span>
-                  <span className={styles.note}>{r.error ?? RUN_WORDS.failed}</span>
+                  {(r.status === 'failed' || r.error) && <span className={styles.note}>{r.error ?? RUN_WORDS.failed}</span>}
+                  {r.warnings.map((w, i) => (
+                    <span key={i} className={styles.note}>
+                      {EDITOR_COPY.warning(w)}
+                    </span>
+                  ))}
                 </div>
               ))}
             </div>
