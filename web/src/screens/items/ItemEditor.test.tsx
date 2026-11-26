@@ -144,8 +144,23 @@ test('edit: prefilled from what the owner entered, PATCH, back to the item', asy
   fireEvent.click(screen.getByRole('button', { name: ITEM_COPY.save }));
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/own-1'));
   const body = api.calls.find((c) => c.key === 'PATCH /api/items/own-1')!.body as Record<string, unknown>;
-  expect(body.title).toBe('Fuel supply, phase 2');
-  expect(body.organisation).toBeNull();
+  expect(body).toEqual({ title: 'Fuel supply, phase 2', organisation: null });
+});
+
+test('edit: an untouched save of a same-day timed event sends no changes and keeps the end time', async () => {
+  const item = owned();
+  Object.assign(item, { stream: 'event', deadline: null, eventDates: { start: '2026-12-07', end: '2026-12-07' } });
+  item.detail.fields = [
+    { name: 'eventStart', value: '2026-12-07T09:00:00+02:00' },
+    { name: 'eventEnd', value: '2026-12-07T13:30:00+02:00' },
+  ];
+  const api = mockApi({ 'GET /me': ME, 'GET /api/opportunities/own-1': item, 'PATCH /api/items/own-1': item });
+  const router = renderAt('/items/own-1/edit');
+  expect(await screen.findByLabelText(ITEM_COPY.eventEnd)).toHaveValue('7 Dec 2026, 1:30pm');
+  expect(screen.getByLabelText(ITEM_COPY.eventStart)).toHaveValue('7 Dec 2026, 9am');
+  fireEvent.click(screen.getByRole('button', { name: ITEM_COPY.save }));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/own-1'));
+  expect(api.calls.find((c) => c.key === 'PATCH /api/items/own-1')!.body).toEqual({});
 });
 
 test('edit someone else\'s item: a plain refusal', async () => {

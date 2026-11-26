@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { setNowForTests } from '../../lib/now';
-import { emptyForm, ITEM_ERRORS, serverErrors, toForm, toInput, validate } from './itemForm';
+import { changedInput, emptyForm, ITEM_ERRORS, serverErrors, toForm, toInput, validate } from './itemForm';
 import type { OwnedDetail } from '../../api/m4';
 
 beforeEach(() => setNowForTests('2026-11-24T14:00:00+02:00'));
@@ -180,9 +180,22 @@ test.each([
     { eventStart: '7 Dec 2026', eventEnd: '7 Dec 2026' },
     { eventStart: '2026-12-07', eventEnd: '2026-12-07' },
   ],
-] as const)('date round trip, %s: loads as typed and sends what was stored', (_name, item, shown, sent) => {
+] as const)('date round trip, %s: loads as typed, and an untouched save changes nothing', (_name, item, shown, sent) => {
   const form = toForm(item);
   expect(form).toMatchObject(shown);
   expect(validate(form)).toEqual({});
   expect(toInput(form)).toMatchObject(sent);
+  expect(changedInput(form, { ...form })).toEqual({});
+});
+
+test('an edit sends only what changed', () => {
+  const loaded = toForm(stored('event', { eventDates: { start: '2026-12-07', end: '2026-12-07' } }, [{ name: 'eventStart', value: '2026-12-07T09:00:00+02:00' }, { name: 'eventEnd', value: '2026-12-07T13:30:00+02:00' }, { name: 'organisation', value: 'RDB' }]));
+  expect(changedInput(loaded, { ...loaded, title: 'Item 2' })).toEqual({ title: 'Item 2' });
+  expect(changedInput(loaded, { ...loaded, organisation: '' })).toEqual({ organisation: null });
+  // The same instant typed another way is not a change.
+  expect(changedInput(loaded, { ...loaded, eventEnd: '07/12/2026 13:30' })).toEqual({});
+  expect(changedInput(loaded, { ...loaded, eventEnd: '7 Dec 2026, 2pm' })).toEqual({ eventEnd: '2026-12-07T14:00' });
+  // A value brings its currency; a new stream clears the other stream's dates.
+  expect(changedInput(loaded, { ...loaded, value: '5000000' })).toEqual({ value: 5000000, currency: 'RWF' });
+  expect(changedInput(loaded, { ...loaded, stream: 'tender', deadline: '9 Dec 2026' })).toEqual({ stream: 'tender', deadline: '2026-12-09', eventStart: null, eventEnd: null });
 });

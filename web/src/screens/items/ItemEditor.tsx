@@ -14,7 +14,7 @@ import { LoadState } from '../common/LoadState';
 import { AppShell } from '../shell/AppShell';
 import { SignIn } from '../SignIn';
 import styles from '../sources/Sources.module.css';
-import { emptyForm, serverErrors, toForm, toInput, validate, type ItemErrors, type ItemForm } from './itemForm';
+import { changedInput, emptyForm, serverErrors, toForm, toInput, validate, type ItemErrors, type ItemForm } from './itemForm';
 
 /** Not on any board (design review). */
 export const ITEM_COPY = {
@@ -112,6 +112,8 @@ function ChipGroup({ id, label, error, children }: { id: string; label: string; 
 
 function Editor({ id, initial }: { id?: string; initial?: ItemForm }) {
   const navigate = useNavigate();
+  // What the form loaded with: an edit sends only the fields changed since (changedInput).
+  const [loaded] = useState(initial);
   const [form, setForm] = useState<ItemForm>(initial ?? emptyForm());
   const [errors, setErrors] = useState<ItemErrors>({});
   const [status, setStatus] = useState<'idle' | 'saving' | 'invalid' | 'refused' | 'published' | 'unreachable'>('idle');
@@ -134,8 +136,7 @@ function Editor({ id, initial }: { id?: string; initial?: ItemForm }) {
     if (Object.keys(found).length) return setStatus('invalid');
     setStatus('saving');
     try {
-      const body = toInput(form);
-      const saved = id ? await m4Api.updateItem(id, body) : await m4Api.createItem(body);
+      const saved = id && loaded ? await m4Api.updateItem(id, changedInput(loaded, form)) : await m4Api.createItem(toInput(form));
       rememberItem(saved);
       navigate(`/o/${encodeURIComponent(saved.id)}`, { replace: Boolean(id) });
     } catch (err) {

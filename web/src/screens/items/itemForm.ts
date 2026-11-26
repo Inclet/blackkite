@@ -162,3 +162,18 @@ export function toInput(f: ItemForm): PrivateItemInput {
     notes: text(f.notes),
   };
 }
+
+/**
+ * The PATCH /api/items/{id} body: only what the user changed since the form
+ * loaded, compared as the API would read it. An untouched save sends {}, so a
+ * stored value the form shows differently can never be cleared or rewritten.
+ */
+export function changedInput(loaded: ItemForm, current: ItemForm): Partial<PrivateItemInput> {
+  const before = toInput(loaded);
+  const after = toInput(current);
+  const out: Partial<PrivateItemInput> = {};
+  for (const k of Object.keys(after) as (keyof PrivateItemInput)[]) {
+    if (before[k] !== after[k]) (out as Record<string, unknown>)[k] = after[k];
+  }
+  return out;
+}

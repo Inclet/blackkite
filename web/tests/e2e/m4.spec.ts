@@ -135,6 +135,32 @@ test('private item: create, edit, consent, admin publish locks it', async ({ pag
   await expect(page.getByRole('region', { name: 'History' })).toContainText('an admin made it public');
 });
 
+test('private item: a same-day timed event survives an untouched edit', async ({ page }, testInfo) => {
+  const api = await stubSession(page, testInfo.testId);
+  await page.setViewportSize(desktop);
+  await open(page, '/items/new');
+  const form = page.getByRole('form', { name: 'Add an item' });
+  await form.getByRole('button', { name: 'Events' }).click();
+  await form.getByLabel('Title').fill('Logistics breakfast');
+  await form.getByLabel('Starts (optional)').fill('7 Dec 2026, 9am');
+  await form.getByLabel('Ends (optional)').fill('7 Dec 2026, 1:30 pm');
+  await form.getByRole('button', { name: 'Add the item' }).click();
+  await expect(page).toHaveURL(/\/o\/own-1$/);
+
+  await page.getByRole('article').getByRole('button', { name: 'Edit: Logistics breakfast' }).click();
+  await expect(page.getByLabel('Starts (optional)')).toHaveValue('7 Dec 2026, 9am');
+  await expect(page.getByLabel('Ends (optional)')).toHaveValue('7 Dec 2026, 1:30pm');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page).toHaveURL(/\/o\/own-1$/);
+  const patch = (await api.seen()).find((r) => r.method === 'PATCH' && r.url === '/api/items/own-1')!;
+  expect(JSON.parse(patch.body)).toEqual({});
+
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'History' })).toContainText('No changes since Blackkite first saw it.');
+  await page.getByRole('article').getByRole('button', { name: 'Edit: Logistics breakfast' }).click();
+  await expect(page.getByLabel('Ends (optional)')).toHaveValue('7 Dec 2026, 1:30pm');
+});
+
 test('private item: delete with a confirm; a refused publish is a plain sentence', async ({ page }, testInfo) => {
   await stubSession(page, testInfo.testId);
   await page.setViewportSize(phone);

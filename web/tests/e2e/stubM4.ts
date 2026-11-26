@@ -161,7 +161,8 @@ function refusal(problems: Problem[]) {
 /** A year back to two years ahead of the frozen today, as the API's plausible window. */
 const inWindow = (iso: string) => iso >= '2025-11-24' && iso <= '2028-11-24';
 
-function itemRefusal(b: Record<string, unknown>, creating: boolean, stream: unknown): Problem[] {
+/** `merged` is the item as it would be after the write (the API checks a PATCH against the stored values it leaves out). */
+function itemRefusal(b: Record<string, unknown>, creating: boolean, merged: Record<string, unknown>): Problem[] {
   const out: Problem[] = [];
   const extra = Object.keys(b).filter((k) => !ITEM_KEYS.has(k));
   if (extra.length) out.push({ field: null, message: `unknown fields ${extra.join(', ')}` });
@@ -173,8 +174,8 @@ function itemRefusal(b: Record<string, unknown>, creating: boolean, stream: unkn
     if (typeof v !== 'string' || !ITEM_DATE.test(v)) out.push({ field: k, message: 'include the year, for example 30 Nov 2026' });
     else if (!inWindow(v.slice(0, 10))) out.push({ field: k, message: 'must be between a year ago and two years from now' });
   }
-  if ((b.eventStart || b.eventEnd) && stream !== 'event') out.push({ field: 'eventStart', message: 'only events have event dates' });
-  if (b.eventEnd && !b.eventStart) out.push({ field: 'eventEnd', message: 'needs a start date' });
+  if ((merged.eventStart || merged.eventEnd) && merged.stream !== 'event') out.push({ field: 'eventStart', message: 'only events have event dates' });
+  if (merged.eventEnd && !merged.eventStart) out.push({ field: 'eventEnd', message: 'needs a start date' });
   if (b.url !== undefined && b.url !== null && (typeof b.url !== 'string' || !/^https?:\/\/[^/\s]+\.[^/\s]+/.test(b.url))) out.push({ field: 'url', message: 'use a web address starting with https://' });
   if (b.value !== undefined && b.value !== null && (typeof b.value !== 'number' || b.value < 0)) out.push({ field: 'value', message: 'use a number' });
   if (b.currency !== undefined && b.currency !== null && !/^[A-Za-z]{3}$/.test(String(b.currency))) out.push({ field: 'currency', message: 'use three letters, such as RWF' });
@@ -285,7 +286,7 @@ export function m4Member(s: M4State, method: string, path: string, q: URLSearchP
     return send(res, 200, link(STAMP)), true;
   }
   if (method === 'POST' && path === '/items') {
-    const refused = itemRefusal(b, true, b.stream);
+    const refused = itemRefusal(b, true, b);
     if (refused.length) return send(res, 422, refusal(refused)), true;
     const id = `own-${Object.keys(s.own).length + 1}`;
     const input = Object.fromEntries(Object.entries(b).filter(([, v]) => v !== null && v !== undefined && v !== ''));
@@ -313,7 +314,7 @@ export function m4Member(s: M4State, method: string, path: string, q: URLSearchP
   if ((method === 'PATCH' || method === 'DELETE') && !m[2] && own.published) return send(res, 409, isPublic), true;
   if (method === 'PATCH' && !m[2]) {
     if (b.stream === null || b.title === null) return send(res, 422, refusal([{ field: b.stream === null ? 'stream' : 'title', message: 'cannot be cleared' }])), true;
-    const refused = itemRefusal(b, false, b.stream ?? own.input.stream);
+    const refused = itemRefusal(b, false, { ...own.input, ...b });
     if (refused.length) return send(res, 422, refusal(refused)), true;
     const next = { ...own.input, ...b };
     for (const [k, v] of Object.entries(b)) {
