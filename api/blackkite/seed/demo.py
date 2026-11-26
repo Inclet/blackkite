@@ -32,6 +32,7 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
+from blackkite.auth.service import check_email
 from blackkite.db.models import (
     Opportunity,
     OpportunitySource,
@@ -183,6 +184,56 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         subtype="competition",
         tags=("service:AI/ML", "sector:public sector"),
         value=(20_000, "USD"),
+    ),
+    # For a second-user test with an NGO profile on demo data alone.
+    DemoItem(
+        "ngo-community-grant",
+        "funding",
+        "[Demo] Community nutrition grant for local NGOs",
+        "Example Wellbeing Trust (fictional)",
+        "A fictional grant for community nutrition and health education work. "
+        "Demo data only.",
+        "issuer",
+        25,
+        subtype="grant",
+        tags=("sector:health", "sector:nutrition", "service:community health"),
+        value=(30_000, "USD"),
+        eligibility=(
+            "Open only to registered NGOs and civil society organisations "
+            "operating in Rwanda."
+        ),
+        requirements=("Certificate of registration as an NGO.",),
+    ),
+    DemoItem(
+        "nutrition-supplies",
+        "tender",
+        "[Demo] Supply of nutrition supplements to health centres",
+        "Example Health Supplies Agency (fictional)",
+        "A fictional call for fortified flour and nutrition supplements for "
+        "district health centres. Demo data only.",
+        "board",
+        16,
+        organisation_short="EHSA (fictional)",
+        subtype="request for bids",
+        tags=("sector:health", "sector:nutrition", "service:supply of supplements"),
+        value=(18_000_000, "RWF"),
+    ),
+    DemoItem(
+        "seed-distribution",
+        "tender",
+        "[Demo] Supply of improved seeds and fertiliser to cooperatives",
+        "Example Agriculture Board (fictional)",
+        "A fictional call for seeds and fertiliser delivered to farmer "
+        "cooperatives. Demo data only.",
+        "issuer",
+        22,
+        subtype="request for bids",
+        tags=(
+            "sector:agriculture",
+            "sector:food security",
+            "service:supply of agricultural inputs",
+        ),
+        value=(60_000_000, "RWF"),
     ),
     DemoItem(
         "treasury-bond",
@@ -351,6 +402,12 @@ def demo_seed(
         raise DemoRefused(
             f"BK_ENV is {env!r}; the demo seed runs only when it is 'dev'"
         )
+    if not admin_email or not admin_email.strip():
+        raise DemoRefused("BK_FIRST_ADMIN_EMAIL is not set")
+    try:
+        check_email(admin_email, setting="BK_FIRST_ADMIN_EMAIL")
+    except ValueError as e:
+        raise DemoRefused(str(e)) from None
     n = non_demo_count(db)
     if n:
         raise DemoRefused(

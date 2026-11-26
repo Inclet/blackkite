@@ -487,12 +487,14 @@ def backfill_cmd(
 
 
 @app.command()
-def worker() -> None:
+def worker(
+    once: bool = typer.Option(False, "--once", help="Run exactly one tick, then exit."),
+) -> None:
     """Run the scheduler: every active/testing source on its schedule."""
     from blackkite.db.session import get_sessionmaker
     from blackkite.worker.main import main as worker_main
 
-    worker_main(get_settings(), get_sessionmaker())
+    worker_main(get_settings(), get_sessionmaker(), once=once)
 
 
 @app.command()

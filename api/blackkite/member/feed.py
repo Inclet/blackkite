@@ -13,6 +13,7 @@ from blackkite.db.models import (
     DigestSetting,
     Opportunity,
     OpportunitySource,
+    Profile,
     Source,
     User,
     UserOpportunity,
@@ -40,6 +41,7 @@ from blackkite.member.view import (
     sources_checked,
 )
 from blackkite.pipeline.visibility import visible_source_link
+from blackkite.scoring import instruments
 
 # Upper bound on one feed response (v1 volume is far below it).
 FEED_LIMIT = 500
@@ -162,9 +164,34 @@ def feed_rows(
             if _tracked_or_own(r, user.id)
         ]
     rows = [r for r in rows if not _hidden_without_fit_word(r, user.id)]
+    if f.profile_id is not None:
+        rows = _chosen_instruments_only(db, user, f.profile_id, rows)
     if f.fit is not None:
         rows = [r for r in rows if _passes_fit(r, f.fit, now)]
     return closing_soonest(rows, now)[:limit]
+
+
+def _chosen_instruments_only(
+    db: Session, user: User, profile_id: uuid.UUID, rows: list[Row]
+) -> list[Row]:
+    """Under one profile's filter, investment items of an instrument kind the
+    profile did not choose are left out (scoring/instruments.py). Items of an
+    unknown kind, a profile with no instruments, and the caller's own items
+    stay."""
+    data = db.scalar(
+        sa.select(Profile.data).where(
+            Profile.id == profile_id, Profile.user_id == user.id
+        )
+    )
+    if instruments.chosen_kinds(data) is None:
+        return rows
+    return [
+        r
+        for r in rows
+        if r.opp.stream != "investment"
+        or is_own_item(r.opp, user.id)
+        or instruments.instrument_chosen(r.opp, data) is not False
+    ]
 
 
 # States that keep an item in the feed even with no fit word (decision 41).

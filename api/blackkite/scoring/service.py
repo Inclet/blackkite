@@ -64,6 +64,7 @@ from blackkite.llm.client import LLMClient, LLMError
 from blackkite.llm.embeddings import Embedder
 from blackkite.pipeline.dates import kigali_date
 from blackkite.pipeline.visibility import MEMBER_VISIBLE_SOURCE_STATUSES, visible_to
+from blackkite.scoring import instruments
 from blackkite.scoring import judge as judge_mod
 from blackkite.scoring.fitword import fit_word
 from blackkite.scoring.match import Match, match, profile_embedding
@@ -359,13 +360,35 @@ def _full_date(dt: datetime) -> str:
     return f"{d.day} {d.strftime('%B %Y')}"
 
 
-def _rules_reason(opp: Opportunity, m: Match) -> str:
+def _and(words: list[str]) -> str:
+    if len(words) <= 1:
+        return "".join(words)
+    return f"{', '.join(words[:-1])} and {words[-1]}"
+
+
+def _mentions(m: Match) -> str:
+    """ "It mentions ..." from the item's own matched words: whole profile terms
+    are claimed ("which this profile lists"), single words only said."""
+    words = m.matched[:3]
+    listed = [w for w in words if w.lower() in {p.lower() for p in m.phrases}]
+    other = [w for w in words if w not in listed]
+    if listed and other:
+        return (
+            f"It mentions {_and(listed)}, which this profile lists, "
+            f"and also {_and(other)}."
+        )
+    if listed:
+        return f"It mentions {_and(listed)}, which this profile lists."
+    return f"It mentions {_and(other)}, close to what this profile lists."
+
+
+def _rules_reason(opp: Opportunity, m: Match, chosen: bool | None = None) -> str:
     if opp.stream == "event":
         what = (opp.subtype or "Event").capitalize()
         when = opp.event_start or opp.deadline_at
         text = what + (f" on {_full_date(when)}" if when else ", date not stated")
         if m.matched:
-            text += f", on {', '.join(m.matched[:2])}"
+            text += f", on {_and(m.matched[:2])}"
         return text + "."
     if opp.stream == "investment":
         what = (opp.subtype or "Investment listing").capitalize()
@@ -373,13 +396,16 @@ def _rules_reason(opp: Opportunity, m: Match) -> str:
         text = what + (f" from {org}" if org else "")
         if opp.deadline_at:
             text += f", closing {_full_date(opp.deadline_at)}"
+        if chosen is False:
+            kind = instruments.LABELS[instruments.item_kind(opp)]
+            text += f"; this profile's instruments do not include {kind}"
         return text + "."
     if m.excluded:
         return f"It matches this profile's exclusion “{m.excluded}”."
     if not m.shortlisted:
         return "Little in it matches what this profile lists."
     if m.matched:
-        return f"It mentions {', '.join(m.matched[:3])}, which this profile lists."
+        return _mentions(m)
     if m.similarity is not None:
         return "Its description is close to what this profile lists."
     return "Not enough detail to judge the fit."
@@ -503,8 +529,17 @@ def score_pair(
     if opp.stream not in LLM_STREAMS:
         # Spec 7.1: events and investments rank on time, verification and source.
         fit_conf = 0.0 if m.excluded else (0.5 if m.matched else 0.4)
+        chosen = None
+        if opp.stream == "investment" and not m.excluded:
+            # The profile's chosen instruments decide an investment's fit: a
+            # kind it did not choose ranks below every kind it did.
+            chosen = instruments.instrument_chosen(opp, profile.data)
+            if chosen is True:
+                fit_conf = s.instrument_chosen_fit
+            elif chosen is False:
+                fit_conf = s.instrument_other_fit
         elig_conf = rules_elig
-        reason = _rules_reason(opp, m)
+        reason = _rules_reason(opp, m, chosen)
         reasons = [reason]
     elif not m.shortlisted:
         fit_conf = min(m.strength, 0.3)

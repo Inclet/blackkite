@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 import sqlalchemy as sa
 from typer.testing import CliRunner
@@ -197,3 +199,38 @@ def test_sources_lists_status_and_health(bk, db):
     assert lines[1].split()[:4] == ["Alpha", "active", "html_list", "failing"]
     assert lines[2].split()[:4] == ["Beta", "testing", "html_list", "unknown"]
     assert lines[2].endswith("never")
+
+
+def test_worker_once_runs_one_tick_and_exits(bk, db, monkeypatch):
+    from blackkite.collectors.http import MemoryHttpCache
+    from blackkite.worker import main as worker_main
+
+    monkeypatch.setenv("BK_MAIL_TRANSPORT", "console")
+    from blackkite.config import get_settings
+
+    get_settings.cache_clear()
+    ticks = []
+    real_tick = worker_main.tick
+    monkeypatch.setattr(
+        worker_main,
+        "make_fetch_client",
+        lambda settings, cache=None: make_client(bk.web, cache=MemoryHttpCache()),
+    )
+    monkeypatch.setattr(
+        worker_main, "tick", lambda *a, **k: ticks.append(1) or real_tick(*a, **k)
+    )
+
+    def no_scheduler(*a, **k):
+        raise AssertionError("--once must not start the scheduler")
+
+    monkeypatch.setattr(worker_main, "build_scheduler", no_scheduler)
+    src = add(db, "Once source")
+    src.created_at = src.created_at - timedelta(days=2)  # due on its schedule
+    db.commit()
+    r = bk("worker", "--once")
+    assert r.exit_code == 0, r.output
+    assert ticks == [1]
+    db.expire_all()
+    runs = db.scalars(sa.select(SourceRun).where(SourceRun.source_id == src.id)).all()
+    assert len(runs) == 1 and runs[0].finished_at is not None
+    assert ticks == [1]  # exited after one tick

@@ -85,6 +85,14 @@ class ScoringSettings(BaseSettings):
     # Unflagged eligibility confidence of a rules-only score.
     rules_eligibility: float = Field(default=0.5, ge=0, le=1)
 
+    # Investments (spec 7.1 ranks them on time, verification and source): the
+    # fit of an item whose instrument kind the profile chose, and of one whose
+    # kind it did not (scoring/instruments.py). The gap (x the fit weight) is
+    # larger than the time and source weights together, so an unchosen kind
+    # always ranks below a chosen one. Unknown kind or no instruments: 0.4.
+    instrument_chosen_fit: float = Field(default=0.8, ge=0, le=1)
+    instrument_other_fit: float = Field(default=0.1, ge=0, le=1)
+
     time_rules: dict[str, TimeRule] = Field(default_factory=_default_time_rules)
     # Time score when the deadline (or event start) is unknown.
     time_unknown: float = Field(default=0.4, ge=0, le=1)

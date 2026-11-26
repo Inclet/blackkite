@@ -9,7 +9,7 @@ import sqlalchemy as sa
 import yaml
 from sqlalchemy.orm import Session as DB
 
-from blackkite.auth.service import find_user_by_email, normalise_email
+from blackkite.auth.service import check_email, find_user_by_email
 from blackkite.db.models import DigestSetting, Profile, Source, User
 from blackkite.seed.sources import SEED_SOURCES
 
@@ -34,7 +34,7 @@ class BootstrapResult:
 def bootstrap(db: DB, email: str | None) -> BootstrapResult:
     if not email or not email.strip():
         raise ValueError("BK_FIRST_ADMIN_EMAIL is not set")
-    email = normalise_email(email)
+    email = check_email(email, setting="BK_FIRST_ADMIN_EMAIL")
     user = find_user_by_email(db, email)
     created = user is None
     if user is None:

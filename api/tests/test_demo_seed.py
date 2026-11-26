@@ -67,14 +67,21 @@ def test_refuses_without_admin_email(db):
         demo_seed(db, env="dev", admin_email=None, now=NOW)
 
 
+def test_refuses_a_special_use_admin_email(db):
+    with pytest.raises(DemoRefused, match=r"special-use domain \.test"):
+        demo_seed(db, env="dev", admin_email="owner@demo.test", now=NOW)
+    with pytest.raises(DemoRefused, match="not a valid email address"):
+        demo_seed(db, env="dev", admin_email="owner", now=NOW)
+
+
 def test_loads_a_fictional_catalogue_and_scores_it(db, settings):
     r = demo_seed(db, env="dev", admin_email=ADMIN, now=NOW)
     db.commit()
     opps = db.scalars(sa.select(Opportunity)).all()
-    assert len(opps) == r.items == len(DEMO_ITEMS) == 10
+    assert len(opps) == r.items == len(DEMO_ITEMS) == 13
     assert Counter(o.stream for o in opps) == {
-        "tender": 4,
-        "funding": 2,
+        "tender": 6,
+        "funding": 3,
         "investment": 2,
         "event": 2,
     }
@@ -97,7 +104,7 @@ def test_loads_a_fictional_catalogue_and_scores_it(db, settings):
     admin_profiles = db.scalars(sa.select(Profile)).all()
     assert {p.name for p in admin_profiles} == {"Ironji-Trade", "AI lab", "Personal"}
     rows = db.scalars(sa.select(UserOpportunityScore)).all()
-    assert len(rows) == 10 * 3
+    assert len(rows) == 13 * 3
     assert {r.score_breakdown["model"] for r in rows} == {None}
     assert {r.score_breakdown["fit_word"] for r in rows} <= {"possible", None}
     assert r.stats.llm_calls == 0
@@ -121,11 +128,11 @@ def test_rerun_replaces_the_demo_items(db):
     db.commit()
     r = demo_seed(db, env="dev", admin_email=ADMIN, now=NOW)
     db.commit()
-    assert r.replaced == 10
-    assert count(db, Opportunity) == 10
+    assert r.replaced == 13
+    assert count(db, Opportunity) == 13
     assert count(db, Source) == 2
     assert count(db, SourceRun) == 4
-    assert count(db, OpportunitySource) == 10
+    assert count(db, OpportunitySource) == 13
 
 
 def test_other_users_are_not_scored(db):
@@ -174,7 +181,7 @@ def test_cli_demo_seed_then_dry_run_digest(cli_env, db):
     get_settings.cache_clear()
     r = runner.invoke(cli.app, ["demo-seed"])
     assert r.exit_code == 0, r.output
-    assert "10 fictional items on 2 demo sources" in r.output
+    assert "13 fictional items on 2 demo sources" in r.output
     assert "not the Phase 4 exit check" in r.output
 
     r = runner.invoke(cli.app, ["digest", "--user", ADMIN, "--dry-run"])
@@ -208,7 +215,7 @@ def test_fictional_awards_and_plans_for_the_m5_screens(db, app, client, outbox):
 
     r = demo_seed(db, env="dev", admin_email=ADMIN, now=NOW)
     db.commit()
-    assert (r.awards, r.plans) == (25, 10)
+    assert (r.awards, r.plans) == (25, 14)
     awards = db.scalars(sa.select(Award)).all()
     assert Counter(a.category for a in awards) == {
         "transport": 7,
@@ -222,7 +229,7 @@ def test_fictional_awards_and_plans_for_the_m5_screens(db, app, client, outbox):
         assert a.tender_ref.startswith("DEMO/")
         assert urlsplit(a.url).hostname == "demo.example.com"
     plans = db.scalars(sa.select(ProcurementPlanItem)).all()
-    assert len(plans) == 10 and all(p.raw == {"_demo": True} for p in plans)
+    assert len(plans) == 14 and all(p.raw == {"_demo": True} for p in plans)
     assert sum(p.opportunity_id is not None for p in plans) == 1
 
     app.dependency_overrides[now_utc] = lambda: NOW
@@ -247,4 +254,64 @@ def test_fictional_awards_and_plans_for_the_m5_screens(db, app, client, outbox):
 
     demo_seed(db, env="dev", admin_email=ADMIN, now=NOW)  # re-run replaces them
     db.commit()
-    assert count(db, Award) == 25 and count(db, ProcurementPlanItem) == 10
+    assert count(db, Award) == 25 and count(db, ProcurementPlanItem) == 14
+
+
+def test_second_user_with_an_ngo_profile_on_demo_data_alone(db, app, client, outbox):
+    """The demo catalogue alone supports a second-user test with an NGO
+    profile: the NGO-only grant is open to it (and filtered for the owner's
+    company profiles), and health / agriculture tenders and plans match it."""
+    from blackkite.routes.member import now_utc
+    from blackkite.scoring import service as scoring
+    from blackkite.scoring.settings import ScoringSettings
+    from tests.conftest import sign_in
+
+    demo_seed(db, env="dev", admin_email=ADMIN, now=NOW)
+    ngo_user = make_user(db, "ngo@example.com")
+    ngo = f.profile(
+        db,
+        ngo_user,
+        "Health NGO",
+        organisation_type="Local NGO",
+        services=["community health", "nutrition education"],
+        sectors=["health", "agriculture", "food security"],
+    )
+    db.commit()
+    scoring.score_user(
+        db,
+        ngo_user.id,
+        deps=scoring.ScoringDeps(settings=ScoringSettings(_env_file=None)),
+        now=NOW,
+    )
+    db.commit()
+
+    def row(user_id, title_part, profile_id=None):
+        q = (
+            sa.select(UserOpportunityScore)
+            .join(Opportunity, Opportunity.id == UserOpportunityScore.opportunity_id)
+            .where(
+                UserOpportunityScore.user_id == user_id,
+                Opportunity.title.contains(title_part),
+            )
+        )
+        if profile_id is not None:
+            q = q.where(UserOpportunityScore.profile_id == profile_id)
+        return db.scalars(q).all()
+
+    [grant] = row(ngo_user.id, "NGOs", ngo.id)
+    assert grant.score_breakdown["hard_filtered"] is None
+    assert grant.score_breakdown["fit_word"] == "possible"
+    ironji = db.scalar(sa.select(Profile).where(Profile.name == "Ironji-Trade"))
+    [owner_grant] = row(r_user(db).id, "NGOs", ironji.id)
+    assert owner_grant.score_breakdown["hard_filtered"] == "ineligible"
+    for title in ("nutrition supplements", "seeds and fertiliser"):
+        [r] = row(ngo_user.id, title, ngo.id)
+        assert r.score_breakdown["fit_word"] == "possible", title
+
+    app.dependency_overrides[now_utc] = lambda: NOW
+    c = sign_in(client, outbox, "ngo@example.com")
+    plans = {i["description"] for i in c.get("/api/plans").json()["items"]}
+    assert "[Demo] Community health worker training on nutrition" in plans
+    assert "[Demo] Supply of seeds and fertilizer to farmer cooperatives" in plans
+    assert "[Demo] Supply of office furniture" not in plans
+    assert "[Demo] Transport of bagged grain to regional stores" not in plans

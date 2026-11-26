@@ -24,6 +24,33 @@ def normalise_email(email: str) -> str:
     return email.strip().lower()
 
 
+def check_email(email: str, *, setting: str = "email") -> str:
+    """The address normalised, by the rules /auth/request-link applies (pydantic
+    ``EmailStr``: email-validator, no DNS lookup), else ValueError with a plain
+    message. Special-use domains (.test, .local, .localhost, .invalid, .onion,
+    .arpa) can never receive mail and are refused by name."""
+    from email_validator import SPECIAL_USE_DOMAIN_NAMES
+    from pydantic import EmailStr, TypeAdapter, ValidationError
+
+    value = normalise_email(email)
+    domain = value.rpartition("@")[2].rstrip(".")
+    label = domain.rpartition(".")[2]
+    if "@" in value and (label in SPECIAL_USE_DOMAIN_NAMES or domain == "localhost"):
+        raise ValueError(
+            f"{setting} {value!r} uses the special-use domain .{label}, which "
+            "cannot receive email; use a real address (sign-in links are sent "
+            "to it)"
+        )
+    try:
+        TypeAdapter(EmailStr).validate_python(value)
+    except ValidationError as e:
+        why = e.errors()[0]["msg"].removeprefix("value is not a valid email address: ")
+        raise ValueError(
+            f"{setting} {value!r} is not a valid email address: {why}"
+        ) from None
+    return value
+
+
 def confirm_url(settings: Settings, token: str) -> str:
     """The emailed link: a web page that asks the person to continue (decision 17).
 

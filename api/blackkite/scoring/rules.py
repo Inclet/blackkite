@@ -182,22 +182,37 @@ NGO_ONLY = re.compile(
     rf"\s+(?:are|will) not (?:be )?eligible\b",
     re.IGNORECASE,
 )
-NGO_PROFILE_TYPES = {"ngo", "non-profit", "nonprofit", "cso", "cbo", "not-for-profit"}
-
-
-_NGO_SPLIT = re.compile(r"\s+or\s+|\s*[/,;&]\s*|\s+and\s+")
+# What a profile's free-text organisation_type may say to count as a non-profit,
+# matched on lowercase text with hyphens, slashes, dots and underscores read as
+# spaces: "NGO", "Local NGO", "registered NGO", "INGO", "Non-governmental
+# organisation", "non profit", "nonprofit", "not-for-profit", "civil society",
+# "CSO", "CBO", "faith-based organisation", "charity". "company", "cooperative"
+# or "social enterprise" do not match.
+NGO_PROFILE_RE = re.compile(
+    r"\b(?:i?ngos?|non ?governmental|non ?government organi[sz]ations?|"
+    r"non ?profits?|not ?for ?profits?|civil society|csos?|cbos?|fbos?|"
+    r"community based organi[sz]ations?|faith based organi[sz]ations?|"
+    r"charit(?:y|ies|able))\b"
+)
+# "not an NGO", "not a non-profit": the type says the opposite.
+NOT_NGO_RE = re.compile(
+    r"\bnot (?:an? )?(?:registered |local |national |international )?"
+    r"(?:i?ngo|cso|cbo|non ?profit|non ?governmental|charity)\b"
+)
 
 
 def _is_ngo(profile: Profile) -> bool:
-    """The profile's organisation_type names a non-profit: "ngo", "non-profit",
-    "nonprofit", ..., alone or as one of several ("ngo or non-profit",
-    "NGO / CSO"). Empty or anything else is not an NGO (decision 37)."""
+    """The profile's organisation_type names a non-profit (``NGO_PROFILE_RE``),
+    case- and spacing-insensitive, alone or among other words ("ngo or
+    non-profit", "NGO / CSO", "Local NGO"). Empty or anything else is not an NGO
+    (decision 37)."""
     kind = (profile.data or {}).get("organisation_type")
     if not isinstance(kind, str):
         return False
-    text = " ".join(kind.strip().lower().split())
-    parts = {p.strip(" .") for p in _NGO_SPLIT.split(text)} | {text}
-    return bool(parts & NGO_PROFILE_TYPES)
+    text = " ".join(re.sub(r"[-_./\\,;&()]+", " ", kind.lower()).split())
+    if not text or NOT_NGO_RE.search(text):
+        return False
+    return bool(NGO_PROFILE_RE.search(text))
 
 
 def eligibility_parts(opp: Opportunity, documents: list[str]) -> list[str]:
@@ -436,6 +451,15 @@ def _fmt_rwf(v: float) -> str:
     return f"FRW {v:,.0f}"
 
 
+# How a stream reads in "This profile does not follow ...".
+STREAM_PLURALS = {
+    "tender": "tenders",
+    "funding": "funding calls",
+    "investment": "investments",
+    "event": "events",
+}
+
+
 def check_rules(
     opp: Opportunity,
     profile: Profile,
@@ -459,7 +483,8 @@ def check_rules(
     streams = data.get("streams")
     if isinstance(streams, list) and streams and opp.stream not in streams:
         return RuleResult(
-            "stream_not_selected", f"This profile does not follow {opp.stream}s."
+            "stream_not_selected",
+            f"This profile does not follow {STREAM_PLURALS.get(opp.stream, opp.stream)}.",
         )
     if sources and all(s.muted for s in sources):
         return RuleResult(

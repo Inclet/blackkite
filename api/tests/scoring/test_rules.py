@@ -96,6 +96,25 @@ def test_stream_not_selected_and_missing_streams_never_filter():
     assert rules(opp(stream="investment"), no_streams).hard_filtered is None
 
 
+@pytest.mark.parametrize(
+    ("stream", "profile", "text"),
+    [
+        ("funding", PERSONAL, "This profile does not follow funding calls."),
+        ("tender", PERSONAL, "This profile does not follow tenders."),
+        ("investment", IRONJI, "This profile does not follow investments."),
+        ("event", seed("Ironji-Trade"), None),  # Ironji follows events
+    ],
+)
+def test_stream_not_selected_wording(stream, profile, text):
+    kw = {"event_start": NOW + timedelta(days=9)} if stream == "event" else {}
+    r = rules(opp(stream=stream, **kw), profile)
+    assert r.filter_reason == text
+    only_tenders = seed("AI lab")
+    only_tenders.data = {**only_tenders.data, "streams": ["tender"]}
+    r = rules(opp(stream="event", event_start=NOW + timedelta(days=9)), only_tenders)
+    assert r.filter_reason == "This profile does not follow events."
+
+
 def test_muted_source_only():
     o = opp()
     assert rules(o, sources=[src(muted=True)]).hard_filtered == "muted_source_only"
@@ -366,7 +385,28 @@ def test_fit_word_config_and_caps():
         ("nonprofit", True),
         ("ngo or non-profit", True),
         ("NGO / CSO", True),
+        ("Non-governmental organisation", True),
+        ("non governmental organization", True),
+        ("non profit", True),
+        ("Non  Profit", True),
+        ("NONPROFIT", True),
+        ("not-for-profit", True),
+        ("Local NGO", True),
+        ("registered NGO", True),
+        ("  registered   ngo  ", True),
+        ("International NGO (INGO)", True),
+        ("civil society", True),
+        ("Civil society organisation", True),
+        ("CSO", True),
+        ("community-based organisation", True),
+        ("charity", True),
         ("company", False),
+        ("Company", False),
+        ("limited company", False),
+        ("for-profit company", False),
+        ("social enterprise", False),
+        ("not an NGO", False),
+        ("Ngoma trading company", False),
         ("cooperative", False),
         ("", False),
         (None, False),

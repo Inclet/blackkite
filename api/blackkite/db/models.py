@@ -594,6 +594,7 @@ class Award(Base):
         sa.Index("ix_award_entity_key", "entity_key"),
         sa.Index("ix_award_awarded_on", "awarded_on"),
         sa.Index("ix_award_tags", "tags", postgresql_using="gin"),
+        sa.Index("ix_award_source_ids", "source_ids", postgresql_using="gin"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -634,6 +635,11 @@ class Award(Base):
     )
     source_id: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("source.id", ondelete="SET NULL"), index=True
+    )
+    # Every source that has listed the record (source_id is the first); its
+    # visibility follows any of them (records.record_visible).
+    source_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(sa.Uuid()), nullable=False, server_default=sa.text("'{}'::uuid[]")
     )
     # The values as listed ({field: text}), and what normalising left out
     # ("problems": [...]). Supporting text for every stored amount and date.
@@ -689,6 +695,11 @@ class ProcurementPlanItem(Base):
             "planned_end",
         ),
         sa.Index("ix_procurement_plan_item_tags", "tags", postgresql_using="gin"),
+        sa.Index(
+            "ix_procurement_plan_item_source_ids",
+            "source_ids",
+            postgresql_using="gin",
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -720,6 +731,11 @@ class ProcurementPlanItem(Base):
     )
     source_id: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("source.id", ondelete="SET NULL"), index=True
+    )
+    # Every source that has listed the record (source_id is the first); its
+    # visibility follows any of them (records.record_visible).
+    source_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(sa.Uuid()), nullable=False, server_default=sa.text("'{}'::uuid[]")
     )
     raw: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
