@@ -77,3 +77,29 @@ def test_flags_need_quotes_and_are_capped():
 def test_prompt_is_versioned():
     p = load_prompt("score-v1")
     assert p.version == "score-v1" and "record_judgement" in p.text
+
+
+def test_profile_prompt_includes_fields_rules_do_not_read_yet():
+    from blackkite.db.models import Profile
+    from blackkite.scoring.judge import profile_for_prompt
+
+    p = Profile(
+        name="Personal",
+        type="personal",
+        data={
+            "streams": ["event"],
+            "locations": ["Kigali", "Musanze"],
+            "horizon": "3-5 years",
+            "availability": "evenings",
+            "budget_rwf": 50000,
+            "unknown_key": "not sent",
+        },
+    )
+    out = profile_for_prompt(p)
+    assert out["locations"] == ["Kigali", "Musanze"]
+    assert (out["horizon"], out["availability"], out["budget_rwf"]) == (
+        "3-5 years",
+        "evenings",
+        50000,
+    )
+    assert "unknown_key" not in out

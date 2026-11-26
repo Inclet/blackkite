@@ -266,3 +266,13 @@ def test_delete_removes_its_scores(db, client, ana, backfills):
 def test_profiles_need_a_session(client):
     assert client.get("/api/profiles").status_code == 401
     assert client.post("/api/profiles", json={}).status_code == 401
+
+
+def test_business_organisation_type_round_trips(client, ana, backfills):
+    data = {**IRONJI, "organisationType": "ngo or non-profit"}
+    assert validate_data("business", data)["organisation_type"] == ("ngo or non-profit")
+    r = client.post(
+        "/api/profiles", json={"name": "Foundation", "type": "business", "data": data}
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["data"]["organisationType"] == "ngo or non-profit"
