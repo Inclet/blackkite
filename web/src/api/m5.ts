@@ -85,8 +85,13 @@ export interface PlanItem {
   method: string | null;
   estimatedValue?: Amount;
   currency?: string | null;
-  /** A quarter ("2027-Q1"), a month ("2027-03") or a date ("2027-03-15"); other text is shown as written. */
+  /**
+   * A calendar quarter ("2027-Q1"), a month ("2027-03"), a date ("2027-03-15") or
+   * a start/end range ("2027-03-15/2027-06-30"); other text is shown as written.
+   */
   plannedFor: string | null;
+  /** The period in plain words ("January to March 2027"), fiscal periods already resolved. Preferred when sent. */
+  plannedLabel?: string | null;
   matchedProfile: string | null;
   url: string | null;
 }

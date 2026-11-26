@@ -12,7 +12,7 @@ import type http from 'node:http';
  *   GET /api/benchmarks/{category}?limit=&offset=
  *     {awards: [{id, tenderRef, entity, title, winner, winningPrice, bidders: [{name, price}], awardedOn, url}], total}
  *     (`total` and each award's `currency` are the stub's reading; the client also works without them.)
- *   GET /api/plans  {items: [{id, entity, description, method, estimatedValue?, currency?, plannedFor, matchedProfile, url}]}
+ *   GET /api/plans  {items: [{id, entity, description, method, estimatedValue?, currency?, plannedFor, plannedLabel, matchedProfile, url}]}
  *   detail.benchmark {category, median, p25, p75, awards, currency} on tenders whose category has ≥ 3 awards.
  */
 
@@ -39,6 +39,7 @@ export interface StubPlan {
   estimatedValue?: number | null;
   currency?: string | null;
   plannedFor: string | null;
+  plannedLabel?: string;
   matchedProfile: string;
   url: string | null;
 }
@@ -107,6 +108,7 @@ export function defaultPlans(): StubPlan[] {
       estimatedValue: 45_000_000,
       currency: 'RWF',
       plannedFor: '2027-Q1',
+      plannedLabel: 'January to March 2027',
       matchedProfile: 'Ironji-Trade',
       url: 'https://www.umucyo.gov.rw/plans/rab-2026-27',
     },

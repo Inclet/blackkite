@@ -15,11 +15,11 @@ test('benchmarks: categories in plain words, period and organisation filters, on
   await expect(page).toHaveURL(/\/benchmarks$/);
   const list = page.getByRole('region', { name: 'Categories' });
   await expect(list).toContainText('Freight and transport');
-  await expect(list).toContainText('Most awards were between FRW 4.2M and FRW 6.7M; the middle one was FRW 5.5M (12 awards). Usually 3 bidders.');
+  await expect(list).toContainText('Half the awards were between FRW 4.2M and FRW 6.7M; the middle one was FRW 5.5M (12 awards). Usually 3 bidders.');
   await expect(list).toContainText('Only 2 awards so far — not enough to show a range.');
   await expect(list).toContainText('Software and IT services (FRW)');
   await expect(list).toContainText('Software and IT services (USD)');
-  await expect(list).toContainText('Most awards were between USD');
+  await expect(list).toContainText('Half the awards were between USD');
   expect((await api.seen()).map((r) => r.url)).toContain('/api/benchmarks?from=2025-11-24&to=2026-11-24');
 
   await page.getByRole('button', { name: 'All', exact: true }).click();
@@ -73,10 +73,10 @@ test('tender detail: "Similar awarded contracts" in the pane and on the phone pa
   await open(page, '/o/wfp-logistics');
   const pane = page.getByRole('article');
   await expect(pane.getByText('Similar awarded contracts')).toBeVisible();
-  const line = pane.getByRole('link', { name: /^Similar contracts were usually awarded between FRW [\d.]+M and FRW [\d.]+M \(23 awards\)\.$/ });
+  const line = pane.getByRole('link', { name: /^Half of similar contracts were awarded between FRW [\d.]+M and FRW [\d.]+M \(23 awards\)\.$/ });
   await expect(line).toHaveAttribute('href', '/benchmarks/freight');
   // Contrast: the link text (graphite on white) at least 4.5:1.
-  const { fg, bg } = await colours(page, 'text=Similar contracts were usually awarded');
+  const { fg, bg } = await colours(page, 'text=Half of similar contracts were awarded');
   expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
 
   // Not on other streams.
@@ -86,7 +86,7 @@ test('tender detail: "Similar awarded contracts" in the pane and on the phone pa
 
   await page.setViewportSize(phone);
   await open(page, '/o/wfp-logistics');
-  await page.getByRole('link', { name: /^Similar contracts were usually awarded/ }).click();
+  await page.getByRole('link', { name: /^Half of similar contracts were awarded/ }).click();
   await expect(page).toHaveURL(/\/benchmarks\/freight$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Freight and transport' })).toBeVisible();
 });
@@ -98,7 +98,7 @@ test('Coming up: planned tenders on the Calendar and the Shortlist; empty wordin
     await open(page, route);
     const card = page.getByRole('region', { name: 'Coming up' });
     await expect(card).toContainText('Rwanda Agriculture Board');
-    await expect(card).toContainText('Open competitive bidding · Estimated FRW 45M · Planned for Q1 2027');
+    await expect(card).toContainText('Open competitive bidding · Estimated FRW 45M · Planned for January to March 2027');
     await expect(card).toContainText('Matches Ironji-Trade');
     await expect(card).toContainText('Restricted tender · Planned for March 2027');
     await expect(card).toContainText('Matches AI lab');
@@ -167,4 +167,30 @@ test('second user: a member with an NGO profile and a personal profile, through 
   await expect(page.getByRole('region', { name: 'Coming up' })).toBeVisible();
   await open(page, '/benchmarks');
   await expect(page.getByRole('region', { name: 'Categories' })).toBeVisible();
+});
+
+test('stacked rows size to their content: Coming up and a category\'s awards', async ({ page }, testInfo) => {
+  await stubSession(page, testInfo.testId);
+  for (const size of [desktop, phone]) {
+    await page.setViewportSize(size);
+    for (const [route, list] of [
+      ['/calendar', page.getByRole('region', { name: 'Coming up' }).getByRole('listitem')],
+      ['/shortlist', page.getByRole('region', { name: 'Coming up' }).getByRole('listitem')],
+      ['/benchmarks/freight', page.getByRole('main').getByRole('listitem')],
+    ] as const) {
+      await open(page, route);
+      await expect(list.first()).toBeVisible();
+      const rows = await list.evaluateAll((els) =>
+        els.map((el) => ({
+          height: el.getBoundingClientRect().height,
+          children: [...el.children].reduce((n, c) => n + c.getBoundingClientRect().height, 0),
+        })),
+      );
+      expect(rows.length).toBeGreaterThan(0);
+      for (const r of rows) {
+        expect(r.height, `${route}: a row is no taller than twice its content`).toBeLessThan(2 * r.children);
+        expect(r.height, `${route}: a row is under 200px`).toBeLessThan(200);
+      }
+    }
+  }
 });

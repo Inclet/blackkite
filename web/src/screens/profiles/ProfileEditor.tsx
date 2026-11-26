@@ -8,6 +8,7 @@ import { Card } from '../../components/Card/Card';
 import { Field } from '../../components/Field/Field';
 import { FilterChip } from '../../components/FilterChip/FilterChip';
 import { SwitchRow } from '../../components/SwitchRow/SwitchRow';
+import { TextButton } from '../../components/TextLink/TextLink';
 import { STREAMS, type Stream } from '../../lib/streams';
 import { COPY } from '../common/copy';
 import { LoadState } from '../common/LoadState';
@@ -50,7 +51,11 @@ export const EDITOR_COPY = {
   registrations: 'Registrations',
   held: 'Registrations and certificates held',
   notHeld: 'Not held yet',
-  capacity: 'Capacity',
+  /** Not on any board (design review): only transport and logistics businesses need it. */
+  capacity: 'Capacity (transport and logistics)',
+  capacityHint: 'Optional. Only needed if you move goods; leave it empty otherwise.',
+  showCapacity: 'Add capacity',
+  hideCapacity: 'Hide capacity',
   capacityModel: 'How your capacity works',
   trucks: 'Trucks in your network',
   refrigerated: 'Refrigerated trucks',
@@ -91,6 +96,13 @@ export const EDITOR_COPY = {
 type TextKey = { [K in keyof ProfileForm]: ProfileForm[K] extends string ? K : never }[keyof ProfileForm];
 
 type Status = 'idle' | 'saving' | 'saved' | 'invalid' | 'refused' | 'unreachable';
+
+const CAPACITY_KEYS = ['capacityModel', 'trucksInNetwork', 'refrigeratedInNetwork', 'ownedTrucks', 'tonnageMin', 'tonnageMax'] as const;
+
+/** Whether any capacity field holds something. */
+function hasCapacity(form: ProfileForm): boolean {
+  return CAPACITY_KEYS.some((k) => String(form[k] ?? '').trim() !== '');
+}
 
 /** /profiles/new/:type and /profiles/:id. Not on any board: Field, Switch, FilterChip and Button (design review). */
 export function ProfileEditor() {
@@ -153,6 +165,23 @@ function Editor({ profile, type, onSaved }: { profile: Profile | null; type: Pro
   const [status, setStatus] = useState<Status>('idle');
   const [confirming, setConfirming] = useState(false);
   const [deleteFailed, setDeleteFailed] = useState(false);
+  // Capacity is collapsed unless it holds something (or has an error to show).
+  const [capacityOpen, setCapacityOpen] = useState(false);
+  const capacityId = useId();
+  const capacityShown = capacityOpen || hasCapacity(form) || CAPACITY_KEYS.some((k) => (errors as Partial<Record<string, string>>)[k]);
+  // The toggle that was pressed goes away, so focus moves on: to the first field when opened, back to "Add capacity" when closed.
+  const capacityFocus = useRef<'fields' | 'toggle' | null>(null);
+  const capacityToggle = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const target = capacityFocus.current;
+    capacityFocus.current = null;
+    if (target === 'fields') document.getElementById(capacityId)?.querySelector('input')?.focus();
+    if (target === 'toggle') capacityToggle.current?.focus();
+  }, [capacityOpen, capacityId]);
+  const toggleCapacity = (open: boolean) => {
+    capacityFocus.current = open ? 'fields' : 'toggle';
+    setCapacityOpen(open);
+  };
 
   // A fresh copy from the server (after save) resets the form; the copy it started from does not.
   const shown = useRef(profile);
@@ -279,15 +308,32 @@ function Editor({ profile, type, onSaved }: { profile: Profile | null; type: Pro
                 {text('registrationsNotHeld', EDITOR_COPY.notHeld)}
               </div>
             </Card>
-            <Card label={EDITOR_COPY.capacity} gap={14}>
-              {text('capacityModel', EDITOR_COPY.capacityModel)}
-              <div className={styles.fields}>
-                {number('trucksInNetwork', EDITOR_COPY.trucks)}
-                {number('refrigeratedInNetwork', EDITOR_COPY.refrigerated)}
-                {number('ownedTrucks', EDITOR_COPY.owned)}
-                {number('tonnageMin', EDITOR_COPY.tonnageMin, 'decimal')}
-                {number('tonnageMax', EDITOR_COPY.tonnageMax, 'decimal')}
+            <Card label={EDITOR_COPY.capacity} gap={14} aria-label={EDITOR_COPY.capacity}>
+              <div className={styles.hint}>{EDITOR_COPY.capacityHint}</div>
+              {!capacityShown && (
+                <div>
+                  <TextButton ref={capacityToggle} spacing="stacked" aria-expanded={false} aria-controls={capacityId} onClick={() => toggleCapacity(true)}>
+                    {EDITOR_COPY.showCapacity}
+                  </TextButton>
+                </div>
+              )}
+              <div id={capacityId} hidden={!capacityShown} className={styles.capacityFields}>
+                {text('capacityModel', EDITOR_COPY.capacityModel)}
+                <div className={styles.fields}>
+                  {number('trucksInNetwork', EDITOR_COPY.trucks)}
+                  {number('refrigeratedInNetwork', EDITOR_COPY.refrigerated)}
+                  {number('ownedTrucks', EDITOR_COPY.owned)}
+                  {number('tonnageMin', EDITOR_COPY.tonnageMin, 'decimal')}
+                  {number('tonnageMax', EDITOR_COPY.tonnageMax, 'decimal')}
+                </div>
               </div>
+              {capacityShown && !hasCapacity(form) && (
+                <div>
+                  <TextButton spacing="stacked" aria-expanded aria-controls={capacityId} onClick={() => toggleCapacity(false)}>
+                    {EDITOR_COPY.hideCapacity}
+                  </TextButton>
+                </div>
+              )}
             </Card>
           </>
         ) : (

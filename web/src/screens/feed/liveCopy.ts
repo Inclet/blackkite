@@ -8,6 +8,13 @@ const TIMEZONE = 'Africa/Kigali';
 
 const board = (kind: StateCardProps['kind']) => reference.styleguide.states.find((s) => s.kind === kind)!;
 
+/**
+ * What a member with no profiles sees, in place of the board's "Until then you see
+ * everything, unranked." (decision 41: tenders and funding need a fit word). Not
+ * on the board as written (design review); the Profiles page says the same.
+ */
+export const UNTIL_PROFILE = 'Until then you see events and investments; tenders and funding need a profile to match against.';
+
 function kigaliMonth(at: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE, year: 'numeric', month: '2-digit' }).format(at);
 }
@@ -46,6 +53,6 @@ export function liveStates(feed: FeedContent, shortlist: FeedItem[] | undefined,
       ...nothing,
       body: shortlist ? `${sourcesLine(feed)} ${shortlistLine(closingThisMonth(shortlist, at))}` : sourcesLine(feed),
     },
-    board('first-visit'),
+    { ...board('first-visit'), body: `Three questions about your business or interests. ${UNTIL_PROFILE}` },
   ];
 }

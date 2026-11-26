@@ -10,6 +10,7 @@ import { Tag } from '../../components/Tag/Tag';
 import { TextLink } from '../../components/TextLink/TextLink';
 import { STREAM_PLURALS } from '../../lib/streams';
 import { useAppLink } from '../../lib/useAppLink';
+import { UNTIL_PROFILE } from '../feed/liveCopy';
 import { LoadState } from '../common/LoadState';
 import { AppShell } from '../shell/AppShell';
 import { SignIn } from '../SignIn';
@@ -20,7 +21,7 @@ export const PROFILES_COPY = {
   title: 'Profiles',
   summary: 'Blackkite ranks every item against each profile and shows the best fit.',
   emptyTitle: 'Tell Blackkite what you do',
-  emptyBody: 'Add a profile for a business or for your own interests. Until then you see everything, unranked.',
+  emptyBody: `Add a profile for a business or for your own interests. ${UNTIL_PROFILE}`,
   addBusiness: 'Add a business profile',
   addPersonal: 'Add a personal profile',
   edit: 'Edit',

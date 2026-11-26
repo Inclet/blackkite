@@ -3,6 +3,8 @@
  * design review). Health is always said in words, never shown by colour alone.
  */
 import type { CollectorType, Health, SourceKind, SourceStatus, SuggestionStatus } from '../../api/sources';
+import { kigaliToday } from '../../lib/deadline';
+import { dayMonthYear } from '../../lib/months';
 import { STREAM_PLURALS, type Stream } from '../../lib/streams';
 
 export const HEALTH_WORDS: Record<Health, string> = {
@@ -78,7 +80,7 @@ export function formatWhen(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  const date = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kigali' }).format(d);
+  const date = dayMonthYear(kigaliToday(d));
   const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Africa/Kigali' }).format(d);
   return `${date}, ${time}`;
 }
@@ -88,7 +90,7 @@ export function formatDay(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kigali' }).format(d);
+  return dayMonthYear(kigaliToday(d));
 }
 
 export function itemsCount(n: number): string {

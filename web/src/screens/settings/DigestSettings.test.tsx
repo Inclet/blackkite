@@ -41,6 +41,11 @@ test('round trip: off, strong and good fits, two streams; PUT sends the whole se
   fireEvent.click(sw(DIGEST_COPY.weekly));
   fireEvent.click(chip(DIGEST_COPY.strongAndGood));
   expect(chip(DIGEST_COPY.strongOnly)).toHaveAttribute('aria-pressed', 'false');
+  // The description follows the choice.
+  expect(sw('Urgent alerts')).toHaveAccessibleDescription('Email me the day a strong or good fit closes within 5 days.');
+  fireEvent.click(chip(DIGEST_COPY.strongOnly));
+  expect(sw('Urgent alerts')).toHaveAccessibleDescription('Email me the day a strong fit closes within 5 days.');
+  fireEvent.click(chip(DIGEST_COPY.strongAndGood));
   fireEvent.click(chip('Events'));
   fireEvent.click(chip('Tenders'));
   expect(chip(DIGEST_COPY.profileStreams)).toHaveAttribute('aria-pressed', 'false');

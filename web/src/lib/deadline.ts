@@ -1,3 +1,4 @@
+import { dayMonth } from './months';
 import { now } from './now';
 
 /** Deadlines are calendar dates in Kigali. */
@@ -32,9 +33,9 @@ export function deadlineWeight(days: number): DeadlineWeight {
   return 'quiet';
 }
 
+/** "17 Sep": the app's short month style (lib/months). */
 export function formatShortDate(isoDate: string): string {
-  const [y, m, d] = isoDate.slice(0, 10).split('-').map(Number);
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(y!, m! - 1, d!)));
+  return dayMonth(isoDate);
 }
 
 export function deadlineLabel(deadline: string, at: Date = now()): string {

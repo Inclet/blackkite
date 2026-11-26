@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 const BENCHMARK = { category: 'freight', median: 6100000, p25: 4200000, p75: 9800000, awards: 14, currency: 'RWF' };
-const SENTENCE = 'Similar contracts were usually awarded between FRW 4.2M and FRW 9.8M (14 awards).';
+const SENTENCE = 'Half of similar contracts were awarded between FRW 4.2M and FRW 9.8M (14 awards).';
 const EXTRAS = { fields: [], sources: [], documents: [], changes: [], note: null, state: 'unseen' };
 
 function setup(id: string, benchmark: unknown) {

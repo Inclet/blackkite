@@ -106,6 +106,12 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+}
+
+/* The 240px basis is a width only beside other content in a horizontal row; in a
+   column (stacked rows, cards) a basis would become a minimum height, so there the
+   text sizes to its content. */
+.row > .rowText {
   flex: 1 1 240px;
 }
 

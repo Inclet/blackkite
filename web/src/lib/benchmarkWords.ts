@@ -6,6 +6,7 @@
  */
 import { amountOf, type Amount, type BenchmarkCategory, type DetailBenchmark } from '../api/m5';
 import { formatAmount } from './detailWords';
+import { dayMonthYear, LONG_MONTHS } from './months';
 
 /** RWF is written FRW, as everywhere else in Blackkite. */
 export function currencyWord(currency: string | null | undefined): string {
@@ -60,8 +61,9 @@ export const BENCHMARK_COPY = {
 } as const;
 
 /**
- * One category in plain words: "Most awards were between FRW 4.2M and FRW 9.8M;
- * the middle one was FRW 6.1M (14 awards). Usually 5 bidders."
+ * One category in plain words: "Half the awards were between FRW 4.8M and FRW
+ * 11.2M; the middle one was FRW 6.1M (14 awards). Usually 4 bidders." The range
+ * is p25 to p75, the middle half of the awards (not "most").
  */
 export function categorySentence(c: BenchmarkCategory): string {
   const range = c.awards >= MIN_AWARDS ? between(c.p25, c.p75, c.currency) : null;
@@ -69,14 +71,14 @@ export function categorySentence(c: BenchmarkCategory): string {
   const median = amountOf(c.median);
   const middle = median === null ? '' : `; the middle one was ${shortAmount(median, c.currency)}`;
   const bidders = c.medianBidders !== null && c.medianBidders !== undefined && c.medianBidders > 0 ? ` ${BENCHMARK_COPY.bidders(Math.round(c.medianBidders))}` : '';
-  return `Most awards were ${range}${middle} (${awardsWord(c.awards)}).${bidders}`;
+  return `Half the awards were ${range}${middle} (${awardsWord(c.awards)}).${bidders}`;
 }
 
-/** The tender detail's line: "Similar contracts were usually awarded between FRW 4.2M and FRW 9.8M (14 awards)." Null when there is no range. */
+/** The tender detail's line: "Half of similar contracts were awarded between FRW 4.2M and FRW 9.8M (14 awards)." p25 to p75, the middle half. Null when there is no range. */
 export function detailBenchmarkSentence(b: DetailBenchmark | null | undefined): string | null {
   if (!b || b.awards < MIN_AWARDS) return null;
   const range = between(b.p25, b.p75, b.currency);
-  return range ? `Similar contracts were usually awarded ${range} (${awardsWord(b.awards)}).` : null;
+  return range ? `Half of similar contracts were awarded ${range.startsWith('about') ? `at ${range}` : range} (${awardsWord(b.awards)}).` : null;
 }
 
 /** A category slug as words, when no label is known: "road-works" -> "Road works". */
@@ -99,19 +101,61 @@ export function periodFrom(period: Period, today: string): string | undefined {
   return at.toISOString().slice(0, 10);
 }
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+const ISO_MONTH = /^(\d{4})-(\d{2})$/;
 
-/** "Q1 2027", "March 2027"; text the API sends in another form is kept as written. */
-export function plannedWhen(v: string | null | undefined): string | null {
+/** A real calendar date as YYYY-MM-DD, or null. */
+function validDay(t: string): { y: number; m: number; d: number } | null {
+  const m = t.match(ISO_DAY);
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const at = new Date(Date.UTC(y, mo - 1, d));
+  return at.getUTCFullYear() === y && at.getUTCMonth() === mo - 1 && at.getUTCDate() === d ? { y, m: mo, d } : null;
+}
+
+const lastDay = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+
+/** "January to March 2027", "October 2026 to March 2027"; one month alone as "March 2027". */
+function monthSpan(y1: number, m1: number, y2: number, m2: number): string {
+  if (y1 === y2 && m1 === m2) return `${LONG_MONTHS[m1 - 1]} ${y1}`;
+  if (y1 === y2) return `${LONG_MONTHS[m1 - 1]} to ${LONG_MONTHS[m2 - 1]} ${y2}`;
+  return `${LONG_MONTHS[m1 - 1]} ${y1} to ${LONG_MONTHS[m2 - 1]} ${y2}`;
+}
+
+/** A calendar quarter as its months: Q1 2027 -> "January to March 2027". */
+const quarterWords = (y: number, q: number) => monthSpan(y, q * 3 - 2, y, q * 3);
+
+/**
+ * When a planned tender is due, in words. The API's `plannedLabel` comes first
+ * (it knows fiscal from calendar periods). Otherwise `plannedFor` is read: a date
+ * as "17 Feb 2027", a month as "March 2027", a calendar quarter as "January to
+ * March 2027", a start/end range as "{start} to {end}" (whole months as months).
+ * Never raw ISO: ISO-looking text that does not parse is left out; other text is
+ * kept as written.
+ */
+export function plannedWhen(v: string | null | undefined, label?: string | null): string | null {
+  const l = (label ?? '').trim();
+  if (l) return l;
   const t = (v ?? '').trim();
   if (!t) return null;
   let m = t.match(/^(\d{4})-?Q([1-4])$/i) ?? null;
-  if (m) return `Q${m[2]} ${m[1]}`;
+  if (m) return quarterWords(Number(m[1]), Number(m[2]));
   m = t.match(/^Q([1-4])[\s-]+(\d{4})$/i);
-  if (m) return `Q${m[1]} ${m[2]}`;
-  m = t.match(/^(\d{4})-(\d{2})(?:-\d{2})?$/);
-  if (m && Number(m[2]) >= 1 && Number(m[2]) <= 12) return `${MONTHS[Number(m[2]) - 1]} ${m[1]}`;
-  return t;
+  if (m) return quarterWords(Number(m[2]), Number(m[1]));
+  m = t.match(ISO_MONTH);
+  if (m) return Number(m[2]) >= 1 && Number(m[2]) <= 12 ? monthSpan(Number(m[1]), Number(m[2]), Number(m[1]), Number(m[2])) : null;
+  const day = validDay(t);
+  if (day) return dayMonthYear(t);
+  const range = t.split('/');
+  if (range.length === 2 && /^\d{4}-\d{2}/.test(range[0]!.trim())) {
+    const a = validDay(range[0]!.trim());
+    const b = validDay(range[1]!.trim());
+    if (!a || !b) return null;
+    if (range[0]!.trim() === range[1]!.trim()) return dayMonthYear(range[0]!.trim());
+    if (a.d === 1 && b.d === lastDay(b.y, b.m)) return monthSpan(a.y, a.m, b.y, b.m);
+    return `${dayMonthYear(range[0]!.trim())} to ${dayMonthYear(range[1]!.trim())}`;
+  }
+  return /^\d{4}-\d{2}/.test(t) ? null : t;
 }
 
 /** "open_competitive_bidding" -> "Open competitive bidding". */
