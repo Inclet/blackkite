@@ -21,9 +21,12 @@ export const DIGEST_COPY = {
   summary: 'What Blackkite emails you, and when.',
   weekly: 'Weekly digest',
   weeklyHelp: (address?: string) => (address ? `Every Monday, by email to ${address}.` : 'Every Monday, by email.'),
-  /** The Components board's own label and description. */
+  /**
+   * The Components board's own label and description; the description follows the
+   * fit choice ("strong or good" is not on the board: design review).
+   */
   alerts: BOARD_ALERTS.label,
-  alertsHelp: BOARD_ALERTS.description,
+  alertsHelp: (choice: AlertMinFit) => (choice === 'good' ? 'Email me the day a strong or good fit closes within 5 days.' : BOARD_ALERTS.description),
   /** The fit words, never the internal score (CLAUDE.md section 12). */
   threshold: 'Alert me about',
   strongOnly: 'Strong fits only',
@@ -130,7 +133,7 @@ function DigestForm({ settings, address, onSaved }: { settings: Settings; addres
       <Card gap={14} aria-label={DIGEST_COPY.alerts}>
         <SwitchRow
           label={DIGEST_COPY.alerts}
-          description={DIGEST_COPY.alertsHelp}
+          description={DIGEST_COPY.alertsHelp(choice)}
           checked={alerts}
           onChange={(v) => {
             touch();
