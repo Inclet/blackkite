@@ -98,6 +98,37 @@ test('profile edit round trip', async ({ page }, testInfo) => {
   await expect(page.getByRole('button', { name: 'Tenders' })).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('profile editor: a slow reload of the list does not wipe what was typed', async ({ page }, testInfo) => {
+  await stubSession(page, testInfo.testId);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, '/profiles');
+  await expect(page.getByText('Business · Tenders, Funding, Events')).toBeVisible();
+  // The editor opens from the cached list and reloads it; hold that reload until after typing.
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
+  let reloaded!: () => void;
+  const landed = new Promise<void>((r) => (reloaded = r));
+  await page.route('**/api/profiles', async (route) => {
+    await held;
+    await route.continue();
+  });
+  page.on('requestfinished', (r) => {
+    if (new URL(r.url()).pathname === '/api/profiles') reloaded();
+  });
+  await page.getByRole('link', { name: 'Edit Ironji-Trade' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Ironji-Trade' })).toBeVisible();
+  const smallest = page.getByLabel('Smallest load (tonnes)');
+  await smallest.fill('about thirty');
+  release();
+  await landed;
+  // The answer is in; give the app a few frames to apply it (this checks that a change does not happen).
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 50)))));
+  // The typed value stays, and Save shows the field error.
+  await expect(smallest).toHaveValue('about thirty');
+  await page.getByRole('button', { name: 'Save profile' }).click();
+  await expect(smallest).toHaveAttribute('aria-invalid', 'true');
+});
+
 test('digest settings round trip', async ({ page }, testInfo) => {
   const api = await stubSession(page, testInfo.testId);
   await page.setViewportSize({ width: 390, height: 844 });
