@@ -200,6 +200,10 @@ test('no profiles yet: the first-visit card, and the list unranked', async () =>
   liveApi({ 'GET /api/profiles': [] });
   const router = renderAt('/');
   expect(await screen.findByText('Tell Blackkite what you do')).toBeInTheDocument();
+  expect(
+    screen.getByText('Three questions about your business or interests. Until then you see events and investments; tenders and funding need a profile to match against.'),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/you see everything, unranked/)).toBeNull();
   expect(list().queryByText(/Strong fit/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Set up a profile' }));
   expect(router.state.location.pathname).toBe('/profiles');

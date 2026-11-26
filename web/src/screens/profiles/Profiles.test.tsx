@@ -56,6 +56,9 @@ test('no profiles: the first-visit wording and the two ways to add one', async (
   mockApi({ 'GET /api/profiles': [], 'GET /me': ME });
   const router = renderAt('/profiles');
   expect(await screen.findByText(PROFILES_COPY.emptyTitle)).toBeInTheDocument();
+  expect(
+    screen.getByText('Add a profile for a business or for your own interests. Until then you see events and investments; tenders and funding need a profile to match against.'),
+  ).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: PROFILES_COPY.addPersonal }));
   expect(router.state.location.pathname).toBe('/profiles/new/personal');
   expect(await screen.findByRole('heading', { level: 1, name: EDITOR_COPY.newPersonal })).toBeInTheDocument();
