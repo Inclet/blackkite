@@ -2788,6 +2788,61 @@
           ],
           "title": "PreviewItemOut",
           "type": "object"
+        },
+        "RunWarningOut": {
+          "description": "Something a run skipped without failing (decision 49). ``kind``\n``email_no_link``: an email with no usable link; ``sender``, ``subject``\nand ``date`` (ISO when it parsed) say which. ``message`` is plain text.",
+          "properties": {
+            "date": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
+            "message": {
+              "title": "Message",
+              "type": "string"
+            },
+            "sender": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Sender"
+            },
+            "subject": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Subject"
+            }
+          },
+          "required": [
+            "kind",
+            "message"
+          ],
+          "title": "RunWarningOut",
+          "type": "object"
         }
       },
       "properties": {
@@ -2831,6 +2886,13 @@
         "totalParsed": {
           "title": "Totalparsed",
           "type": "integer"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/RunWarningOut"
+          },
+          "title": "Warnings",
+          "type": "array"
         }
       },
       "required": [
@@ -2981,6 +3043,13 @@
             "status": {
               "title": "Status",
               "type": "string"
+            },
+            "warnings": {
+              "items": {
+                "$ref": "#/$defs/RunWarningOut"
+              },
+              "title": "Warnings",
+              "type": "array"
             }
           },
           "required": [
@@ -2994,6 +3063,61 @@
             "error"
           ],
           "title": "RunOut",
+          "type": "object"
+        },
+        "RunWarningOut": {
+          "description": "Something a run skipped without failing (decision 49). ``kind``\n``email_no_link``: an email with no usable link; ``sender``, ``subject``\nand ``date`` (ISO when it parsed) say which. ``message`` is plain text.",
+          "properties": {
+            "date": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
+            "message": {
+              "title": "Message",
+              "type": "string"
+            },
+            "sender": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Sender"
+            },
+            "subject": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Subject"
+            }
+          },
+          "required": [
+            "kind",
+            "message"
+          ],
+          "title": "RunWarningOut",
           "type": "object"
         }
       },

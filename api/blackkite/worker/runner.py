@@ -47,7 +47,11 @@ from pydantic import SecretStr
 from sqlalchemy.orm import Session, sessionmaker
 
 from blackkite import scoring
-from blackkite.collectors.base import CollectorError
+from blackkite.collectors.base import (  # noqa: F401
+    MAX_RUN_WARNINGS,
+    CollectorError,
+    run_warnings,
+)
 from blackkite.collectors.http import ClientFetcher, FetchClient
 from blackkite.collectors.registry import build_collector
 from blackkite.db.models import Source, SourceRun
@@ -133,16 +137,6 @@ def run_source(
     refreshed = session.get(SourceRun, run_id)
     assert refreshed is not None
     return refreshed
-
-
-MAX_RUN_WARNINGS = 200
-
-
-def run_warnings(collector: object) -> list[dict]:
-    """What the collector skipped without failing (``collector.warnings``, a
-    list of dicts; decision 49), capped. Collectors without it have none."""
-    found = getattr(collector, "warnings", None) or []
-    return [dict(w) for w in found if isinstance(w, dict)][:MAX_RUN_WARNINGS]
 
 
 def after_commit(collector: object, source: Source) -> None:

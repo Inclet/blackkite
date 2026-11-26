@@ -61,3 +61,13 @@ class Collector(Protocol):
 
 class CollectorError(Exception):
     """A source could not be collected this run (network, parse, robots, rate limit)."""
+
+
+MAX_RUN_WARNINGS = 200
+
+
+def run_warnings(collector: object) -> list[dict]:
+    """What the collector skipped without failing (``collector.warnings``, a
+    list of dicts; decision 49), capped. Collectors without it have none."""
+    found = getattr(collector, "warnings", None) or []
+    return [dict(w) for w in found if isinstance(w, dict)][:MAX_RUN_WARNINGS]

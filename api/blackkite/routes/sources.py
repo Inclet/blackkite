@@ -445,6 +445,7 @@ def _preview_out(r: PreviewResult) -> PreviewOut:
         total_parsed=r.total_parsed,
         requests_made=r.requests_made,
         elapsed_seconds=r.elapsed_seconds,
+        warnings=r.warnings,
     )
 
 

@@ -19,7 +19,7 @@ from typing import Any
 
 from pydantic import SecretStr
 
-from blackkite.collectors.base import CollectorError, RawItem
+from blackkite.collectors.base import CollectorError, RawItem, run_warnings
 from blackkite.collectors.http import FetchClient
 from blackkite.collectors.problems import ConfigInvalid, Problem
 from blackkite.collectors.registry import build_collector
@@ -70,6 +70,8 @@ class PreviewResult:
     elapsed_seconds: float = 0.0
     # Field problems when the config itself was refused (nothing was fetched).
     problems: list[Problem] = field(default_factory=list)
+    # What the fetch skipped without failing (decision 49), as on a run.
+    warnings: list[dict] = field(default_factory=list)
 
 
 def transient_source(**fields: Any) -> Source:
@@ -92,7 +94,12 @@ def preview_source(
             source.collector_type, client, brave_api_key=brave_api_key, preview=True
         )
         items = collector.fetch(source)
-        result = PreviewResult(ok=True, items=items[:limit], total_parsed=len(items))
+        result = PreviewResult(
+            ok=True,
+            items=items[:limit],
+            total_parsed=len(items),
+            warnings=run_warnings(collector),
+        )
     except ConfigInvalid as e:
         result = PreviewResult(ok=False, error=e.text[:2000], problems=e.problems)
     except CollectorError as e:

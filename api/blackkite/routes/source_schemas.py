@@ -311,6 +311,14 @@ class PreviewOut(CamelModel):
     total_parsed: int
     requests_made: int
     elapsed_seconds: float
+    # Emails the test run skipped for lack of a usable link (decision 49); same
+    # shape as a run's warnings. Always sent, [] when none.
+    warnings: list[RunWarningOut] = Field(default_factory=list)
+
+    @field_validator("warnings", mode="before")
+    @classmethod
+    def _known_shape(cls, v: object) -> object:
+        return RunOut._known_shape(v)
 
 
 FieldKind = Literal[

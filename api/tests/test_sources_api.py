@@ -552,6 +552,59 @@ def test_unsaved_test_run(admin, db, web):
     assert count(db, Source) == 0 and count(db, SourceRun) == 0
 
 
+def test_test_run_shows_skipped_emails(admin, db, monkeypatch):
+    """Decision 49 in the preview: emails skipped for lack of a usable link are
+    in ``warnings``, same shape as a run's; nothing is written."""
+    from blackkite.collectors import email_ingest as ei
+    from tests.test_collector_email_ingest import AUTHSERV, FakeMailbox, mail
+
+    monkeypatch.setenv("BK_INGEST_AUTHSERV_ID", AUTHSERV)
+    box = FakeMailbox(
+        {
+            "1": mail(text="Details: https://board.example/tender/1"),
+            "2": mail(subject="Round-up", text="no links in this one"),
+        }
+    )
+    monkeypatch.setattr(ei, "mailbox_from_env", lambda: box)
+    for mode in ("message", "links"):
+        r = admin.post(
+            "/api/admin/sources/test-run",
+            json={
+                "collector_type": "email_ingest",
+                "config": {
+                    "sender": "alerts@board.example",
+                    "parse_mode": mode,
+                    "min_title_chars": 5,
+                },
+            },
+        )
+        assert r.status_code == 200, r.text
+        out = r.json()
+        assert out["ok"] is True and len(out["items"]) == 1, mode
+        assert out["warnings"] == [
+            {
+                "kind": "email_no_link",
+                "message": "Email skipped: no usable link",
+                "sender": "alerts@board.example",
+                "subject": "Round-up",
+                "date": "2026-11-24T06:00:00+00:00",
+            }
+        ], mode
+    assert not any(box.flags.values())  # a preview flags nothing
+    assert count(db, SourceRun) == 0
+
+
+def test_test_run_without_warnings_sends_an_empty_list(admin, db, web):
+    r = admin.post(
+        "/api/admin/sources/test-run",
+        json={"collector_type": "html_list", "config": HTML_CONFIG},
+    ).json()
+    assert r["ok"] and r["warnings"] == []
+    rss = add_source(db, "Feed", collector_type="rss", config={"feed_url": "x"})
+    r = admin.post(f"/api/admin/sources/{rss.id}/test-run").json()
+    assert r["ok"] is False and r["warnings"] == []
+
+
 def test_test_run_failure_is_reported_not_raised(admin, db, web):
     seed = add_source(db, "Seed", config={"placeholder": True})
     r = admin.post(f"/api/admin/sources/{seed.id}/test-run").json()
