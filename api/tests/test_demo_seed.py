@@ -315,3 +315,19 @@ def test_second_user_with_an_ngo_profile_on_demo_data_alone(db, app, client, out
     assert "[Demo] Supply of seeds and fertilizer to farmer cooperatives" in plans
     assert "[Demo] Supply of office furniture" not in plans
     assert "[Demo] Transport of bagged grain to regional stores" not in plans
+
+
+def test_ai_lab_does_not_shortlist_the_non_it_demo_tenders(db):
+    """No shared boilerplate in the demo summaries ("Demo data only." matched
+    the AI lab's "data" on every item)."""
+    from blackkite.scoring.match import match
+    from blackkite.scoring.settings import ScoringSettings
+
+    demo_seed(db, env="dev", admin_email=ADMIN, now=NOW)
+    db.commit()
+    ai = db.scalar(sa.select(Profile).where(Profile.name == "AI lab"))
+    s = ScoringSettings(_env_file=None)
+    tenders = db.scalars(sa.select(Opportunity).where(Opportunity.stream == "tender"))
+    shortlisted = {o.title for o in tenders if match(o, ai, None, s).shortlisted}
+    assert shortlisted == {"[Demo] Design and build of a public data platform"}
+    assert not any("data only" in (i.summary or "").lower() for i in DEMO_ITEMS)

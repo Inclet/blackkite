@@ -98,3 +98,42 @@ def test_event_reason_joins_with_and():
     )
     o = opp("Fintech and AI summit", stream="event", tags=["sector:fintech"])
     assert reason(o, p).endswith(", on AI and fintech.")
+
+
+def test_event_reason_lists_topics_with_their_own_and_by_commas():
+    """Topics that contain "and" are split by commas with a final ", and": never
+    "x and y and z"."""
+    p = Profile(
+        id=uuid.uuid4(),
+        name="Personal",
+        type="personal",
+        data={
+            "event_topics": [
+                "startups and investors",
+                "finance and fintech",
+                "agriculture and food",
+            ]
+        },
+        version=1,
+    )
+    three = opp(
+        "Forum for startups and investors: finance and fintech, agriculture and food",
+        stream="event",
+    )
+    assert reason(three, p).endswith(
+        ", on startups and investors, finance and fintech, and agriculture and food."
+    )
+    two = opp("Startups and investors night on finance and fintech", stream="event")
+    assert reason(two, p).endswith(
+        ", on startups and investors, and finance and fintech."
+    )
+
+
+def test_and_joins():
+    from blackkite.scoring.service import _and
+
+    assert _and([]) == ""
+    assert _and(["AI"]) == "AI"
+    assert _and(["AI", "fintech"]) == "AI and fintech"
+    assert _and(["a", "b", "c"]) == "a, b and c"
+    assert _and(["a and b", "c"]) == "a and b, and c"

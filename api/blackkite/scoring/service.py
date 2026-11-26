@@ -39,6 +39,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import uuid
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
@@ -361,9 +362,16 @@ def _full_date(dt: datetime) -> str:
 
 
 def _and(words: list[str]) -> str:
+    """ "a and b", "a, b and c"; when an item has its own "and" ("startups and
+    investors") the items are split by commas with a final ", and", so the
+    list never reads "x and y and z"."""
     if len(words) <= 1:
         return "".join(words)
-    return f"{', '.join(words[:-1])} and {words[-1]}"
+    inner = any(re.search(r"\band\b", w, re.IGNORECASE) for w in words)
+    if len(words) == 2 and not inner:
+        return f"{words[0]} and {words[1]}"
+    final = ", and " if inner else " and "
+    return f"{', '.join(words[:-1])}{final}{words[-1]}"
 
 
 def _mentions(m: Match) -> str:
@@ -388,7 +396,7 @@ def _rules_reason(opp: Opportunity, m: Match, chosen: bool | None = None) -> str
         when = opp.event_start or opp.deadline_at
         text = what + (f" on {_full_date(when)}" if when else ", date not stated")
         if m.matched:
-            text += f", on {_and(m.matched[:2])}"
+            text += f", on {_and(m.matched[:3])}"
         return text + "."
     if opp.stream == "investment":
         what = (opp.subtype or "Investment listing").capitalize()

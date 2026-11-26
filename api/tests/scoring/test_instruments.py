@@ -31,6 +31,8 @@ from tests.member_helpers import ids
         ("private deals and startups", {"private_deal"}),
         ("bonds", {"treasury", "corporate_bond"}),
         ("gold coins", set()),
+        ("stock exchange listings", set()),
+        ("stocks", {"equity"}),
     ],
 )
 def test_profile_instrument_phrases(text, kinds):
@@ -61,6 +63,23 @@ def inv(title, subtype=None, tags=(), organisation="Issuer (fictional)"):
         (inv("Unit trust fund launch"), "fund"),
         (inv("Plots for sale in Bugesera"), "real_estate"),
         (inv("Announcement"), None),
+        (
+            inv(
+                "Rwanda Stock Exchange listing of I&M bond",
+                organisation="I&M Bank Rwanda Plc (fictional)",
+            ),
+            "corporate_bond",
+        ),
+        (
+            inv(
+                "Rwanda Stock Exchange listing of I&M bond",
+                organisation="Rwanda Stock Exchange",
+            ),
+            "corporate_bond",
+        ),
+        (inv("Rwanda Stock Exchange listing of Example Bank shares"), "equity"),
+        (inv("Rwanda Stock Exchange listing", subtype="RSE listing"), None),
+        (inv("Treasury bond on the Rwanda Stock Exchange"), "treasury"),
     ],
 )
 def test_item_kind(item, kind):

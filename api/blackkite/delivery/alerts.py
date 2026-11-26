@@ -3,7 +3,9 @@ least the user's ``alert_min_fit`` (strong > good > possible; spec 12: the fit
 word, never the numeric score), with a deadline under 5 days away, sent the day
 it is found, once per item. The best profile is the one the feed shows
 (member/view.py: highest-scoring non-filtered row among active profiles).
-Events and investments carry no fit word (decision 24), so they never alert.
+Events and investments carry no fit word (decision 24), so they never alert; an
+investment of an instrument kind the user did not choose is left out in any
+case (decision 54, ``build.unchosen_instrument``).
 
 "Found" for a user is the Kigali day the item entered the catalogue or was first
 scored for them (a new or edited profile can find older items). Only items found
@@ -43,6 +45,7 @@ from blackkite.delivery.build import (
     digest_item,
     email_setting,
     kite_image,
+    unchosen_instrument,
 )
 from blackkite.delivery.mail import Mail, MailTransport
 from blackkite.delivery.unsubscribe import links as unsubscribe_links
@@ -108,10 +111,13 @@ def alert_rows(
     if setting.streams:
         q = q.where(Opportunity.stream.in_(setting.streams))
     rows = load_rows(db, user, db.scalars(q).all())
+    unchosen = unchosen_instrument(db, user)
     rows = [
         r
         for r in rows
-        if r.best is not None and FIT_RANK.get(r.best.fit_word or "", 0) >= min_rank
+        if r.best is not None
+        and FIT_RANK.get(r.best.fit_word or "", 0) >= min_rank
+        and not unchosen(r)
     ]
     return sorted(rows, key=lambda r: (r.opp.deadline_at, r.opp.title))
 

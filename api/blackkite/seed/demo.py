@@ -104,7 +104,7 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         "[Demo] Cold chain transport of vaccines to district hospitals",
         "Example Health Supplies Agency (fictional)",
         "A fictional call for refrigerated transport from a central store to "
-        "district hospitals. Demo data only.",
+        "district hospitals.",
         "issuer",
         12,
         organisation_short="EHSA (fictional)",
@@ -119,7 +119,7 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         "[Demo] Dry freight and last-mile distribution framework",
         "Example Grain Board (fictional)",
         "A fictional framework for moving bagged grain by road and delivering it "
-        "to rural stores. Demo data only.",
+        "to rural stores.",
         "board",
         4,
         subtype="framework agreement",
@@ -138,8 +138,7 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         "tender",
         "[Demo] Design and build of a public data platform",
         "Example Ministry of Data (fictional)",
-        "A fictional request for a team to build a data platform and its "
-        "dashboards. Demo data only.",
+        "A fictional request for a team to build a data platform and its dashboards.",
         "issuer",
         20,
         subtype="request for proposals",
@@ -151,8 +150,7 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         "tender",
         "[Demo] Office cleaning services for a head office",
         "Example Hotel Group (fictional)",
-        "A fictional cleaning contract, here to show an item that matches no "
-        "profile. Demo data only.",
+        "A fictional cleaning contract, here to show an item that matches no profile.",
         "board",
         9,
         tags=("service:cleaning", "sector:hospitality"),
@@ -163,8 +161,7 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         "funding",
         "[Demo] Agri-logistics innovation grant",
         "Example Rural Foundation (fictional)",
-        "A fictional grant for companies improving how farm produce reaches "
-        "markets. Demo data only.",
+        "A fictional grant for companies improving how farm produce reaches markets.",
         "issuer",
         30,
         subtype="grant",
@@ -177,8 +174,7 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         "funding",
         "[Demo] AI for public services challenge",
         "Example Innovation Fund (fictional)",
-        "A fictional competition for AI tools that help public services. Demo "
-        "data only.",
+        "A fictional competition for AI tools that help public services.",
         "board",
         40,
         subtype="competition",
@@ -191,8 +187,7 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         "funding",
         "[Demo] Community nutrition grant for local NGOs",
         "Example Wellbeing Trust (fictional)",
-        "A fictional grant for community nutrition and health education work. "
-        "Demo data only.",
+        "A fictional grant for community nutrition and health education work.",
         "issuer",
         25,
         subtype="grant",
@@ -210,7 +205,7 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         "[Demo] Supply of nutrition supplements to health centres",
         "Example Health Supplies Agency (fictional)",
         "A fictional call for fortified flour and nutrition supplements for "
-        "district health centres. Demo data only.",
+        "district health centres.",
         "board",
         16,
         organisation_short="EHSA (fictional)",
@@ -223,8 +218,7 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         "tender",
         "[Demo] Supply of improved seeds and fertiliser to cooperatives",
         "Example Agriculture Board (fictional)",
-        "A fictional call for seeds and fertiliser delivered to farmer "
-        "cooperatives. Demo data only.",
+        "A fictional call for seeds and fertiliser delivered to farmer cooperatives.",
         "issuer",
         22,
         subtype="request for bids",
@@ -241,7 +235,7 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         "[Demo] Five-year treasury bond, fictional issue",
         "Example Central Bank (fictional)",
         "A fictional bond issue with a fictional coupon. Facts only, no "
-        "recommendation. Demo data only.",
+        "recommendation.",
         "issuer",
         6,
         subtype="treasury bond",
@@ -255,7 +249,7 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         "[Demo] Corporate bond offer, fictional issuer",
         "Example Power Company (fictional)",
         "A fictional corporate bond offer open to retail investors. Facts only, "
-        "no recommendation. Demo data only.",
+        "no recommendation.",
         "board",
         15,
         subtype="corporate bond",
@@ -268,7 +262,7 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         "event",
         "[Demo] Logistics and trade meetup",
         "Example Traders Network (fictional)",
-        "A fictional evening meetup for people in logistics and trade. Demo data only.",
+        "A fictional evening meetup for people in logistics and trade.",
         "issuer",
         10,
         tags=("sector:logistics and trade",),
@@ -279,7 +273,7 @@ DEMO_ITEMS: tuple[DemoItem, ...] = (
         "event",
         "[Demo] Fintech and startups summit",
         "Example Summit Organisers (fictional)",
-        "A fictional two-day summit on finance, fintech and startups. Demo data only.",
+        "A fictional two-day summit on finance, fintech and startups.",
         "board",
         3,
         tags=("sector:finance and fintech", "sector:startups and investors"),

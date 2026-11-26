@@ -1,7 +1,8 @@
 """Worker job: run pending profile backfills (scoring/backfill.py).
 
-Every tick, profiles whose newest request is at least ``BACKFILL_DEBOUNCE`` old
-are backfilled one at a time, each under a Postgres advisory lock per profile
+Every tick, profiles whose newest request is at least ``BACKFILL_DEBOUNCE`` (60 s)
+old are backfilled (``bk worker --once --no-debounce`` skips that wait for a
+manual run) one at a time, each under a Postgres advisory lock per profile
 (two workers never score the same profile at once). The request is cleared only
 if no newer one arrived during the run; otherwise the profile runs again once
 the newer request is old enough. An inactive profile's request is just cleared
@@ -63,11 +64,30 @@ def profile_lock_key(profile_id: uuid.UUID) -> int:
     return zlib.crc32(profile_id.bytes) - (1 << 31)  # signed int4
 
 
-def due_backfills(session: Session, now: datetime) -> list[uuid.UUID]:
+def _is_due(requested: datetime, attempts: int, now: datetime, debounce: bool) -> bool:
+    """A request is due once ``BACKFILL_DEBOUNCE`` old. Without the debounce
+    (``bk worker --once --no-debounce``) a fresh request is due at once; one
+    pushed back after a failure still waits for its retry time."""
+    if not debounce and attempts == 0:
+        return requested <= now
+    return requested <= now - BACKFILL_DEBOUNCE
+
+
+def due_backfills(
+    session: Session, now: datetime, *, debounce: bool = True
+) -> list[uuid.UUID]:
+    due = Profile.backfill_requested_at <= now - BACKFILL_DEBOUNCE
+    if not debounce:
+        due = sa.or_(
+            due,
+            sa.and_(
+                Profile.backfill_attempts == 0, Profile.backfill_requested_at <= now
+            ),
+        )
     return list(
         session.scalars(
             sa.select(Profile.id)
-            .where(Profile.backfill_requested_at <= now - BACKFILL_DEBOUNCE)
+            .where(due)
             .order_by(Profile.backfill_requested_at, Profile.id)
         )
     )
@@ -128,14 +148,16 @@ def run_pending_backfills(
     *,
     per_tick: int = DEFAULT_PER_TICK,
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+    debounce: bool = True,
 ) -> list[uuid.UUID]:
     """Backfill up to ``per_tick`` due profiles. Returns the ids actually
-    backfilled."""
+    backfilled. ``debounce=False`` (manual runs) does not wait for a fresh
+    request to be ``BACKFILL_DEBOUNCE`` old."""
     from blackkite.scoring import service
 
     at = now()
     with sessions() as s:
-        due = due_backfills(s, at)
+        due = due_backfills(s, at, debounce=debounce)
     done: list[uuid.UUID] = []
     if not due:
         return done
@@ -155,7 +177,11 @@ def run_pending_backfills(
                 continue  # another worker is on it
             p = s.get(Profile, pid)
             requested = p.backfill_requested_at if p is not None else None
-            if p is None or requested is None or requested > at - BACKFILL_DEBOUNCE:
+            if (
+                p is None
+                or requested is None
+                or not _is_due(requested, p.backfill_attempts, at, debounce)
+            ):
                 continue  # done by another worker, or edited again just now
             attempts = p.backfill_attempts + 1
             ran = p.active

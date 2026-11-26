@@ -236,6 +236,34 @@ def test_one_shared_word_is_not_a_match(db, ana, login):
     ]
 
 
+def test_one_word_sector_alone_is_not_a_match(db, ana, login):
+    """A one-word sector term ("health") needs category agreement or a second
+    shared word; multi-word services match as before."""
+    src = f.source(db, "Plans portal", kind="original", streams=["tender"])
+    f.profile(
+        db,
+        ana,
+        "Health NGO",
+        organisation_type="Local NGO",
+        services=["community health", "nutrition"],
+        sectors=["health", "agriculture"],
+    )
+    for d in (
+        "Refrigerated distribution of vaccines to health centres",
+        "Data analytics consultancy for health records",
+        "Construction of a health centre",
+    ):
+        plan(db, src, d)
+    plan(db, src, "Community health worker training on nutrition")
+    # "agriculture" names the plan's category: category agreement.
+    plan(db, src, "Supply of seeds and fertilizer to farmer cooperatives")
+    db.commit()
+    assert sorted(descriptions(login("ana@example.com"))) == [
+        ("Community health worker training on nutrition", "Health NGO"),
+        ("Supply of seeds and fertilizer to farmer cooperatives", "Health NGO"),
+    ]
+
+
 def test_service_categories_need_one_category():
     from blackkite.db.models import Profile
     from blackkite.member.procurement import service_categories

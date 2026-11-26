@@ -43,12 +43,20 @@ from rapidfuzz import fuzz
 from sqlalchemy.orm import Session
 
 from blackkite.collectors.base import Records
+from blackkite.db import trgm
 from blackkite.db.models import Award, Opportunity, ProcurementPlanItem, Source
 from blackkite.llm.embeddings import Embedder
 from blackkite.pipeline import awards as A
 from blackkite.pipeline import categories
 from blackkite.pipeline import plans as PL
-from blackkite.pipeline.dedupe import ORG_MIN, is_generic, org_similarity, title_key
+from blackkite.pipeline.dedupe import (
+    ORG_MIN,
+    _initials,
+    is_generic,
+    org_key,
+    org_similarity,
+    title_key,
+)
 from blackkite.pipeline.procurement import fiscal_start_year, period_label
 
 log = logging.getLogger("blackkite.pipeline")
@@ -225,9 +233,72 @@ def match_plan(
 LINK_LOOKBACK = timedelta(days=400)
 
 
+def _unlinked(model, now: datetime) -> list:
+    return [
+        model.opportunity_id.is_(None),
+        model.last_seen >= now - LINK_LOOKBACK,
+        sa.or_(model.entity_key != "", model.tender_ref.is_not(None)),
+    ]
+
+
+def _candidates(session: Session, model, tender: Tender, text: str, now: datetime):
+    """Unlinked rows that could match ``tender``, narrowed in SQL (a superset of
+    what the checks in ``link_tender`` accept):
+
+    * a usable tender ref that appears in the tender's text;
+    * an entity that could be the tender's organisation: the same key, an
+      acronym either way (initials index), or trigram-similar (``%``, GIN index);
+    * or a title (awards) / description (plans) trigram-similar to one of the
+      tender's titles, for an entity only fuzzily alike.
+
+    Without pg_trgm (``db.trgm.available``) every unlinked row is a candidate."""
+    base = _unlinked(model, now)
+    if not trgm.available(session):
+        return session.scalars(sa.select(model).where(*base).order_by(model.id)).all()
+    ids: set[uuid.UUID] = set(
+        session.scalars(
+            sa.select(model.id).where(
+                *base,
+                model.tender_ref.is_not(None),
+                sa.func.length(model.tender_ref) >= REF_MIN_LEN,
+                sa.func.strpos(sa.func.lower(text), sa.func.lower(model.tender_ref))
+                > 0,
+            )
+        )
+    )
+    keys = [k for k in dict.fromkeys(org_key(o) for o in tender.orgs) if k]
+    entity: list = []
+    if keys:
+        entity.append(model.entity_key.in_(keys))
+        inits = {i for i in (_initials(k) for k in keys) if len(i) >= 2}
+        if inits:
+            entity.append(model.entity_key.in_(inits))
+        single = [k for k in keys if " " not in k and len(k) >= 2]
+        if single:
+            initials = sa.literal_column(trgm.initials_sql(model.entity_key.key))
+            entity.append(initials.in_(single))
+        entity += [model.entity_key.op("%")(k) for k in keys]
+        column = model.title if model is Award else model.description_key
+        titles = [t for t in dict.fromkeys(title_key(x) for x in tender.titles) if t]
+        entity += [column.op("%")(t) for t in titles]
+        ids |= set(
+            session.scalars(
+                sa.select(model.id).where(
+                    *base, model.entity_key != "", sa.or_(*entity)
+                )
+            )
+        )
+    if not ids:
+        return []
+    return session.scalars(
+        sa.select(model).where(model.id.in_(ids)).order_by(model.id)
+    ).all()
+
+
 def link_tender(session: Session, opp: Opportunity, now: datetime) -> int:
     """Link unlinked awards and plan items seen in the last 400 days to this
-    tender. Returns how many."""
+    tender. Returns how many. Candidates are narrowed in SQL (``_candidates``);
+    each is then checked as below."""
     if opp.stream != "tender" or opp.visibility != "public":
         return 0
     session.flush()
@@ -235,42 +306,30 @@ def link_tender(session: Session, opp: Opportunity, now: datetime) -> int:
     text = f"{opp.title} {opp.evidence or ''}".lower()
     linked = 0
     for model in (Award, ProcurementPlanItem):
-        rows = session.scalars(
-            sa.select(model).where(
-                model.opportunity_id.is_(None),
-                model.last_seen >= now - LINK_LOOKBACK,
-                sa.or_(model.entity_key != "", model.tender_ref.is_not(None)),
-            )
-        ).all()
+        rows = _candidates(session, model, tender, text, now)
         for row in rows:
-            if _usable_ref(row.tender_ref) and row.tender_ref.lower() in text:
-                hit = True
-            elif isinstance(row, Award):
-                hit = (
-                    _best(
-                        title_key(row.title),
-                        row.entity,
-                        [tender],
-                        fuzz.token_sort_ratio,
-                        None,
-                    )
-                    is not None
-                )
-            else:
-                hit = (
-                    _best(
-                        row.description_key,
-                        row.entity,
-                        [tender],
-                        fuzz.token_set_ratio,
-                        _plan_earliest(row),
-                    )
-                    is not None
-                )
-            if hit:
+            if _is_link(row, tender, text):
                 row.opportunity_id = opp.id
                 linked += 1
     return linked
+
+
+def _is_link(row, tender: Tender, text: str) -> bool:
+    if _usable_ref(row.tender_ref) and row.tender_ref.lower() in text:
+        return True
+    if isinstance(row, Award):
+        found = _best(
+            title_key(row.title), row.entity, [tender], fuzz.token_sort_ratio, None
+        )
+    else:
+        found = _best(
+            row.description_key,
+            row.entity,
+            [tender],
+            fuzz.token_set_ratio,
+            _plan_earliest(row),
+        )
+    return found is not None
 
 
 # --- test-run preview --------------------------------------------------------------

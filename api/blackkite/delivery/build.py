@@ -9,6 +9,11 @@ What goes in:
   a fit word (contract section 1: below "possible" is not shown). Ranked by the
   best profile's score, then closing soonest. At most 12, and at most 3
   investments and 3 events (spec 7.1).
+* **Instruments** (decision 54): an investment item whose instrument kind none of
+  the user's active profiles that follow investments chose is left out
+  (``unchosen_instrument``). Items of an unrecognised kind, profiles with no
+  instruments listed, and the user's own items stay. The feed still lists them,
+  ranked lower.
 * An item that went out in the **previous** digest is left out unless its
   deadline or value changed since.
 * **Closing in 7 days**: the user's saved and acting items whose deadline (events:
@@ -38,6 +43,7 @@ from blackkite.db.models import (
     DigestLog,
     DigestSetting,
     Opportunity,
+    Profile,
     Source,
     SourceRun,
     User,
@@ -67,6 +73,7 @@ from blackkite.member.view import (
     sort_date,
     trust_for,
 )
+from blackkite.scoring import instruments
 
 log = logging.getLogger("blackkite.delivery")
 
@@ -219,6 +226,36 @@ def _open_rows(
     return load_rows(db, user, opps, keep_filtered=keep_filtered)
 
 
+def unchosen_instrument(db: Session, user: User):
+    """A predicate on rows: True for an investment item of a kind the user did
+    not choose (decision 54), judged on the user's active profiles that follow
+    investments (or list no streams). It is unchosen only when every one of them
+    lists instruments and none names the item's kind; an unrecognised kind or
+    the user's own item is never unchosen."""
+    datas = [
+        d or {}
+        for d in db.scalars(
+            sa.select(Profile.data).where(
+                Profile.user_id == user.id, Profile.active.is_(True)
+            )
+        )
+    ]
+    following = []
+    for d in datas:
+        streams = d.get("streams")
+        if not (isinstance(streams, list) and streams) or "investment" in streams:
+            following.append(d)
+
+    def unchosen(row: Row) -> bool:
+        if row.opp.stream != "investment" or row.own or not following:
+            return False
+        return all(
+            instruments.instrument_chosen(row.opp, d) is False for d in following
+        )
+
+    return unchosen
+
+
 def eligible(row: Row) -> bool:
     if row.best is None:
         return False
@@ -336,12 +373,13 @@ def build_digest(
     closing_ids = {r.opp.id for r in closing}
 
     previous = previous_items(db, user, today)
+    unchosen = unchosen_instrument(db, user)
     candidates = [
         r
         for r in _open_rows(
             db, user, now, states=None, streams=streams, keep_filtered=False
         )
-        if eligible(r) and r.opp.id not in closing_ids
+        if eligible(r) and r.opp.id not in closing_ids and not unchosen(r)
     ]
     candidates.sort(key=lambda r: rank_key(r, now))
     shown: list[Row] = []
