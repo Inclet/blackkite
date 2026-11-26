@@ -507,6 +507,7 @@ def _detail_fields(row: Row) -> dict[str, Any]:
         "to_check": _to_check(best),
         "trust": trust_for(row),
         "original_url": _original_url(row),
+        "is_manual": is_manual(row.opp),
     }
 
 
@@ -695,7 +696,6 @@ def opportunity_out(
         state=row.state,
         dismiss_reason=S.dismiss_reason_out(row.uo.dismiss_reason if row.uo else None),
         own_item=own_item_out(o, user_id),
-        is_manual=is_manual(o),
     )
     return S.OpportunityOut(**_item_fields(row, now), detail=detail)
 

@@ -88,6 +88,9 @@ class FeedItemDetail(CamelModel):
     to_check: str | None = None
     trust: Trust
     original_url: str
+    # A member added this item (spec 6), private or since made public; no
+    # source carries it, and originalUrl is the link they gave (if any).
+    is_manual: bool
 
 
 class FeedItem(CamelModel):
@@ -208,9 +211,6 @@ class OpportunityDetail(FeedItemDetail):
     state: State
     dismiss_reason: DismissReason | None = None
     own_item: OwnItem | None = None
-    # A member added this item (spec 6), private or since made public; no
-    # source carries it, and originalUrl is the link they gave (if any).
-    is_manual: bool
 
 
 class OpportunityOut(FeedItem):
