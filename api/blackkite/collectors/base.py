@@ -49,7 +49,12 @@ class Collector(Protocol):
     calls it once the run's ingest is committed, and never when the ingest is rolled
     back. For side effects outside the database that must only happen when the items
     are safely stored (email_ingest flags processed mail there). A failure in it is
-    logged; the run stays succeeded."""
+    logged; the run stays succeeded.
+
+    Optional: ``warnings``, a list of dicts ``{kind, message, ...}`` for things
+    the last ``fetch`` skipped without failing (email_ingest: emails with no
+    usable link, decision 49). The runner stores them on the run
+    (``source_run.warnings``)."""
 
     def fetch(self, source: Source) -> list[RawItem]: ...
 

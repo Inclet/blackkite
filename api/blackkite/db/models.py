@@ -317,6 +317,12 @@ class SourceRun(Base):
         sa.Integer, nullable=False, server_default="0"
     )
     error: Mapped[str | None] = mapped_column(sa.Text)
+    # Things a run skipped without failing, for the run's error log (decision
+    # 49): a list of {kind, message, ...}; e.g. kind "email_no_link" with the
+    # email's sender, subject and date (never its body).
+    warnings: Mapped[list[dict]] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")
+    )
 
 
 class SourceStatusChange(Base):

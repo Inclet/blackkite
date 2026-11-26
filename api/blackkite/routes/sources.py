@@ -390,13 +390,22 @@ def source_runs(
     status: Annotated[Literal["running", "succeeded", "failed"] | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    problems: Annotated[bool, Query()] = False,
 ) -> RunPage:
-    """Run history, newest first, with each failed run's error text (the error
-    log is ``status=failed``)."""
+    """Run history, newest first, with each failed run's error text and each
+    run's warnings (decision 49: e.g. emails skipped for lack of a usable link).
+    ``problems=true`` is the error log: runs that failed or carry warnings."""
     _get_source(db, source_id)
     where = [SourceRun.source_id == source_id]
     if status:
         where.append(SourceRun.status == status)
+    if problems:
+        where.append(
+            sa.or_(
+                SourceRun.status == "failed",
+                sa.func.jsonb_array_length(SourceRun.warnings) > 0,
+            )
+        )
     total = db.scalar(sa.select(sa.func.count()).select_from(SourceRun).where(*where))
     rows = db.scalars(
         sa.select(SourceRun)

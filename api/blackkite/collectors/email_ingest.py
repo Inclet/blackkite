@@ -49,6 +49,13 @@ id, RFC 8601) reports ``dmarc=pass`` for the From domain, or ``dkim=pass`` with
 authserv-id are ignored. Without ``BK_INGEST_AUTHSERV_ID`` such a source refuses
 to run (CollectorError) rather than trust a header anyone could have written.
 
+Emails with no usable link (decision 49). In ``message`` mode an email that is
+this source's (sender, subject and authentication match) but has no link that
+passes ``check_url`` and ``link_pattern`` gives no item. It is still marked
+processed, and recorded in ``warnings`` (sender, subject, date; never the
+body), which the runner stores on the run (``source_run.warnings``) for the
+run's error log. The run still succeeds.
+
 Links found in mail pass ``check_url`` (http/https, no credentials, no internal
 addresses) before they become items; nothing in a message is fetched here.
 """
@@ -498,6 +505,27 @@ def message_items(
 
 # --- collector ------------------------------------------------------------------------
 
+NO_LINK_WARNING = "email_no_link"
+
+
+def skipped_email(raw: bytes) -> dict[str, str | None]:
+    """Run warning for an email skipped for lack of a usable link: its sender,
+    subject and date, read from the headers only (the body is not kept)."""
+    from email.parser import BytesHeaderParser
+
+    headers = BytesHeaderParser(policy=email.policy.default).parsebytes(raw)
+    sender = parseaddr(str(headers.get("From", "")))[1].lower() or None
+    subject = clean(str(headers.get("Subject", "")), 300) or None
+    raw_date = str(headers.get("Date", ""))
+    date = rfc822_to_iso(raw_date) or clean(raw_date, 100) or None
+    return {
+        "kind": NO_LINK_WARNING,
+        "message": "Email skipped: no usable link",
+        "sender": sender,
+        "subject": subject,
+        "date": date,
+    }
+
 
 def done_keyword(source_id) -> str:
     return f"BkDone{source_id.hex[:12]}"
@@ -528,10 +556,14 @@ class EmailIngestCollector:
         self.now = now
         self.authserv_id = authserv_id
         self._authserv: str | None = None
+        # Emails the last fetch skipped (decision 49); the runner stores them on
+        # the run.
+        self.warnings: list[dict[str, str | None]] = []
         # (folder, uids, flag, uid validity) read by fetch, flagged by after_commit.
         self._pending: tuple[str, list[str], str, str | None] | None = None
 
     def fetch(self, source) -> list[RawItem]:
+        self.warnings = []
         cfg = parse_config(source.config or {})
         self._authserv = self.authserv_id()
         if cfg.require_authenticated and not self._authserv:
@@ -567,6 +599,8 @@ class EmailIngestCollector:
             if found is None:
                 continue  # not this source's mail: leave it for others
             done.append(uid)
+            if not found and cfg.parse_mode == "message":
+                self.warnings.append(skipped_email(raw))
             for item in found:
                 if item.url not in seen:
                     seen.add(item.url)

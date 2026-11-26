@@ -639,6 +639,42 @@ def test_runs_are_paginated_and_filter_the_error_log(admin, db):
     }
 
 
+def test_error_log_includes_runs_with_warnings(admin, db):
+    """Decision 49: a run that succeeded but skipped emails appears in the error
+    log (``problems=true``) with each skipped email."""
+    s = add_source(db)
+    add_run(db, s, "succeeded", ago_hours=3)
+    add_run(db, s, "failed", ago_hours=2)
+    warned = add_run(db, s, "succeeded", ago_hours=1)
+    warned.warnings = [
+        {
+            "kind": "email_no_link",
+            "message": "Email skipped: no usable link",
+            "sender": "alerts@board.example",
+            "subject": "Weekly round-up",
+            "date": "2026-11-25T07:30:00+00:00",
+        }
+    ]
+    db.commit()
+    url = f"/api/admin/sources/{s.id}/runs"
+    log = admin.get(url, params={"problems": "true"}).json()
+    assert log["total"] == 2
+    assert [r["status"] for r in log["items"]] == ["succeeded", "failed"]
+    assert log["items"][0]["warnings"] == [
+        {
+            "kind": "email_no_link",
+            "message": "Email skipped: no usable link",
+            "sender": "alerts@board.example",
+            "subject": "Weekly round-up",
+            "date": "2026-11-25T07:30:00+00:00",
+        }
+    ]
+    assert log["items"][1]["warnings"] == []
+    # status=failed is unchanged; the full history carries warnings too.
+    assert admin.get(url, params={"status": "failed"}).json()["total"] == 1
+    assert admin.get(url).json()["total"] == 3
+
+
 def test_source_detail_has_gate_and_status_history(admin, db):
     r = admin.post("/api/admin/sources", json=body())
     assert r.status_code == 201, r.text

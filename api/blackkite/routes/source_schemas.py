@@ -234,6 +234,18 @@ class MemberSourceOut(CamelModel):
     muted: bool
 
 
+class RunWarningOut(CamelModel):
+    """Something a run skipped without failing (decision 49). ``kind``
+    ``email_no_link``: an email with no usable link; ``sender``, ``subject``
+    and ``date`` (ISO when it parsed) say which. ``message`` is plain text."""
+
+    kind: str
+    message: str
+    sender: str | None = None
+    subject: str | None = None
+    date: str | None = None
+
+
 class RunOut(CamelModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -244,6 +256,15 @@ class RunOut(CamelModel):
     items_new: int
     items_failed: int
     error: str | None
+    warnings: list[RunWarningOut] = Field(default_factory=list)
+
+    @field_validator("warnings", mode="before")
+    @classmethod
+    def _known_shape(cls, v: object) -> object:
+        # Stored rows are dicts; keep only the fields above (and only dicts).
+        if not isinstance(v, list):
+            return []
+        return [w for w in v if isinstance(w, dict) and w.get("kind")]
 
 
 class RunPage(CamelModel):

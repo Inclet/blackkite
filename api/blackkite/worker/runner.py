@@ -93,6 +93,7 @@ def run_source(
     session.add(run)
     session.commit()
     run_id = run.id
+    warnings: list[dict] = []
     try:
         collector = build_collector(
             source.collector_type, client, brave_api_key=brave_api_key
@@ -102,12 +103,14 @@ def run_source(
         fetcher = ClientFetcher(client, delay=source.rate_limit)
         with fetcher.remembering():
             items = collector.fetch(source)
+        warnings = run_warnings(collector)
         deps = (make_deps or ingest.default_deps)(fetcher)
         result = ingest.ingest_items(session, source, items, deps=deps, now=now())
         run.status = "succeeded"
         run.items_found = result.items_found
         run.items_new = result.items_new
         run.items_failed = result.items_failed
+        run.warnings = warnings
         run.finished_at = now()
         session.commit()
     except Exception as e:  # one source's failure is recorded, never propagated
@@ -120,6 +123,7 @@ def run_source(
         assert run is not None
         run.status = "failed"
         run.error = _error_text(e)
+        run.warnings = warnings
         run.finished_at = now()
         session.commit()
         return run
@@ -129,6 +133,16 @@ def run_source(
     refreshed = session.get(SourceRun, run_id)
     assert refreshed is not None
     return refreshed
+
+
+MAX_RUN_WARNINGS = 200
+
+
+def run_warnings(collector: object) -> list[dict]:
+    """What the collector skipped without failing (``collector.warnings``, a
+    list of dicts; decision 49), capped. Collectors without it have none."""
+    found = getattr(collector, "warnings", None) or []
+    return [dict(w) for w in found if isinstance(w, dict)][:MAX_RUN_WARNINGS]
 
 
 def after_commit(collector: object, source: Source) -> None:
