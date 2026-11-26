@@ -1,7 +1,7 @@
 # Blackkite developer tasks. Run from the repo root.
 API := cd api &&
 
-.PHONY: install migrate downgrade-base test bootstrap seed-sources demo-seed worker renderer dev up down
+.PHONY: install migrate downgrade-base test bootstrap seed-sources demo-seed worker renderer dev up down smoke smoke-down deploy-build deploy-up backup
 
 install:        ## install API dependencies
 	$(API) uv sync
@@ -33,8 +33,26 @@ renderer:       ## run the renderer service locally (needs BK_RENDERER_TOKEN in 
 dev:            ## run the API locally with reload
 	$(API) uv run uvicorn blackkite.app:app --reload --port 8000
 
-up:             ## compose: db + renderer + api + mailpit
-	docker compose --profile dev up -d --build
+# --- Containers (docs/deploy.md) ---
+LOCAL := docker compose -f docker-compose.yml -f docker-compose.local.yml --profile dev
 
-down:
-	docker compose --profile dev down
+up:             ## local stack: every service + Mailpit, BK_ENV=dev, http://localhost:8080
+	$(LOCAL) up -d --build --wait
+
+down:           ## stop the local stack (keeps volumes; `$(LOCAL) down -v` removes them)
+	$(LOCAL) down
+
+smoke:          ## local stack end-to-end smoke test through the proxy (leaves it running)
+	deploy/smoke/run.sh
+
+smoke-down:     ## smoke test, then remove the stack's containers, volumes and networks
+	deploy/smoke/run.sh --down
+
+deploy-build:   ## VPS: build the production images
+	docker compose build
+
+deploy-up:      ## VPS: start or update the production stack (BK_ENV=prod, HTTPS for BK_DOMAIN)
+	docker compose up -d --wait
+
+backup:         ## VPS: dump the database to ./backups (deploy/backup.sh)
+	deploy/backup.sh
