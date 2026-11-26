@@ -98,9 +98,10 @@ ORGANISATION_TYPES = ("company", "ngo", "cooperative")
 
 
 class BusinessData(_Common):
-    # Free text; suggested "company", "ngo", "cooperative". Scoring treats
-    # "ngo", "non-profit", "nonprofit" (and "ngo or non-profit") as a non-profit
-    # for NGO-only calls (scoring/rules.py); empty = not an NGO (decision 37).
+    # Free text; suggested "company", "ngo", "cooperative". Scoring treats NGO
+    # wording ("ngo", "Local NGO", "non profit", "civil society", "CSO", ...;
+    # scoring/rules.py NGO_PROFILE_RE) as a non-profit for NGO-only calls;
+    # empty = not an NGO (decision 37).
     organisation_type: Text | None = None
     services: TextList | None = None
     sectors: TextList | None = None
