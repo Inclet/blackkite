@@ -22,6 +22,7 @@ from __future__ import annotations
 import calendar
 import math
 import uuid
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -42,7 +43,7 @@ from blackkite.pipeline.visibility import (
 )
 from blackkite.scoring.match import profile_embedding
 from blackkite.scoring.settings import ScoringSettings
-from blackkite.scoring.text import _str_list, matched_terms, profile_terms, tokens
+from blackkite.scoring.text import TermHit, _str_list, profile_terms, term_hits
 
 MIN_AWARDS = 3
 PLAN_WINDOWS = (3, 6, 12)
@@ -444,9 +445,71 @@ def _cosine(a: Any, b: Any) -> float | None:
     return sum(x * y for x, y in zip(a, b, strict=True)) / (na * nb)
 
 
-def _plan_tokens(plan: ProcurementPlanItem) -> set[str]:
+def _plan_text(plan: ProcurementPlanItem) -> str:
     labels = [t.split(":", 1)[-1].replace("_", " ") for t in plan.tags or []]
-    return tokens(" ".join([plan.description, *labels]))
+    return "\n".join([plan.description, *labels])
+
+
+SERVICE_FIELDS = ("services", "sectors")
+
+
+def service_categories(profile: Profile) -> set[str]:
+    """Benchmark categories the profile's services and sectors name, each
+    service counted only when it names exactly one ("dry freight": transport;
+    "digital consulting" names consultancy and IT, so neither)."""
+    out: set[str] = set()
+    data = profile.data or {}
+    for f in SERVICE_FIELDS:
+        for term in _str_list(data.get(f)):
+            cat = categories.categorise(term)
+            if cat.category != categories.OTHER and len(cat.tags) == 1:
+                out.add(cat.category)
+    return out
+
+
+def _service_match(hit: TermHit) -> bool:
+    """A whole profile term in the plan: a phrase (word for word or through the
+    synonyms), or a one-word term word for word (never a one-word synonym:
+    "software" does not match "solar system")."""
+    if not hit.phrase:
+        return False
+    return hit.literal or len(hit.stems) > 1
+
+
+@dataclass(frozen=True)
+class PlanMatch:
+    services: int  # whole profile terms found
+    tokens: int  # distinct plan words shared with the profile's terms
+    category: bool
+    similarity: float | None
+
+    @property
+    def rank(self) -> tuple[int, int, int, float]:
+        return (self.services, int(self.category), self.tokens, self.similarity or 0.0)
+
+
+MIN_SHARED_TOKENS = 2
+
+
+def plan_match(
+    plan: ProcurementPlanItem,
+    terms: list[str],
+    cats: set[str],
+    similarity: float | None,
+    settings: ScoringSettings,
+) -> PlanMatch | None:
+    """A plan matches a profile on any of: a whole service (or sector) phrase;
+    at least two distinct shared words; its category being one the profile's
+    services name; embedding similarity at the threshold. One shared word alone
+    ("dry" foodstuffs, "health" centre construction) is too weak."""
+    hits = term_hits(terms, _plan_text(plan))
+    services = sum(1 for h in hits if _service_match(h))
+    shared = len(frozenset().union(*(h.stems for h in hits))) if hits else 0
+    category = plan.category != categories.OTHER and plan.category in cats
+    similar = similarity is not None and similarity >= settings.embedding_min_similarity
+    if services or shared >= MIN_SHARED_TOKENS or category or similar:
+        return PlanMatch(services, shared, category, similarity)
+    return None
 
 
 def plans_for(
@@ -503,27 +566,24 @@ def plans_for(
     else:
         vectors = {}
     terms = {p.id: profile_terms(p) for p in profiles}
+    cats = {p.id: service_categories(p) for p in profiles}
     out: list[PlanOut] = []
     for plan in plans:
-        plan_tokens = _plan_tokens(plan)
-        best: tuple[int, float, int, Profile] | None = None
+        best: tuple[tuple, int, Profile] | None = None
         for i, prof in enumerate(profiles):
             if _excluded(plan, prof) or _below_min(plan, prof):
                 continue
-            hits = len(matched_terms(terms[prof.id], plan_tokens))
             sim = None
             if plan.embedding is not None and vectors.get(prof.id) is not None:
                 sim = _cosine(plan.embedding, vectors[prof.id])
-            if hits < settings.tag_min_overlap and (
-                sim is None or sim < settings.embedding_min_similarity
-            ):
+            m = plan_match(plan, terms[prof.id], cats[prof.id], sim, settings)
+            if m is None:
                 continue
-            cand = (hits, sim or 0.0, -i, prof)
-            if best is None or cand[:3] > best[:3]:
-                best = cand
+            if best is None or (m.rank, -i) > (best[0], -best[1]):
+                best = (m.rank, i, prof)
         if best is None:
             continue
-        prof = best[3]
+        prof = best[2]
         out.append(
             PlanOut(
                 id=plan.id,

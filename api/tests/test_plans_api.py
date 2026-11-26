@@ -189,6 +189,65 @@ def test_profile_filter_and_other_users(db, setup, login, ben):
     assert descriptions(personal_only) == []
 
 
+def test_one_shared_word_is_not_a_match(db, ana, login):
+    """Review false matches: one shared word (or a weak word) no longer matches;
+    a whole service, two distinct shared words, or the category does."""
+    src = f.source(db, "Plans portal", kind="original", streams=["tender"])
+    f.profile(
+        db,
+        ana,
+        "Ironji-Trade",
+        services=["dry freight", "cold chain", "last-mile distribution"],
+    )
+    f.profile(
+        db,
+        ana,
+        "AI lab",
+        services=["software development", "AI/ML", "data", "digital consulting"],
+    )
+    f.profile(
+        db,
+        ana,
+        "Health NGO",
+        organisation_type="Local NGO",
+        services=["community health", "nutrition education"],
+    )
+    for d in (
+        "Supply of dry foodstuffs for school feeding",  # "dry" alone
+        "Supply chain audit of the district office",  # "chain" alone
+        "Consultancy for a road feasibility study",  # "consulting" synonym only
+        "Supply and installation of a solar system",  # "system" synonym only
+        "Construction of a community hall",  # "community" alone
+        "Construction of a health centre",  # "health" only, from a phrase
+        "Rehabilitation of a feeder road",
+    ):
+        plan(db, src, d)
+    plan(db, src, "Community health worker training")  # whole service
+    plan(db, src, "Hire of trucks for election materials")  # category: transport
+    plan(db, src, "Nutrition and health survey in Huye")  # two shared words
+    plan(db, src, "Design of a data platform and software")  # whole terms
+    db.commit()
+    got = descriptions(login("ana@example.com"))
+    assert sorted(got) == [
+        ("Community health worker training", "Health NGO"),
+        ("Design of a data platform and software", "AI lab"),
+        ("Hire of trucks for election materials", "Ironji-Trade"),
+        ("Nutrition and health survey in Huye", "Health NGO"),
+    ]
+
+
+def test_service_categories_need_one_category():
+    from blackkite.db.models import Profile
+    from blackkite.member.procurement import service_categories
+
+    p = Profile(
+        name="P",
+        type="business",
+        data={"services": ["dry freight", "digital consulting", "software"]},
+    )
+    assert service_categories(p) == {"transport", "ict"}
+
+
 @pytest.mark.parametrize(
     "start, end, expected",
     [
