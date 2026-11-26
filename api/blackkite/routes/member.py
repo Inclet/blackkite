@@ -71,7 +71,7 @@ def get_opportunity(
     row = F.one_row(db, user, opportunity_id)
     if row is None:
         raise HTTPException(404, NOT_FOUND)
-    return opportunity_out(db, row, now)
+    return opportunity_out(db, row, now, user_id=user.id)
 
 
 @router.put("/opportunities/{opportunity_id}/state", response_model=S.UserStateOut)

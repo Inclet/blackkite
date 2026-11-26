@@ -425,6 +425,10 @@ class Opportunity(Base):
             name="private_has_owner",
         ),
         sa.CheckConstraint(
+            "made_public_at IS NULL OR visibility = 'public'",
+            name="made_public_is_public",
+        ),
+        sa.CheckConstraint(
             "value_currency IS NULL OR value_currency ~ '^[A-Z]{3}$'",
             name="value_currency_iso",
         ),
@@ -498,6 +502,15 @@ class Opportunity(Base):
     # private item is created or edited (scored for its owner only) or made
     # public (scored for everyone). NULL = nothing pending.
     score_requested_at: Mapped[datetime | None] = _ts()
+    # Sharing a private manual item (spec 6): when the owner allowed an admin to
+    # make it public (NULL = not allowed), and when and by whom it was made
+    # public (NULL = never). Once public, owner_user_id is kept for attribution
+    # only.
+    share_consent_at: Mapped[datetime | None] = _ts()
+    made_public_at: Mapped[datetime | None] = _ts()
+    made_public_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("user.id", ondelete="SET NULL"), index=True
+    )
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 

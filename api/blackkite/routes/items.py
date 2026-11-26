@@ -22,13 +22,40 @@ router = APIRouter(
 )
 
 NOT_FOUND = "Item not found"
+PUBLIC_NOW = (
+    "This item is public now, so it can't be changed or deleted here. "
+    "Ask an admin if something is wrong with it."
+)
+CONSENT_LOCKED = (
+    "This item is public now, so sharing can't be withdrawn. "
+    "Ask an admin if it should come down."
+)
+
+
+class ShareConsentIn(S.CamelIn):
+    allow: bool
+
+
+class ShareConsentOut(S.CamelModel):
+    allow: bool
+    published: bool
+
+
+def _own(db, user, item_id: uuid.UUID):
+    """The caller's manual item for editing: 404 if not theirs, 409 once public."""
+    opp = I.owned_manual(db, user, item_id)
+    if opp is None:
+        raise HTTPException(404, NOT_FOUND)
+    if opp.visibility != "private":
+        raise HTTPException(409, PUBLIC_NOW)
+    return opp
 
 
 def _out(db, user, item_id: uuid.UUID, now) -> S.OpportunityOut:
     row = F.one_row(db, user, item_id)
     if row is None:  # pragma: no cover - the caller's own item is always visible
         raise HTTPException(404, NOT_FOUND)
-    return opportunity_out(db, row, now)
+    return opportunity_out(db, row, now, user_id=user.id)
 
 
 @router.post("", status_code=201, response_model=S.OpportunityOut)
@@ -47,9 +74,7 @@ def create_item(
 def update_item(
     item_id: uuid.UUID, body: I.ItemPatch, user: CurrentUser, db: DbDep, now: Now
 ) -> S.OpportunityOut:
-    opp = I.own_item(db, user, item_id)
-    if opp is None:
-        raise HTTPException(404, NOT_FOUND)
+    opp = _own(db, user, item_id)
     try:
         I.update_item(db, user, opp, body, now)
     except I.ItemInvalid as e:
@@ -61,9 +86,25 @@ def update_item(
 
 @router.delete("/{item_id}", status_code=204)
 def delete_item(item_id: uuid.UUID, user: CurrentUser, db: DbDep) -> Response:
-    opp = I.own_item(db, user, item_id)
-    if opp is None:
-        raise HTTPException(404, NOT_FOUND)
+    opp = _own(db, user, item_id)
     I.delete_item(db, user, opp)
     db.commit()
     return Response(status_code=204)
+
+
+@router.put("/{item_id}/share-consent", response_model=ShareConsentOut)
+def put_share_consent(
+    item_id: uuid.UUID, body: ShareConsentIn, user: CurrentUser, db: DbDep, now: Now
+) -> ShareConsentOut:
+    opp = I.owned_manual(db, user, item_id)
+    if opp is None:
+        raise HTTPException(404, NOT_FOUND)
+    try:
+        I.set_share_consent(db, user, opp, body.allow, now)
+    except I.AlreadyPublic:
+        raise HTTPException(409, CONSENT_LOCKED) from None
+    db.commit()
+    return ShareConsentOut(
+        allow=opp.share_consent_at is not None or opp.made_public_at is not None,
+        published=opp.made_public_at is not None,
+    )

@@ -2,7 +2,13 @@
 
 Lists every public item, including those carried only by testing sources (which
 members do not see; ``memberVisible`` says which). Private items are never listed
-here (spec 10: admins manage sources and users, not other users' items).
+here (spec 10: admins manage sources and users, not other users' items), with
+one exception: ``?shareable=true`` lists private manual items whose owner has
+allowed an admin to make them public (spec 6), and only those; nothing names
+the owner or carries their notes, state or scores. ``POST /{id}/publish`` makes
+one public, only while that consent is on (409 otherwise), and records who and
+when in change_event; the owner stays on the item for attribution only, and the
+worker then scores it for everyone (worker/item_scores.py).
 Reviewing an item clears ``needs_review`` and ``evidence["_review"]`` together and
 records the cleared reasons in change_event.
 """
@@ -23,7 +29,7 @@ from blackkite.db.models import ChangeEvent, Opportunity, OpportunitySource, Sou
 from blackkite.member.schemas import CamelModel, Stream
 from blackkite.pipeline.dates import kigali_date
 from blackkite.pipeline.validate import trust_state
-from blackkite.pipeline.visibility import carried_by_visible_source
+from blackkite.pipeline.visibility import member_visible_public
 
 router = APIRouter(prefix="/admin/catalogue", dependencies=[Depends(require_admin)])
 
@@ -54,6 +60,13 @@ class CatalogueItem(CamelModel):
     deadline: str | None
     member_visible: bool
     sources: list[CatalogueSource]
+    # "private" only in the shareable list.
+    visibility: str
+    # Manual items (spec 6): when the owner allowed sharing, when it was made
+    # public, and the link the owner gave. Null for collected items.
+    share_consent_at: datetime | None
+    made_public_at: datetime | None
+    url: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -113,6 +126,10 @@ def _items(db: Session, rows: list[tuple[Opportunity, bool]]) -> list[CatalogueI
                 else None,
                 member_visible=visible,
                 sources=links.get(o.id, []),
+                visibility=o.visibility,
+                share_consent_at=o.share_consent_at,
+                made_public_at=o.made_public_at,
+                url=o.manual_url,
                 created_at=o.created_at,
                 updated_at=o.updated_at,
             )
@@ -125,17 +142,22 @@ def list_catalogue(
     db: DbDep,
     needs_review: Annotated[bool | None, Query(alias="needsReview")] = None,
     stream: Stream | None = None,
+    shareable: bool = False,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> CataloguePage:
-    where = [Opportunity.visibility == "public"]
+    where: list[Any] = (
+        [Opportunity.visibility == "private", Opportunity.share_consent_at.is_not(None)]
+        if shareable
+        else [Opportunity.visibility == "public"]
+    )
     if needs_review is not None:
         where.append(Opportunity.needs_review.is_(needs_review))
     if stream:
         where.append(Opportunity.stream == stream)
     total = db.scalar(sa.select(sa.func.count()).select_from(Opportunity).where(*where))
     rows = db.execute(
-        sa.select(Opportunity, carried_by_visible_source())
+        sa.select(Opportunity, member_visible_public())
         .where(*where)
         .order_by(
             Opportunity.needs_review.desc(),
@@ -178,8 +200,57 @@ def mark_reviewed(
         db.commit()
         db.refresh(opp)
     visible = bool(
-        db.scalar(
-            sa.select(carried_by_visible_source()).where(Opportunity.id == opp.id)
+        db.scalar(sa.select(member_visible_public()).where(Opportunity.id == opp.id))
+    )
+    return _items(db, [(opp, visible)])[0]
+
+
+NO_CONSENT = "The owner has not agreed to share this item, so it stays private."
+NOT_MANUAL = "Only a member's own item can be made public this way."
+
+
+@router.post("/{opportunity_id}/publish", response_model=CatalogueItem)
+def publish(opportunity_id: uuid.UUID, admin: AdminUser, db: DbDep) -> CatalogueItem:
+    opp = db.scalar(sa.select(Opportunity).where(Opportunity.id == opportunity_id))
+    if opp is None:
+        raise HTTPException(404, "Opportunity not found")
+    if opp.visibility == "public" and opp.made_public_at is None:
+        raise HTTPException(409, NOT_MANUAL)
+    if opp.made_public_at is None:
+        if opp.share_consent_at is None:
+            raise HTTPException(409, NO_CONSENT)
+        now = datetime.now(UTC)
+        # Guarded so a consent withdrawn a moment ago is never overridden.
+        done = db.execute(
+            sa.update(Opportunity)
+            .where(
+                Opportunity.id == opp.id,
+                Opportunity.visibility == "private",
+                Opportunity.share_consent_at.is_not(None),
+            )
+            .values(
+                visibility="public",
+                made_public_at=now,
+                made_public_by=admin.id,
+                score_requested_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        ).rowcount
+        if not done:
+            db.rollback()
+            raise HTTPException(409, NO_CONSENT)
+        db.add(
+            ChangeEvent(
+                opportunity_id=opp.id,
+                field="visibility",
+                old={"visibility": "private"},
+                new={"visibility": "public", "published_by": str(admin.id)},
+                at=now,
+            )
         )
+        db.commit()
+        db.refresh(opp)
+    visible = bool(
+        db.scalar(sa.select(member_visible_public()).where(Opportunity.id == opp.id))
     )
     return _items(db, [(opp, visible)])[0]

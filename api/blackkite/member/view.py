@@ -56,7 +56,9 @@ from blackkite.pipeline.dates import KIGALI, kigali_date
 from blackkite.pipeline.validate import status_for, trust_state
 from blackkite.pipeline.visibility import (
     MEMBER_VISIBLE_SOURCE_STATUSES,
+    carried_by_visible_source,
     own_private,
+    published_manual,
     visible_source_link,
     visible_to,
 )
@@ -165,7 +167,9 @@ def not_only_muted(user_id: uuid.UUID) -> ColumnElement[bool]:
             OpportunitySource.source_id.not_in(muted),
         )
     )
-    return sa.or_(own_private(user_id), unmuted_carrier)
+    # A published manual item no visible source carries has nothing to mute.
+    uncarried_manual = sa.and_(published_manual(), ~carried_by_visible_source())
+    return sa.or_(own_private(user_id), unmuted_carrier, uncarried_manual)
 
 
 MUTED_SOURCE_ONLY = "muted_source_only"
@@ -556,7 +560,8 @@ def _document_name(d: Document) -> str:
 
 def _changes(db: Session, opp_id: uuid.UUID) -> list[S.ChangeOut]:
     """Change history. Values that name a source show its name, and changes
-    reported by a source the caller cannot see are left out."""
+    reported by a source the caller cannot see are left out. Who made a change
+    (``reviewed_by``, ``published_by``: admin ids) is not shown to members."""
     visible = {
         str(sid): name
         for sid, name in db.execute(
@@ -584,6 +589,8 @@ def _changes(db: Session, opp_id: uuid.UUID) -> list[S.ChangeOut]:
                     )
                     for k, x in v.items()
                 }
+            if isinstance(v, dict):
+                v = {k: x for k, x in v.items() if not k.endswith("_by")}
             values.append(v)
         if not hidden:
             out.append(
@@ -592,7 +599,21 @@ def _changes(db: Session, opp_id: uuid.UUID) -> list[S.ChangeOut]:
     return out
 
 
-def opportunity_out(db: Session, row: Row, now: datetime) -> S.OpportunityOut:
+def own_item_out(opp: Opportunity, user_id: uuid.UUID | None) -> S.OwnItem | None:
+    """Sharing state of the caller's own manual item (private or published)."""
+    if user_id is None or opp.owner_user_id != user_id:
+        return None
+    if opp.visibility != "private" and opp.made_public_at is None:
+        return None
+    return S.OwnItem(
+        share_consent=opp.share_consent_at is not None,
+        published=opp.made_public_at is not None,
+    )
+
+
+def opportunity_out(
+    db: Session, row: Row, now: datetime, *, user_id: uuid.UUID | None = None
+) -> S.OpportunityOut:
     o = row.opp
     docs = db.scalars(
         sa.select(Document)
@@ -617,6 +638,7 @@ def opportunity_out(db: Session, row: Row, now: datetime) -> S.OpportunityOut:
         note=row.uo.note if row.uo else None,
         state=row.state,
         dismiss_reason=S.dismiss_reason_out(row.uo.dismiss_reason if row.uo else None),
+        own_item=own_item_out(o, user_id),
     )
     return S.OpportunityOut(**_item_fields(row, now), detail=detail)
 

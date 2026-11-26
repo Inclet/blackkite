@@ -63,6 +63,7 @@ def test_admin_routes_exist(app):
         ("POST", "/api/admin/source-suggestions/{suggestion_id}/reject"),
         ("GET", "/api/admin/catalogue"),
         ("POST", "/api/admin/catalogue/{opportunity_id}/review"),
+        ("POST", "/api/admin/catalogue/{opportunity_id}/publish"),
     }
 
 

@@ -204,6 +204,54 @@ def own_item(db: Session, user: User, item_id: uuid.UUID) -> Opportunity | None:
     )
 
 
+def owned_manual(db: Session, user: User, item_id: uuid.UUID) -> Opportunity | None:
+    """The caller's manual item, private or already made public, else None."""
+    return db.scalar(
+        sa.select(Opportunity).where(
+            Opportunity.id == item_id,
+            Opportunity.owner_user_id == user.id,
+            sa.or_(
+                Opportunity.visibility == "private",
+                Opportunity.made_public_at.is_not(None),
+            ),
+        )
+    )
+
+
+class AlreadyPublic(Exception):
+    """The item is public now: its owner can no longer edit, delete it or
+    withdraw consent."""
+
+
+def set_share_consent(
+    db: Session, user: User, opp: Opportunity, allow: bool, now: datetime
+) -> None:
+    """Allow (or withdraw) an admin making the item public. Allowing again keeps
+    the first time. Not an edit: ``updated_at`` stays. Raises AlreadyPublic
+    when withdrawing after publication."""
+    if opp.made_public_at is not None:
+        if not allow:
+            raise AlreadyPublic
+        return
+    if allow == (opp.share_consent_at is not None):
+        return
+    db.execute(
+        sa.update(Opportunity)
+        .where(
+            Opportunity.id == opp.id,
+            Opportunity.owner_user_id == user.id,
+            Opportunity.visibility == "private",
+        )
+        .values(
+            share_consent_at=now if allow else None,
+            updated_at=Opportunity.updated_at,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    db.flush()
+    db.refresh(opp)
+
+
 def _set_note(db: Session, user: User, opp: Opportunity, notes: str | None) -> None:
     uo = db.scalar(
         sa.select(UserOpportunity).where(
