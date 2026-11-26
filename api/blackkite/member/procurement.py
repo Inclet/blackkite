@@ -118,12 +118,6 @@ class BenchmarkAwardsOut(CamelModel):
     awards: list[AwardOut]
 
 
-class PlannedFor(CamelModel):
-    start: date
-    end: date
-    label: str  # "15 Feb 2027", "January to March 2027"
-
-
 class PlanOut(CamelModel):
     omit_if_none = frozenset(
         {"method", "estimated_value", "currency", "fiscal_year", "quarter", "url"}
@@ -136,7 +130,15 @@ class PlanOut(CamelModel):
     method: str | None = None
     estimated_value: Decimal | None = None
     currency: str | None = None
-    planned_for: PlannedFor
+    # When the tender is planned, in the coarsest exact form: "YYYY-MM-DD" (a
+    # stated date), "YYYY-MM" (a whole calendar month), "YYYY-Qn" (a whole
+    # calendar quarter: a fiscal Q3 of 2026/27 is "2027-Q1"), else
+    # "YYYY-MM-DD/YYYY-MM-DD" (start/end). planned_start/planned_end are the
+    # same period as dates; planned_label in plain words.
+    planned_for: str
+    planned_start: date
+    planned_end: date
+    planned_label: str
     fiscal_year: str | None = None
     quarter: str | None = None
     matched_profile: str
@@ -386,6 +388,20 @@ def _months_ahead(d: date, months: int) -> date:
     return date(year, month, min(d.day, calendar.monthrange(year, month)[1]))
 
 
+def planned_for(start: date, end: date) -> str:
+    """The planned period as "YYYY-MM-DD", "YYYY-MM", "YYYY-Qn" or
+    "start/end" (ISO dates)."""
+    if start == end:
+        return start.isoformat()
+    last = calendar.monthrange(end.year, end.month)[1]
+    if start.day == 1 and end.day == last and start.year == end.year:
+        if start.month == end.month:
+            return f"{start:%Y-%m}"
+        if end.month - start.month == 2 and start.month % 3 == 1:
+            return f"{start.year}-Q{(start.month - 1) // 3 + 1}"
+    return f"{start.isoformat()}/{end.isoformat()}"
+
+
 def _follows_tenders(profile: Profile) -> bool:
     streams = (profile.data or {}).get("streams")
     return not (isinstance(streams, list) and streams) or "tender" in streams
@@ -518,11 +534,10 @@ def plans_for(
                 method=plan.method,
                 estimated_value=plan.estimated_amount,
                 currency=plan.currency,
-                planned_for=PlannedFor(
-                    start=plan.planned_start,
-                    end=plan.planned_end,
-                    label=period_label(plan.planned_start, plan.planned_end),
-                ),
+                planned_for=planned_for(plan.planned_start, plan.planned_end),
+                planned_start=plan.planned_start,
+                planned_end=plan.planned_end,
+                planned_label=period_label(plan.planned_start, plan.planned_end),
                 fiscal_year=plan.fiscal_year,
                 quarter=plan.planned_quarter,
                 matched_profile=prof.name,
