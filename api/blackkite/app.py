@@ -17,6 +17,7 @@ from blackkite.routes import (
     digest_settings,
     items,
     member,
+    procurement,
     profiles,
     sources,
     unsubscribe,
@@ -62,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(calendar.feed_router, prefix=API_PREFIX)
     app.include_router(items.router, prefix=API_PREFIX)
     app.include_router(catalogue.router, prefix=API_PREFIX)
+    app.include_router(procurement.router, prefix=API_PREFIX)
     app.include_router(profiles.router, prefix=API_PREFIX)
     app.include_router(digest_settings.router, prefix=API_PREFIX)
     app.include_router(unsubscribe.router, prefix=API_PREFIX)

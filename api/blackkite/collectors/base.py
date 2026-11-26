@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
     from blackkite.db.models import Source
@@ -41,6 +41,79 @@ class RawItem:
     )  # collector-specific fields (JSON-LD etc.)
 
 
+# --- Procurement records (awards, plan items) ------------------------------------------
+#
+# Some custom collectors (umucyo_awards, umucyo_plans) collect records that are not
+# opportunities. They still return ``[]`` from ``fetch`` (they never write the
+# catalogue) and expose what they found as ``collector.records``: a ``Records``
+# batch. The runner hands it to the matching ingest path (pipeline/awards.py,
+# pipeline/plans.py); a test run previews it and writes nothing. Values are the
+# text as listed; the ingest path normalises them with ``formats``.
+
+
+@dataclass(frozen=True, slots=True)
+class Formats:
+    """How a source writes amounts and dates (from its collector config)."""
+
+    date_formats: tuple[str, ...] = ()
+    decimal_separator: str = "."
+    thousands_separators: tuple[str, ...] = (",", " ")
+    currency: str | None = None  # stated in the config for amounts that name none
+    quarter_basis: Literal["fiscal", "calendar"] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RawBidder:
+    name: str | None
+    price: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RawAward:
+    source_id: uuid.UUID
+    url: str  # the award notice, else the list page it was on
+    fetched_at: datetime
+    tender_ref: str | None = None
+    title: str | None = None
+    entity: str | None = None
+    winner: str | None = None
+    amount: str | None = None  # winning price as listed
+    currency: str | None = None
+    award_date: str | None = None
+    period: str | None = None
+    bidders: tuple[RawBidder, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RawPlan:
+    source_id: uuid.UUID
+    url: str  # the plan entry, else the plan page it was on
+    fetched_at: datetime
+    entity: str | None = None
+    description: str | None = None
+    method: str | None = None
+    estimated_value: str | None = None
+    currency: str | None = None
+    planned_date: str | None = None
+    planned_quarter: str | None = None
+    fiscal_year: str | None = None
+    tender_ref: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Records:
+    kind: Literal["award", "plan"]
+    items: list[RawAward] | list[RawPlan]
+    formats: Formats = field(default_factory=Formats)
+
+
+def collected_records(collector: object) -> Records | None:
+    """The procurement records the last ``fetch`` found (``collector.records``),
+    or None for collectors that have none."""
+    found = getattr(collector, "records", None)
+    return found if isinstance(found, Records) else None
+
+
 class Collector(Protocol):
     """A collector type. ``fetch`` must not raise for ordinary site failures; it raises
     ``CollectorError`` so the runner can record the failure and move on to the next source.
@@ -54,7 +127,9 @@ class Collector(Protocol):
     Optional: ``warnings``, a list of dicts ``{kind, message, ...}`` for things
     the last ``fetch`` skipped without failing (email_ingest: emails with no
     usable link, decision 49). The runner stores them on the run
-    (``source_run.warnings``)."""
+    (``source_run.warnings``).
+
+    Optional: ``records``, a ``Records`` batch of awards or plan items (above)."""
 
     def fetch(self, source: Source) -> list[RawItem]: ...
 

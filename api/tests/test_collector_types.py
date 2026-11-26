@@ -16,6 +16,9 @@ def admin_client(client, db, outbox):
     return sign_in(client, outbox, "admin@example.com")
 
 
+SHIPPED = ["jsonld_events", "umucyo_awards", "umucyo_plans"]
+
+
 def _by_type(schemas):
     return {s["type"]: s for s in schemas}
 
@@ -30,8 +33,26 @@ def test_every_type_is_listed_in_order(admin_client):
     assert r.status_code == 200, r.text
     assert [s["type"] for s in r.json()] == list(COLLECTOR_TYPES)
     for s in r.json():
-        assert set(s) == {"type", "implemented", "schemaSource", "fields"}
+        extra = {"collectors"} if s["type"] == "custom" else set()
+        assert set(s) == {"type", "implemented", "schemaSource", "fields"} | extra
         assert s["fields"], s["type"]
+
+
+def test_custom_lists_each_collector_with_its_option_fields(admin_client):
+    s = _by_type(admin_client.get("/api/admin/collector-types").json())["custom"]
+    by_name = {c["name"]: c for c in s["collectors"]}
+    assert set(by_name) >= {"jsonld_events", "umucyo_awards", "umucyo_plans"}
+    awards = {f["name"]: f for f in by_name["umucyo_awards"]["fields"]}
+    assert awards["list_url"]["kind"] == "url" and awards["list_url"]["required"]
+    sel = {f["name"]: f for f in awards["selectors"]["fields"]}
+    assert sel["item"]["kind"] == "string" and sel["item"]["required"]
+    assert sel["amount"]["kind"] == "selector"
+    assert {f["name"] for f in sel["bidders"]["fields"]} == {"row", "name", "price"}
+    assert awards["date_formats"]["kind"] == "string_list"
+    plans = {f["name"]: f for f in by_name["umucyo_plans"]["fields"]}
+    assert plans["quarter_basis"]["kind"] == "choice"
+    assert plans["quarter_basis"]["options"] == ["fiscal", "calendar"]
+    assert "umucyo_plans: list_url (required)" in _field(s["fields"], "options")["help"]
 
 
 def test_html_list_fields_come_from_its_model(admin_client):
@@ -243,12 +264,12 @@ def test_demo_fictional_only_offered_and_accepted_in_dev(admin_client, bk_env, e
         json={k: DEMO_SOURCE[k] for k in ("home_url", "collector_type", "config")},
     )
     if env == "dev":
-        assert which["options"] == ["demo_fictional", "jsonld_events"]
+        assert which["options"] == ["demo_fictional", *SHIPPED]
         assert "demo_fictional: none." in opts["help"]
         assert created.status_code == 201, created.text
         assert preview.status_code == 200, preview.text
         return
-    assert which["options"] == ["jsonld_events"]
+    assert which["options"] == SHIPPED
     assert "demo_fictional" not in which["help"] + opts["help"]
     for r in (created, preview):
         assert r.status_code == 422, r.text

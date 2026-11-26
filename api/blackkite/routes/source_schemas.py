@@ -8,7 +8,7 @@ for its collector and keeps the collector's own keys (``list_url``, ...).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -283,6 +283,56 @@ class PreviewItemOut(CamelModel):
     extra: dict[str, str]
 
 
+class PreviewBidderOut(CamelModel):
+    name: str | None
+    price: str | None  # decimal as a string, e.g. "6250000.00"
+
+
+class AwardPreviewOut(CamelModel):
+    """A test run's award record, normalised as it would be stored. Amounts are
+    decimals as strings; ``problems`` says what was left out, in plain words."""
+
+    kind: Literal["award"]
+    url: str
+    tender_ref: str | None
+    title: str | None
+    entity: str | None
+    winner: str | None
+    amount: str | None
+    currency: str | None
+    awarded_on: date | None
+    period: str | None
+    bidders: list[PreviewBidderOut]
+    category: str
+    category_label: str
+    problems: list[str]
+
+
+class PlanPreviewOut(CamelModel):
+    """A test run's procurement plan item, normalised as it would be stored."""
+
+    kind: Literal["plan"]
+    url: str
+    entity: str
+    description: str
+    method: str | None
+    estimated_value: str | None
+    currency: str | None
+    fiscal_year: str | None
+    planned_quarter: str | None
+    planned_start: date | None
+    planned_end: date | None
+    planned_label: str | None
+    category: str
+    category_label: str
+    problems: list[str]
+
+
+RecordPreviewOut = Annotated[
+    AwardPreviewOut | PlanPreviewOut, Field(discriminator="kind")
+]
+
+
 class FieldErrorOut(CamelModel):
     """One refused field, for the web to show next to it. ``field`` is a dotted
     path: top-level keys camelCase (``homeUrl``), keys inside ``config`` as the
@@ -314,6 +364,9 @@ class PreviewOut(CamelModel):
     # Emails the test run skipped for lack of a usable link (decision 49); same
     # shape as a run's warnings. Always sent, [] when none.
     warnings: list[RunWarningOut] = Field(default_factory=list)
+    # Procurement record collectors (umucyo_awards, umucyo_plans): the records
+    # found, as they would be stored. Always sent, [] for other collectors.
+    records: list[RecordPreviewOut] = Field(default_factory=list)
 
     @field_validator("warnings", mode="before")
     @classmethod
@@ -352,16 +405,30 @@ class ConfigFieldOut(CamelModel):
     fields: list[ConfigFieldOut] | None = None  # kinds "object", "object_list"
 
 
+class CustomCollectorOut(CamelModel):
+    """An allowlisted ``custom`` collector: ``name`` goes in ``config.collector``,
+    ``fields`` describe ``config.options`` (same field format as above)."""
+
+    model_config = ConfigDict(from_attributes=True)
+    name: str
+    help: str
+    fields: list[ConfigFieldOut]
+
+
 class CollectorTypeOut(CamelModel):
     """GET /api/admin/collector-types: the config form for each type (spec 4.2).
     ``schemaSource`` is always "model" now: every type's fields are read from its
     collector's config model. "declared" stays in the type for older clients."""
 
     model_config = ConfigDict(from_attributes=True)
+    omit_if_none = frozenset({"collectors"})
     type: CollectorType
     implemented: bool
     schema_source: Literal["model", "declared"]
     fields: list[ConfigFieldOut]
+    # ``custom`` only (left out for the other types): each allowlisted
+    # collector with the fields of its options.
+    collectors: list[CustomCollectorOut] | None = None
 
 
 class SuggestionIn(CamelIn):

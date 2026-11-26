@@ -92,6 +92,11 @@ PROFILE_PROMPT_FIELDS = (
     "exclusions",
     "provisional",
     "organisation_type",
+    # Read by the model only; no rule uses them yet.
+    "locations",
+    "horizon",
+    "availability",
+    "budget_rwf",
 )
 
 

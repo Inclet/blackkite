@@ -185,9 +185,19 @@ NGO_ONLY = re.compile(
 NGO_PROFILE_TYPES = {"ngo", "non-profit", "nonprofit", "cso", "cbo", "not-for-profit"}
 
 
+_NGO_SPLIT = re.compile(r"\s+or\s+|\s*[/,;&]\s*|\s+and\s+")
+
+
 def _is_ngo(profile: Profile) -> bool:
+    """The profile's organisation_type names a non-profit: "ngo", "non-profit",
+    "nonprofit", ..., alone or as one of several ("ngo or non-profit",
+    "NGO / CSO"). Empty or anything else is not an NGO (decision 37)."""
     kind = (profile.data or {}).get("organisation_type")
-    return isinstance(kind, str) and kind.strip().lower() in NGO_PROFILE_TYPES
+    if not isinstance(kind, str):
+        return False
+    text = " ".join(kind.strip().lower().split())
+    parts = {p.strip(" .") for p in _NGO_SPLIT.split(text)} | {text}
+    return bool(parts & NGO_PROFILE_TYPES)
 
 
 def eligibility_parts(opp: Opportunity, documents: list[str]) -> list[str]:

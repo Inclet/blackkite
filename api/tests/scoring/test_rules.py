@@ -355,3 +355,25 @@ def test_fit_word_config_and_caps():
     )
     for stream in ("event", "investment"):
         assert fit_word(R, fit=1, eligibility=1, stream=stream) is None
+
+
+@pytest.mark.parametrize(
+    "kind, is_ngo",
+    [
+        ("ngo", True),
+        ("NGO", True),
+        ("non-profit", True),
+        ("nonprofit", True),
+        ("ngo or non-profit", True),
+        ("NGO / CSO", True),
+        ("company", False),
+        ("cooperative", False),
+        ("", False),
+        (None, False),
+    ],
+)
+def test_organisation_type_words_for_ngo(kind, is_ngo):
+    o = opp(stream="funding", eligibility="Restricted to non-profit organisations.")
+    p = seed("AI lab")
+    p.data = {**p.data, "organisation_type": kind}
+    assert (rules(o, p).hard_filtered is None) is is_ngo

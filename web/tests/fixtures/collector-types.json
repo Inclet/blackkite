@@ -819,11 +819,13 @@
         "name": "collector",
         "kind": "choice",
         "required": true,
-        "help": "Which built-in custom collector to run: demo_fictional, jsonld_events",
+        "help": "Which built-in custom collector to run: demo_fictional, jsonld_events, umucyo_awards, umucyo_plans",
         "default": null,
         "options": [
           "demo_fictional",
-          "jsonld_events"
+          "jsonld_events",
+          "umucyo_awards",
+          "umucyo_plans"
         ],
         "min": null,
         "max": null,
@@ -833,12 +835,842 @@
         "name": "options",
         "kind": "json",
         "required": false,
-        "help": "Settings for the chosen collector (see its form). demo_fictional: none. jsonld_events: list_url (required), pagination_pattern, first_page, max_pages, max_items.",
+        "help": "Settings for the chosen collector (see its form). demo_fictional: none. jsonld_events: list_url (required), pagination_pattern, first_page, max_pages, max_items. umucyo_awards: list_url (required), pagination_pattern, first_page, max_pages, max_items, date_formats, amounts, selectors (required), detail. umucyo_plans: list_url (required), pagination_pattern, first_page, max_pages, max_items, date_formats, amounts, selectors (required), page, quarter_basis.",
         "default": {},
         "options": null,
         "min": null,
         "max": null,
         "fields": null
+      }
+    ],
+    "collectors": [
+      {
+        "name": "demo_fictional",
+        "help": "Demo only: the fictional sources from bk demo-seed. Fetches nothing and finds no items.",
+        "fields": []
+      },
+      {
+        "name": "jsonld_events",
+        "help": "schema.org Event objects from the JSON-LD on an event listing page (Eventbrite, 10times and similar).",
+        "fields": [
+          {
+            "name": "list_url",
+            "kind": "url",
+            "required": true,
+            "help": "Address of the event listing page (page 1).",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "pagination_pattern",
+            "kind": "string",
+            "required": false,
+            "help": "Address of later pages with {page} where the number goes.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "first_page",
+            "kind": "integer",
+            "required": false,
+            "help": "Page number of the first pattern page.",
+            "default": 2,
+            "options": null,
+            "min": 0.0,
+            "max": 1000.0,
+            "fields": null
+          },
+          {
+            "name": "max_pages",
+            "kind": "integer",
+            "required": false,
+            "help": "Pages to read per run, counting list_url as 1.",
+            "default": 1,
+            "options": null,
+            "min": 1.0,
+            "max": 20.0,
+            "fields": null
+          },
+          {
+            "name": "max_items",
+            "kind": "integer",
+            "required": false,
+            "help": "Keep at most this many events per run.",
+            "default": 100,
+            "options": null,
+            "min": 1.0,
+            "max": 500.0,
+            "fields": null
+          }
+        ]
+      },
+      {
+        "name": "umucyo_awards",
+        "help": "Awarded contracts with winners, bidders and prices from a procurement portal's award list (Umucyo and similar), for price benchmarks. Writes awards, never opportunities.",
+        "fields": [
+          {
+            "name": "list_url",
+            "kind": "url",
+            "required": true,
+            "help": "Address of the list page (page 1).",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "pagination_pattern",
+            "kind": "string",
+            "required": false,
+            "help": "Address of later pages with {page} where the number goes.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "first_page",
+            "kind": "integer",
+            "required": false,
+            "help": "Page number of the first pattern page.",
+            "default": 2,
+            "options": null,
+            "min": 0.0,
+            "max": 1000.0,
+            "fields": null
+          },
+          {
+            "name": "max_pages",
+            "kind": "integer",
+            "required": false,
+            "help": "Pages to read per run, counting list_url as 1.",
+            "default": 1,
+            "options": null,
+            "min": 1.0,
+            "max": 50.0,
+            "fields": null
+          },
+          {
+            "name": "max_items",
+            "kind": "integer",
+            "required": false,
+            "help": "Keep at most this many records per run.",
+            "default": 500,
+            "options": null,
+            "min": 1.0,
+            "max": 2000.0,
+            "fields": null
+          },
+          {
+            "name": "date_formats",
+            "kind": "string_list",
+            "required": false,
+            "help": "Date formats tried in order, strftime style, each with a year (for example %d/%m/%Y). Empty: day-first dates with a written year.",
+            "default": [],
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "amounts",
+            "kind": "object",
+            "required": false,
+            "help": "How amounts are written.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": [
+              {
+                "name": "decimal_separator",
+                "kind": "choice",
+                "required": false,
+                "help": "Character before the decimals in amounts.",
+                "default": ".",
+                "options": [
+                  ".",
+                  ","
+                ],
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "thousands_separators",
+                "kind": "string_list",
+                "required": false,
+                "help": "Characters that group thousands in amounts (removed).",
+                "default": [
+                  ",",
+                  " "
+                ],
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "currency",
+                "kind": "string",
+                "required": false,
+                "help": "Currency of amounts that do not name one (three letters, for example RWF). Leave empty if the page does not say: such amounts are kept without a currency and left out of price statistics.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              }
+            ]
+          },
+          {
+            "name": "selectors",
+            "kind": "object",
+            "required": true,
+            "help": "Where each field is on the list.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": [
+              {
+                "name": "tender_ref",
+                "kind": "selector",
+                "required": false,
+                "help": "Tender reference number. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "title",
+                "kind": "selector",
+                "required": false,
+                "help": "Tender title. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "entity",
+                "kind": "selector",
+                "required": false,
+                "help": "Procuring entity (the buyer). A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "winner",
+                "kind": "selector",
+                "required": false,
+                "help": "Winning bidder. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "amount",
+                "kind": "selector",
+                "required": false,
+                "help": "Winning (contract) price. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "currency",
+                "kind": "selector",
+                "required": false,
+                "help": "Currency, when in its own cell. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "award_date",
+                "kind": "selector",
+                "required": false,
+                "help": "Date of the award. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "period",
+                "kind": "selector",
+                "required": false,
+                "help": "Contract period as listed. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "bidders",
+                "kind": "object",
+                "required": false,
+                "help": "Every bidder and its price, when listed.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": [
+                  {
+                    "name": "row",
+                    "kind": "string",
+                    "required": true,
+                    "help": "CSS selector matching one node per bidder.",
+                    "default": null,
+                    "options": null,
+                    "min": null,
+                    "max": null,
+                    "fields": null
+                  },
+                  {
+                    "name": "name",
+                    "kind": "selector",
+                    "required": true,
+                    "help": "Bidder name inside the row. A CSS selector, or {css, attr} to read an attribute.",
+                    "default": null,
+                    "options": null,
+                    "min": null,
+                    "max": null,
+                    "fields": null
+                  },
+                  {
+                    "name": "price",
+                    "kind": "selector",
+                    "required": false,
+                    "help": "Bid price inside the row. A CSS selector, or {css, attr} to read an attribute.",
+                    "default": null,
+                    "options": null,
+                    "min": null,
+                    "max": null,
+                    "fields": null
+                  }
+                ]
+              },
+              {
+                "name": "item",
+                "kind": "string",
+                "required": true,
+                "help": "CSS selector matching one node per award.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "link",
+                "kind": "selector",
+                "required": false,
+                "help": "Link to the award notice (default: the first <a> in the item). A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              }
+            ]
+          },
+          {
+            "name": "detail",
+            "kind": "object",
+            "required": false,
+            "help": "Optional: follow each award's link.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": [
+              {
+                "name": "selectors",
+                "kind": "object",
+                "required": true,
+                "help": "Selectors on each award's own page; values found there replace the list's.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": [
+                  {
+                    "name": "tender_ref",
+                    "kind": "selector",
+                    "required": false,
+                    "help": "Tender reference number. A CSS selector, or {css, attr} to read an attribute.",
+                    "default": null,
+                    "options": null,
+                    "min": null,
+                    "max": null,
+                    "fields": null
+                  },
+                  {
+                    "name": "title",
+                    "kind": "selector",
+                    "required": false,
+                    "help": "Tender title. A CSS selector, or {css, attr} to read an attribute.",
+                    "default": null,
+                    "options": null,
+                    "min": null,
+                    "max": null,
+                    "fields": null
+                  },
+                  {
+                    "name": "entity",
+                    "kind": "selector",
+                    "required": false,
+                    "help": "Procuring entity (the buyer). A CSS selector, or {css, attr} to read an attribute.",
+                    "default": null,
+                    "options": null,
+                    "min": null,
+                    "max": null,
+                    "fields": null
+                  },
+                  {
+                    "name": "winner",
+                    "kind": "selector",
+                    "required": false,
+                    "help": "Winning bidder. A CSS selector, or {css, attr} to read an attribute.",
+                    "default": null,
+                    "options": null,
+                    "min": null,
+                    "max": null,
+                    "fields": null
+                  },
+                  {
+                    "name": "amount",
+                    "kind": "selector",
+                    "required": false,
+                    "help": "Winning (contract) price. A CSS selector, or {css, attr} to read an attribute.",
+                    "default": null,
+                    "options": null,
+                    "min": null,
+                    "max": null,
+                    "fields": null
+                  },
+                  {
+                    "name": "currency",
+                    "kind": "selector",
+                    "required": false,
+                    "help": "Currency, when in its own cell. A CSS selector, or {css, attr} to read an attribute.",
+                    "default": null,
+                    "options": null,
+                    "min": null,
+                    "max": null,
+                    "fields": null
+                  },
+                  {
+                    "name": "award_date",
+                    "kind": "selector",
+                    "required": false,
+                    "help": "Date of the award. A CSS selector, or {css, attr} to read an attribute.",
+                    "default": null,
+                    "options": null,
+                    "min": null,
+                    "max": null,
+                    "fields": null
+                  },
+                  {
+                    "name": "period",
+                    "kind": "selector",
+                    "required": false,
+                    "help": "Contract period as listed. A CSS selector, or {css, attr} to read an attribute.",
+                    "default": null,
+                    "options": null,
+                    "min": null,
+                    "max": null,
+                    "fields": null
+                  },
+                  {
+                    "name": "bidders",
+                    "kind": "object",
+                    "required": false,
+                    "help": "Every bidder and its price, when listed.",
+                    "default": null,
+                    "options": null,
+                    "min": null,
+                    "max": null,
+                    "fields": [
+                      {
+                        "name": "row",
+                        "kind": "string",
+                        "required": true,
+                        "help": "CSS selector matching one node per bidder.",
+                        "default": null,
+                        "options": null,
+                        "min": null,
+                        "max": null,
+                        "fields": null
+                      },
+                      {
+                        "name": "name",
+                        "kind": "selector",
+                        "required": true,
+                        "help": "Bidder name inside the row. A CSS selector, or {css, attr} to read an attribute.",
+                        "default": null,
+                        "options": null,
+                        "min": null,
+                        "max": null,
+                        "fields": null
+                      },
+                      {
+                        "name": "price",
+                        "kind": "selector",
+                        "required": false,
+                        "help": "Bid price inside the row. A CSS selector, or {css, attr} to read an attribute.",
+                        "default": null,
+                        "options": null,
+                        "min": null,
+                        "max": null,
+                        "fields": null
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "name": "max_items",
+                "kind": "integer",
+                "required": false,
+                "help": "Follow at most this many award pages per run.",
+                "default": 20,
+                "options": null,
+                "min": 1.0,
+                "max": 50.0,
+                "fields": null
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "umucyo_plans",
+        "help": "Planned tenders from a procurement plan list (Umucyo and similar): tenders before they are advertised. Writes plan items, never opportunities.",
+        "fields": [
+          {
+            "name": "list_url",
+            "kind": "url",
+            "required": true,
+            "help": "Address of the list page (page 1).",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "pagination_pattern",
+            "kind": "string",
+            "required": false,
+            "help": "Address of later pages with {page} where the number goes.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "first_page",
+            "kind": "integer",
+            "required": false,
+            "help": "Page number of the first pattern page.",
+            "default": 2,
+            "options": null,
+            "min": 0.0,
+            "max": 1000.0,
+            "fields": null
+          },
+          {
+            "name": "max_pages",
+            "kind": "integer",
+            "required": false,
+            "help": "Pages to read per run, counting list_url as 1.",
+            "default": 1,
+            "options": null,
+            "min": 1.0,
+            "max": 50.0,
+            "fields": null
+          },
+          {
+            "name": "max_items",
+            "kind": "integer",
+            "required": false,
+            "help": "Keep at most this many records per run.",
+            "default": 500,
+            "options": null,
+            "min": 1.0,
+            "max": 2000.0,
+            "fields": null
+          },
+          {
+            "name": "date_formats",
+            "kind": "string_list",
+            "required": false,
+            "help": "Date formats tried in order, strftime style, each with a year (for example %d/%m/%Y). Empty: day-first dates with a written year.",
+            "default": [],
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": null
+          },
+          {
+            "name": "amounts",
+            "kind": "object",
+            "required": false,
+            "help": "How amounts are written.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": [
+              {
+                "name": "decimal_separator",
+                "kind": "choice",
+                "required": false,
+                "help": "Character before the decimals in amounts.",
+                "default": ".",
+                "options": [
+                  ".",
+                  ","
+                ],
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "thousands_separators",
+                "kind": "string_list",
+                "required": false,
+                "help": "Characters that group thousands in amounts (removed).",
+                "default": [
+                  ",",
+                  " "
+                ],
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "currency",
+                "kind": "string",
+                "required": false,
+                "help": "Currency of amounts that do not name one (three letters, for example RWF). Leave empty if the page does not say: such amounts are kept without a currency and left out of price statistics.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              }
+            ]
+          },
+          {
+            "name": "selectors",
+            "kind": "object",
+            "required": true,
+            "help": "Where each field is on the list.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": [
+              {
+                "name": "item",
+                "kind": "string",
+                "required": true,
+                "help": "CSS selector matching one node per planned tender.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "description",
+                "kind": "selector",
+                "required": true,
+                "help": "What will be procured. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "entity",
+                "kind": "selector",
+                "required": false,
+                "help": "Procuring entity, per row. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "method",
+                "kind": "selector",
+                "required": false,
+                "help": "Procurement method. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "estimated_value",
+                "kind": "selector",
+                "required": false,
+                "help": "Estimated value. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "currency",
+                "kind": "selector",
+                "required": false,
+                "help": "Currency, when in its own cell. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "planned_date",
+                "kind": "selector",
+                "required": false,
+                "help": "Planned date of the tender notice. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "planned_quarter",
+                "kind": "selector",
+                "required": false,
+                "help": "Planned quarter (Q1 to Q4). A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "fiscal_year",
+                "kind": "selector",
+                "required": false,
+                "help": "Fiscal year, per row (2026/27). A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "tender_ref",
+                "kind": "selector",
+                "required": false,
+                "help": "Tender reference, when planned. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "link",
+                "kind": "selector",
+                "required": false,
+                "help": "Link to the plan entry, if any. A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              }
+            ]
+          },
+          {
+            "name": "page",
+            "kind": "object",
+            "required": false,
+            "help": "Optional: values stated once for the page.",
+            "default": null,
+            "options": null,
+            "min": null,
+            "max": null,
+            "fields": [
+              {
+                "name": "entity",
+                "kind": "selector",
+                "required": false,
+                "help": "Procuring entity for the whole page (rows without one). A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              },
+              {
+                "name": "fiscal_year",
+                "kind": "selector",
+                "required": false,
+                "help": "Fiscal year for the whole page (rows without one). A CSS selector, or {css, attr} to read an attribute.",
+                "default": null,
+                "options": null,
+                "min": null,
+                "max": null,
+                "fields": null
+              }
+            ]
+          },
+          {
+            "name": "quarter_basis",
+            "kind": "choice",
+            "required": false,
+            "help": "What the plan's quarters count from: fiscal (Q1 = July to September, Rwanda's fiscal year) or calendar (Q1 = January to March). Required when quarters are read.",
+            "default": null,
+            "options": [
+              "fiscal",
+              "calendar"
+            ],
+            "min": null,
+            "max": null,
+            "fields": null
+          }
+        ]
       }
     ]
   }

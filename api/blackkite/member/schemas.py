@@ -9,6 +9,7 @@ sent as ``null``; fields typed ``| null`` (``fit``, ``deadline``) are always sen
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, ClassVar, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer
@@ -199,8 +200,27 @@ class OwnItem(CamelModel):
     published: bool
 
 
+class OpportunityBenchmark(CamelModel):
+    """``detail.benchmark`` on a tender: its category's prices. Amounts are
+    decimals as strings in ``currency``."""
+
+    category: str
+    label: str
+    awards: int
+    currency: str
+    median: Decimal
+    p25: Decimal
+    p75: Decimal
+    min: Decimal
+    max: Decimal
+
+
 class OpportunityDetail(FeedItemDetail):
-    omit_if_none = FeedItemDetail.omit_if_none | {"dismiss_reason", "own_item"}
+    omit_if_none = FeedItemDetail.omit_if_none | {
+        "dismiss_reason",
+        "own_item",
+        "benchmark",
+    }
 
     fields: list[FieldOut]
     sources: list[SourceLinkOut]
@@ -211,6 +231,9 @@ class OpportunityDetail(FeedItemDetail):
     state: State
     dismiss_reason: DismissReason | None = None
     own_item: OwnItem | None = None
+    # Tenders only: awarded prices in the item's category, when it has at least
+    # 3 priced awards (member/procurement.py). Left out otherwise.
+    benchmark: OpportunityBenchmark | None = None
 
 
 class OpportunityOut(FeedItem):

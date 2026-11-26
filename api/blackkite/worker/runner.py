@@ -9,6 +9,10 @@ Only after that commit does the runner call the collector's optional
 processed mail); a rollback never reaches it. A failing ``after_commit`` is
 logged and the run stays succeeded.
 
+Collectors with procurement records (``collector.records``: umucyo_awards,
+umucyo_plans) have them written by ``pipeline/records.ingest_records`` in the
+same transaction; they count in the run's items_found / items_new / items_failed.
+
 The pipeline's fetcher (detail pages and PDFs, enrich stage) is the run's own
 ``FetchClient`` wrapped in ``ClientFetcher`` with the source's rate limit, so
 enrichment gets the same URL guard, robots.txt, per-host delay, User-Agent, size
@@ -50,12 +54,13 @@ from blackkite import scoring
 from blackkite.collectors.base import (  # noqa: F401
     MAX_RUN_WARNINGS,
     CollectorError,
+    collected_records,
     run_warnings,
 )
 from blackkite.collectors.http import ClientFetcher, FetchClient
 from blackkite.collectors.registry import build_collector
 from blackkite.db.models import Source, SourceRun
-from blackkite.pipeline import ingest
+from blackkite.pipeline import ingest, records
 from blackkite.pipeline.enrich import Fetcher
 from blackkite.sources.service import SCHEDULED_STATUSES, parse_schedule
 
@@ -110,10 +115,17 @@ def run_source(
         warnings = run_warnings(collector)
         deps = (make_deps or ingest.default_deps)(fetcher)
         result = ingest.ingest_items(session, source, items, deps=deps, now=now())
+        found, new, failed = result.items_found, result.items_new, result.items_failed
+        batch = collected_records(collector)
+        if batch is not None:
+            rr = records.ingest_records(
+                session, source, batch, now=now(), embedder=deps.embedder
+            )
+            found, new, failed = found + rr.found, new + rr.new, failed + rr.failed
         run.status = "succeeded"
-        run.items_found = result.items_found
-        run.items_new = result.items_new
-        run.items_failed = result.items_failed
+        run.items_found = found
+        run.items_new = new
+        run.items_failed = failed
         run.warnings = warnings
         run.finished_at = now()
         session.commit()

@@ -199,3 +199,52 @@ def test_demo_sources_have_a_valid_config_and_run_with_no_items(db):
         assert (run.status, run.items_found, run.error) == ("succeeded", 0, None)
     assert web.requests == []
     assert count(db, Opportunity) == len(DEMO_ITEMS)
+
+
+def test_fictional_awards_and_plans_for_the_m5_screens(db, app, client, outbox):
+    from blackkite.db.models import Award, ProcurementPlanItem
+    from blackkite.routes.member import now_utc
+    from tests.conftest import sign_in
+
+    r = demo_seed(db, env="dev", admin_email=ADMIN, now=NOW)
+    db.commit()
+    assert (r.awards, r.plans) == (25, 10)
+    awards = db.scalars(sa.select(Award)).all()
+    assert Counter(a.category for a in awards) == {
+        "transport": 7,
+        "ict": 6,
+        "construction": 6,
+        "office": 6,
+    }
+    for a in awards:
+        assert a.raw == {"_demo": True}
+        assert "(fictional)" in a.entity and "(fictional)" in a.winner
+        assert a.tender_ref.startswith("DEMO/")
+        assert urlsplit(a.url).hostname == "demo.example.com"
+    plans = db.scalars(sa.select(ProcurementPlanItem)).all()
+    assert len(plans) == 10 and all(p.raw == {"_demo": True} for p in plans)
+    assert sum(p.opportunity_id is not None for p in plans) == 1
+
+    app.dependency_overrides[now_utc] = lambda: NOW
+    c = sign_in(client, outbox, ADMIN)
+    cats = c.get("/api/benchmarks").json()["categories"]
+    assert {x["category"] for x in cats if x["median"]} == {
+        "transport",
+        "ict",
+        "construction",
+        "office",
+    }
+    out = c.get("/api/plans").json()["items"]
+    assert out and all(i["description"].startswith("[Demo]") for i in out)
+    assert "[Demo] Dry freight and last-mile distribution framework" not in {
+        i["description"] for i in out
+    }
+    vaccines = db.scalar(
+        sa.select(Opportunity.id).where(Opportunity.title.contains("vaccines"))
+    )
+    detail = c.get(f"/api/opportunities/{vaccines}").json()["detail"]
+    assert detail["benchmark"]["category"] == "transport"
+
+    demo_seed(db, env="dev", admin_email=ADMIN, now=NOW)  # re-run replaces them
+    db.commit()
+    assert count(db, Award) == 25 and count(db, ProcurementPlanItem) == 10
