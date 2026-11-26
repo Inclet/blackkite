@@ -64,6 +64,7 @@ from blackkite.llm.client import LLMClient, LLMError
 from blackkite.llm.embeddings import Embedder
 from blackkite.pipeline.dates import kigali_date
 from blackkite.pipeline.visibility import MEMBER_VISIBLE_SOURCE_STATUSES, visible_to
+from blackkite.scoring import instruments
 from blackkite.scoring import judge as judge_mod
 from blackkite.scoring.fitword import fit_word
 from blackkite.scoring.match import Match, match, profile_embedding
@@ -381,7 +382,7 @@ def _mentions(m: Match) -> str:
     return f"It mentions {_and(other)}, close to what this profile lists."
 
 
-def _rules_reason(opp: Opportunity, m: Match) -> str:
+def _rules_reason(opp: Opportunity, m: Match, chosen: bool | None = None) -> str:
     if opp.stream == "event":
         what = (opp.subtype or "Event").capitalize()
         when = opp.event_start or opp.deadline_at
@@ -395,6 +396,9 @@ def _rules_reason(opp: Opportunity, m: Match) -> str:
         text = what + (f" from {org}" if org else "")
         if opp.deadline_at:
             text += f", closing {_full_date(opp.deadline_at)}"
+        if chosen is False:
+            kind = instruments.LABELS[instruments.item_kind(opp)]
+            text += f"; this profile's instruments do not include {kind}"
         return text + "."
     if m.excluded:
         return f"It matches this profile's exclusion “{m.excluded}”."
@@ -525,8 +529,17 @@ def score_pair(
     if opp.stream not in LLM_STREAMS:
         # Spec 7.1: events and investments rank on time, verification and source.
         fit_conf = 0.0 if m.excluded else (0.5 if m.matched else 0.4)
+        chosen = None
+        if opp.stream == "investment" and not m.excluded:
+            # The profile's chosen instruments decide an investment's fit: a
+            # kind it did not choose ranks below every kind it did.
+            chosen = instruments.instrument_chosen(opp, profile.data)
+            if chosen is True:
+                fit_conf = s.instrument_chosen_fit
+            elif chosen is False:
+                fit_conf = s.instrument_other_fit
         elig_conf = rules_elig
-        reason = _rules_reason(opp, m)
+        reason = _rules_reason(opp, m, chosen)
         reasons = [reason]
     elif not m.shortlisted:
         fit_conf = min(m.strength, 0.3)
