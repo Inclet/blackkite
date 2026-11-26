@@ -5,7 +5,7 @@ section 5): PUT /api/items/{id}/share-consent, POST
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
 
@@ -192,3 +192,72 @@ def test_published_item_is_scored_for_everyone_and_shows_in_feeds(
     }
     db.commit()
     assert str(oid) in [i["id"] for i in items(b)]
+
+
+def test_private_history_stays_the_owners_after_publishing(db, ana, ben, login):
+    """Reviewer's case: retitle and change the value while private, publish;
+    the second user and the admin see none of the private history, the owner
+    sees all of it, and later changes show to everyone."""
+    make_user(db, "admin@example.com", role="admin")
+    a = login(ana.email)
+    oid = _item(a, title="Secret first title", value=1000, currency="RWF")
+    r = a.patch(f"/api/items/{oid}", json={"title": "Public title", "value": 6000000})
+    assert r.status_code == 200, r.text
+    owner_before = r.json()["detail"]["changes"]
+    assert {c["field"] for c in owner_before} == {"title", "value_amount"}
+    _consent(a, oid, True)
+    admin = login("admin@example.com")
+    assert admin.post(f"/api/admin/catalogue/{oid}/publish").status_code == 200
+
+    def changes(c):
+        r = c.get(f"/api/opportunities/{oid}")
+        assert r.status_code == 200, r.text
+        return r.json()["detail"]["changes"]
+
+    for other in (login(ben.email), admin):
+        seen = changes(other)
+        assert [c["field"] for c in seen] == ["visibility"]
+        assert "Secret first title" not in str(seen) and "1000" not in str(seen)
+    page = admin.get("/api/admin/catalogue").json()
+    assert "Secret first title" not in str(page)
+    mine = changes(a)
+    assert {c["field"] for c in mine} == {"title", "value_amount", "visibility"}
+    assert "Secret first title" in str(mine)
+    # The rows are kept, and the owner's export carries them.
+    assert (
+        db.scalar(
+            sa.select(sa.func.count())
+            .select_from(ChangeEvent)
+            .where(ChangeEvent.opportunity_id == uuid.UUID(oid))
+        )
+        == 3
+    )
+    (pub,) = a.get("/api/me/export").json()["publishedItems"]
+    assert {c["field"] for c in pub["changes"]} == {"title", "value_amount"}
+    assert "Secret first title" in str(pub["changes"])
+    # A change after publication is public history.
+    opp = db.get(Opportunity, uuid.UUID(oid))
+    db.add(
+        ChangeEvent(
+            opportunity_id=opp.id,
+            field="status",
+            old="open",
+            new="expired",
+            at=opp.made_public_at + timedelta(days=1),
+        )
+    )
+    db.commit()
+    assert [c["field"] for c in changes(login(ben.email))] == ["status", "visibility"]
+
+
+def test_owner_gone_means_nobody_sees_the_private_history(Sessions, db, ana, login):
+    make_user(db, "admin@example.com", role="admin")
+    a = login(ana.email)
+    oid = _item(a, title="Secret first title")
+    a.patch(f"/api/items/{oid}", json={"title": "Public title"})
+    _consent(a, oid, True)
+    admin = login("admin@example.com")
+    admin.post(f"/api/admin/catalogue/{oid}/publish")
+    assert a.delete("/api/me").status_code in (200, 204)
+    seen = admin.get(f"/api/opportunities/{oid}").json()["detail"]["changes"]
+    assert [c["field"] for c in seen] == ["visibility"]
