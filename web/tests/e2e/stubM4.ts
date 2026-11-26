@@ -65,6 +65,11 @@ function send(res: http.ServerResponse, status: number, body?: unknown): void {
 const day = (iso: string) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))) / 86_400_000;
 const daysFromToday = (iso: string) => day(iso) - day(TODAY);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** What the item form sends for a typed date: the day, or the day and a Kigali time (the API reads any text with a year). */
+const ITEM_DATE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/;
+const dayOf = (v: unknown) => (typeof v === 'string' ? v.slice(0, 10) : null);
+/** The stored instant: a timed value as typed, a day alone at its start or end (Kigali). */
+const instant = (v: string, edge: 'start' | 'end') => (v.includes('T') ? `${v}:00+02:00` : `${v}T${edge === 'end' ? '23:59:59' : '00:00:00'}+02:00`);
 
 function sortDate(i: Item): string | null {
   return i.deadline ?? (i.eventDates as { start?: string } | undefined)?.start ?? null;
@@ -165,8 +170,8 @@ function itemRefusal(b: Record<string, unknown>, creating: boolean, stream: unkn
   for (const k of ['deadline', 'eventStart', 'eventEnd']) {
     const v = b[k];
     if (v === undefined || v === null) continue;
-    if (typeof v !== 'string' || !ISO_DATE.test(v)) out.push({ field: k, message: 'include the year, for example 30 Nov 2026' });
-    else if (!inWindow(v)) out.push({ field: k, message: 'must be between a year ago and two years from now' });
+    if (typeof v !== 'string' || !ITEM_DATE.test(v)) out.push({ field: k, message: 'include the year, for example 30 Nov 2026' });
+    else if (!inWindow(v.slice(0, 10))) out.push({ field: k, message: 'must be between a year ago and two years from now' });
   }
   if ((b.eventStart || b.eventEnd) && stream !== 'event') out.push({ field: 'eventStart', message: 'only events have event dates' });
   if (b.eventEnd && !b.eventStart) out.push({ field: 'eventEnd', message: 'needs a start date' });
@@ -188,8 +193,8 @@ function itemFrom(id: string, input: Record<string, unknown>): Item {
     title: String(input.title),
     organisation: typeof input.organisation === 'string' ? input.organisation : '',
     fit: null,
-    deadline: event ? null : ((input.deadline as string | null | undefined) ?? null),
-    ...(event ? { eventDates: { start: input.eventStart, end: (input.eventEnd as string | null) ?? null } } : {}),
+    deadline: event ? null : dayOf(input.deadline),
+    ...(event ? { eventDates: { start: dayOf(input.eventStart), end: dayOf(input.eventEnd) } } : {}),
     ...(event || input.deadline ? {} : { noDeadlineText: 'No deadline stated' }),
     detail: {
       ...(typeof input.location === 'string' && input.location ? { location: input.location } : {}),
@@ -204,10 +209,16 @@ function itemFrom(id: string, input: Record<string, unknown>): Item {
 function ownFields(input: Record<string, unknown>): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
   if (input.organisation) out.push({ name: 'organisation', value: input.organisation });
-  if (input.deadline) out.push({ name: 'deadlineAt', value: `${input.deadline}T23:59:59+02:00` });
-  if (input.eventStart) out.push({ name: 'eventStart', value: `${input.eventStart}T00:00:00+02:00` });
-  if (input.eventEnd) out.push({ name: 'eventEnd', value: `${input.eventEnd}T23:59:59+02:00` });
-  if (input.value !== undefined) out.push({ name: 'valueAmount', value: input.value });
+  if (input.deadline) out.push({ name: 'deadlineAt', value: instant(String(input.deadline), 'end') });
+  if (input.eventStart) out.push({ name: 'eventStart', value: instant(String(input.eventStart), 'start') });
+  if (input.eventEnd) out.push({ name: 'eventEnd', value: instant(String(input.eventEnd), 'end') });
+  if (input.value !== undefined && input.value !== null) {
+    // As the API: the decimal as a string, and display in the digest's wording (RWF as FRW).
+    const n = Number(input.value);
+    const code = input.currency ? (String(input.currency).toUpperCase() === 'RWF' ? 'FRW' : String(input.currency).toUpperCase()) : '';
+    const figure = n.toLocaleString('en-GB', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: Number.isInteger(n) ? 0 : 2 });
+    out.push({ name: 'valueAmount', value: n.toFixed(2), display: `${code} ${figure}`.trim() });
+  }
   if (input.currency) out.push({ name: 'valueCurrency', value: input.currency });
   if (input.location) out.push({ name: 'location', value: input.location });
   return out;
@@ -217,14 +228,14 @@ function ownFields(input: Record<string, unknown>): Record<string, unknown>[] {
 export function ownExtras(s: M4State, id: string): Record<string, unknown> {
   const own = s.own[id];
   if (!own) return {};
-  return { fields: ownFields(own.input), changes: own.changes, ownItem: { shareConsent: own.shareConsent, published: own.published } };
+  return { fields: ownFields(own.input), changes: own.changes, ownItem: { shareConsent: own.shareConsent, published: own.published }, isManual: true };
 }
 
 function opportunity(s: M4State, item: Item): Record<string, unknown> {
   return {
     ...item,
     state: s.states[item.id] ?? 'unseen',
-    detail: { ...(item.detail as object), fields: [], sources: [], documents: [], changes: [], note: s.notes[item.id] ?? null, state: s.states[item.id] ?? 'unseen', ...ownExtras(s, item.id) },
+    detail: { ...(item.detail as object), fields: [], sources: [], documents: [], changes: [], note: s.notes[item.id] ?? null, state: s.states[item.id] ?? 'unseen', isManual: false, ...ownExtras(s, item.id) },
   };
 }
 

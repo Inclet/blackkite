@@ -1,6 +1,6 @@
 import type { OwnedDetail, PrivateItemInput } from '../../api/m4';
 import { fieldValueText } from '../../api/detail';
-import { kigaliToday } from '../../lib/deadline';
+import { checkItemDate, itemDateText, type DayEdge } from '../../lib/itemDates';
 import type { Stream } from '../../lib/streams';
 
 /** The "Add an item" form as typed (strings), before it becomes a POST /api/items body. */
@@ -45,19 +45,31 @@ export function toForm(item: OwnedDetail): ItemForm {
   };
   const event = item.stream === 'event';
   const end = item.eventDates?.end;
+  // The stored instant when the answer has it (keeps a typed time), else the row's date.
+  const when = (name: string, fallback: string | null | undefined, edge: DayEdge) => {
+    const f = item.detail.fields.find((x) => x.name === name);
+    const v = typeof f?.value === 'string' ? f.value : fallback;
+    return v ? itemDateText(v, edge) : '';
+  };
   return {
     stream: item.stream,
     title: item.title,
     organisation: field('organisation'),
-    deadline: event ? '' : (item.deadline ?? ''),
-    eventStart: event ? (item.eventDates?.start ?? '') : '',
-    eventEnd: event && end && end !== item.eventDates?.start ? end : '',
-    value: field('valueAmount'),
+    deadline: event ? '' : when('deadlineAt', item.deadline, 'end'),
+    eventStart: event ? when('eventStart', item.eventDates?.start, 'start') : '',
+    eventEnd: event && end && end !== item.eventDates?.start ? when('eventEnd', end, 'end') : '',
+    // The API sends the amount as a decimal string ("6000000.00"); the form takes whole numbers.
+    value: wholeAmount(field('valueAmount')),
     currency: field('valueCurrency') || 'RWF',
     location: field('location') || (item.detail.location ?? ''),
     url: item.detail.originalUrl ?? '',
     notes: item.detail.note ?? '',
   };
+}
+
+function wholeAmount(text: string): string {
+  const m = text.trim().match(/^(\d+)(?:\.0+)?$/);
+  return m ? m[1]! : text;
 }
 
 /** Map the API's refused fields (RefusalOut errors, camelCase) onto the form. */
@@ -72,21 +84,18 @@ export function serverErrors(errors: { field: string | null; message: string }[]
   return out;
 }
 
-const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+/** A typed date the API will take: with its year (spec 2.5), understood, in the plausible window. */
+function dateError(raw: string, edge: DayEdge): string | undefined {
+  const d = checkItemDate(raw, edge);
+  if (!('problem' in d)) return undefined;
+  return d.problem === 'out_of_window' ? ITEM_ERRORS.dateRange : ITEM_ERRORS.date;
+}
 
-/** An explicit, real calendar date with its year (spec 2.5: every date needs a year), in a plausible window. */
-function dateError(raw: string): string | undefined {
-  const m = raw.match(ISO_DATE);
-  if (!m) return ITEM_ERRORS.date;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const date = new Date(Date.UTC(y, mo - 1, d));
-  if (date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d) return ITEM_ERRORS.date;
-  // The API's plausible window (pipeline validate): a year back, two years ahead.
-  const today = kigaliToday();
-  const back = `${Number(today.slice(0, 4)) - 1}${today.slice(4)}`;
-  const ahead = `${Number(today.slice(0, 4)) + 2}${today.slice(4)}`;
-  if (raw < back || raw > ahead) return ITEM_ERRORS.dateRange;
-  return undefined;
+/** What the API is sent for a typed date ("2026-12-07", "2026-12-07T17:00"); null when empty. */
+function dateValue(raw: string, edge: DayEdge): string | null {
+  if (!raw.trim()) return null;
+  const d = checkItemDate(raw.trim(), edge);
+  return 'problem' in d ? raw.trim() : d.value;
 }
 
 export function validate(f: ItemForm): ItemErrors {
@@ -97,16 +106,21 @@ export function validate(f: ItemForm): ItemErrors {
     if (!f.eventStart.trim()) {
       if (f.eventEnd.trim()) e.eventStart = ITEM_ERRORS.eventStart;
     } else {
-      const err = dateError(f.eventStart.trim());
+      const err = dateError(f.eventStart.trim(), 'start');
       if (err) e.eventStart = err;
     }
     if (f.eventEnd.trim()) {
-      const err = dateError(f.eventEnd.trim());
+      const err = dateError(f.eventEnd.trim(), 'end');
       if (err) e.eventEnd = err;
-      else if (!e.eventStart && f.eventStart.trim() && f.eventEnd.trim() < f.eventStart.trim()) e.eventEnd = ITEM_ERRORS.eventEnd;
+      else if (!e.eventStart && f.eventStart.trim()) {
+        // As the API compares them: the end (end of its day, unless timed) before the start.
+        const start = checkItemDate(f.eventStart.trim(), 'start');
+        const end = checkItemDate(f.eventEnd.trim(), 'end');
+        if (!('problem' in start) && !('problem' in end) && end.at < start.at) e.eventEnd = ITEM_ERRORS.eventEnd;
+      }
     }
   } else if (f.deadline.trim()) {
-    const err = dateError(f.deadline.trim());
+    const err = dateError(f.deadline.trim(), 'end');
     if (err) e.deadline = err;
   }
   const value = f.value.trim().replace(/[ ,]/g, '');
@@ -138,9 +152,9 @@ export function toInput(f: ItemForm): PrivateItemInput {
     stream: f.stream!,
     title: f.title.trim(),
     organisation: text(f.organisation),
-    deadline: event ? null : text(f.deadline),
-    eventStart: event ? text(f.eventStart) : null,
-    eventEnd: event ? text(f.eventEnd) : null,
+    deadline: event ? null : dateValue(f.deadline, 'end'),
+    eventStart: event ? dateValue(f.eventStart, 'start') : null,
+    eventEnd: event ? dateValue(f.eventEnd, 'end') : null,
     value: value ? Number(value) : null,
     currency: value ? f.currency.trim().toUpperCase() : null,
     location: text(f.location),

@@ -62,7 +62,7 @@ export interface PrivateItemInput {
   stream: Stream;
   title: string;
   organisation?: string | null;
-  /** A date with an explicit year (YYYY-MM-DD here), Kigali; no time = end of day. */
+  /** A date with an explicit year, Kigali: the form sends YYYY-MM-DD or YYYY-MM-DDTHH:MM (no zone). No time = end of day (start of day for eventStart). */
   deadline?: string | null;
   eventStart?: string | null;
   eventEnd?: string | null;

@@ -89,5 +89,6 @@ export function detailMeta(item: FeedItem, at: Date = now()): string {
   if (item.detail.location && item.detail.location !== item.organisation) parts.push(item.detail.location);
   if (item.eventDates) parts.push(eventLabel(item.eventDates.start, item.eventDates.end));
   else if (item.deadline) parts.push(`${isClosed(item, at) ? 'closed' : 'closes'} ${formatShortDate(item.deadline)}`);
-  return parts.join(' · ');
+  // An own item may have no organisation: never a leading " · ".
+  return parts.filter((p) => p && p.trim()).join(' · ');
 }

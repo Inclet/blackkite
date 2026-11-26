@@ -88,7 +88,7 @@ async function addItem(page: import('@playwright/test').Page, title: string) {
   await form.getByRole('button', { name: 'Tenders' }).click();
   await form.getByLabel('Title').fill(title);
   await form.getByLabel('Organisation (optional)').fill('Kigali Bus');
-  await form.getByLabel('Deadline (optional)').fill('2026-12-10');
+  await form.getByLabel('Deadline (optional)').fill('10 Dec 2026, 5pm');
   await form.getByLabel('Value (optional)').fill('2,000,000');
   await form.getByLabel('Link (optional)').fill('https://example.rw/notice');
   await form.getByRole('button', { name: 'Add the item' }).click();
@@ -103,11 +103,15 @@ test('private item: create, edit, consent, admin publish locks it', async ({ pag
   await expect(pane.getByRole('heading', { name: 'Fuel supply' })).toBeVisible();
   await expect(pane.getByText('Private: only you can see this')).toBeVisible();
   await expect(pane).toContainText('You added this item yourself');
+  await expect(pane.getByRole('region', { name: 'Details' })).toContainText('FRW 2,000,000');
+  await expect(pane.getByRole('region', { name: 'Sources' })).toContainText('No source carries this item. You added it yourself.');
+  await expect(pane.getByRole('link', { name: 'Open your link' })).toHaveAttribute('href', 'https://example.rw/notice');
   const created = (await api.seen()).find((r) => r.method === 'POST' && r.url === '/api/items')!;
-  expect(JSON.parse(created.body)).toMatchObject({ stream: 'tender', title: 'Fuel supply', deadline: '2026-12-10', value: 2000000, currency: 'RWF' });
+  expect(JSON.parse(created.body)).toMatchObject({ stream: 'tender', title: 'Fuel supply', deadline: '2026-12-10T17:00', value: 2000000, currency: 'RWF' });
 
   await pane.getByRole('button', { name: 'Edit: Fuel supply' }).click();
   await expect(page.getByLabel('Title')).toHaveValue('Fuel supply');
+  await expect(page.getByLabel('Deadline (optional)')).toHaveValue('10 Dec 2026, 5pm');
   await page.getByLabel('Title').fill('Fuel supply, phase 2');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByRole('article').getByRole('heading', { name: 'Fuel supply, phase 2' })).toBeVisible();
@@ -167,7 +171,8 @@ test('detail sections: open in the desktop pane, closed behind buttons on the ph
   await expect(page.getByRole('region', { name: 'History' })).toContainText('20 Nov 2026: the deadline moved from 28 Nov 2026, 5pm to 30 Nov 2026, 5pm.');
 
   await page.setViewportSize(phone);
-  const toggle = page.getByRole('button', { name: /^Details/ });
+  const toggle = page.getByRole('button', { name: 'Details', exact: true });
+  await expect(toggle).toHaveAccessibleName('Details');
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByText('FRW 120,000,000', { exact: true })).toBeHidden();
   await toggle.click();

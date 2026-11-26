@@ -28,7 +28,7 @@ export const ITEM_COPY = {
   deadline: 'Deadline (optional)',
   eventStart: 'Starts (optional)',
   eventEnd: 'Ends (optional)',
-  dateHint: 'With the year, such as 7 Dec 2026.',
+  dateHint: 'With the year, such as 7 Dec 2026 or 7 Dec 2026, 5pm.',
   value: 'Value (optional)',
   currency: 'Currency',
   location: 'Location (optional)',
@@ -45,6 +45,9 @@ export const ITEM_COPY = {
   published: 'This item is public now, so it can’t be changed or deleted here. Ask an admin if something is wrong with it.',
   notFound: 'We could not find that item.',
 } as const;
+
+/** Dates are typed text, read as the API reads them (lib/itemDates): no native date picker. */
+const DATE_FIELD = { hint: ITEM_COPY.dateHint, maxLength: 100, autoComplete: 'off', spellCheck: false };
 
 const CURRENCY_WORDS: Record<string, string> = { RWF: 'FRW', USD: 'USD', EUR: 'EUR' };
 
@@ -174,11 +177,11 @@ function Editor({ id, initial }: { id?: string; initial?: ItemForm }) {
           <div className={styles.fields}>
             {form.stream === 'event' ? (
               <>
-                {field('eventStart', ITEM_COPY.eventStart, { type: 'date', hint: ITEM_COPY.dateHint })}
-                {field('eventEnd', ITEM_COPY.eventEnd, { type: 'date', hint: ITEM_COPY.dateHint })}
+                {field('eventStart', ITEM_COPY.eventStart, DATE_FIELD)}
+                {field('eventEnd', ITEM_COPY.eventEnd, DATE_FIELD)}
               </>
             ) : (
-              field('deadline', ITEM_COPY.deadline, { type: 'date', hint: ITEM_COPY.dateHint })
+              field('deadline', ITEM_COPY.deadline, DATE_FIELD)
             )}
             {field('location', ITEM_COPY.location, { maxLength: 200 })}
           </div>

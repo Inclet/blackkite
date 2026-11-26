@@ -20,6 +20,8 @@ export const FILTER_COPY = {
   applied: 'Applied filters. Press one to remove it.',
   remove: (group: string, value: string) => `Remove filter ${group}: ${value}`,
   clear: 'Clear filters',
+  /** Under the Fit group (design review): the fit filter narrows only scored streams. */
+  fitNote: 'Fit applies to tenders and funding; events and investments stay listed.',
   groups: { profile: 'Profile', status: 'Status', window: 'Deadline', fit: 'Fit', source: 'Source', verification: 'Trust' } satisfies Record<FilterKey, string>,
 } as const;
 

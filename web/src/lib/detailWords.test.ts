@@ -45,3 +45,15 @@ test('changes in plain words', () => {
   expect(changeSentence({ field: 'visibility', old: { visibility: 'private' }, new: { visibility: 'public' }, at: '2026-11-24T08:00:00Z' })).toBe('24 Nov 2026: an admin made it public, with the owner’s consent.');
   expect(changeSentence({ field: 'title', old: 'A', new: 'B', at: '2026-11-24T08:00:00Z' })).toBe('24 Nov 2026: the title changed from A to B.');
 });
+
+test('the value line: the API display when sent, else the amount with separators and currency', () => {
+  const line = (fields: Parameters<typeof detailLines>[0]) => detailLines(fields).find((l) => l.name === 'valueAmount')!.values[0]!.text;
+  expect(line([{ name: 'valueAmount', value: '6000000.00', display: 'FRW 6,000,000' }])).toBe('FRW 6,000,000');
+  // Before the API sends display: the decimal string or a number, formatted here.
+  expect(line([{ name: 'valueAmount', value: '6000000.00' }, { name: 'valueCurrency', value: 'RWF' }])).toBe('FRW 6,000,000');
+  expect(line([{ name: 'valueAmount', value: 6000000 }])).toBe('FRW 6,000,000');
+  expect(line([{ name: 'valueAmount', value: '1250.50' }, { name: 'valueCurrency', value: 'USD' }])).toBe('USD 1,250.50');
+  expect(line([{ name: 'valueAmount', value: '2000000.00' }, { name: 'valueCurrency', value: 'KES' }])).toBe('KES 2,000,000');
+  expect(line([{ name: 'valueAmount', value: '6000000.00', display: '  ' }])).toBe('FRW 6,000,000');
+  expect(changeSentence({ field: 'value_amount', old: '5000000.00', new: '6000000.00', at: '2026-11-20T06:00:00Z' })).toBe('20 Nov 2026: the value changed from FRW 5,000,000 to FRW 6,000,000.');
+});
