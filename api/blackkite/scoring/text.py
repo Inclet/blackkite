@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any
 
 from blackkite.db.models import Opportunity, Profile
@@ -176,8 +177,63 @@ def tokens(text: str) -> set[str]:
     }
 
 
+# A light suffix stripper, so "transport" and "transportation", "hospital" and
+# "hospitals" meet while "district" and "distribution" do not. At most two
+# suffixes, never leaving fewer than four letters.
+_SUFFIXES = tuple(
+    sorted(
+        (
+            "isations",
+            "izations",
+            "isation",
+            "ization",
+            "ations",
+            "ation",
+            "ments",
+            "ment",
+            "ancies",
+            "ancy",
+            "ency",
+            "ings",
+            "ing",
+            "ants",
+            "ant",
+            "ators",
+            "ator",
+            "ated",
+            "ates",
+            "ate",
+            "ers",
+            "er",
+            "ors",
+            "or",
+            "ural",
+            "ure",
+            "ions",
+            "ion",
+            "ive",
+            "ly",
+            "ed",
+            "al",
+            "s",
+        ),
+        key=len,
+        reverse=True,
+    )
+)
+
+
+def _strip_once(t: str) -> str:
+    if t.endswith("ies") and len(t) > 5:
+        return t[:-3] + "y"
+    for suf in _SUFFIXES:
+        if t.endswith(suf) and len(t) - len(suf) >= 4:
+            return t[: -len(suf)]
+    return t
+
+
 def _stem(t: str) -> str:
-    return t[:6] if len(t) > 6 else t
+    return _strip_once(_strip_once(t))
 
 
 def term_tokens(term: str) -> set[str]:
@@ -189,15 +245,154 @@ def term_tokens(term: str) -> set[str]:
     return {_stem(t) for t in out}
 
 
+# Words of a multi-word term that say nothing on their own: "dry" in "dry
+# season", "chain" in "supply chain", "community" in "community meeting". They
+# count inside the whole phrase, never as a hit by themselves (their expansions
+# still do: "refrigerated" for "cold").
+WEAK_ALONE = frozenset(
+    [
+        "dry",
+        "cold",
+        "chain",
+        "last",
+        "mile",
+        "first",
+        "community",
+        "development",
+        "public",
+        "local",
+        "national",
+        "international",
+        "small",
+        "management",
+    ]
+)
+
+
+# A phrase never spans these (separate tags, sentences, list items).
+_BREAK = re.compile(r"[\n.;:|,()\[\]]")
+
+
+def _word_list(text: str) -> list[tuple[str, int, int]]:
+    """(token, start, end) for the non-stopword tokens of ``text``, in order."""
+    return [
+        (m.group(0), m.start(), m.end())
+        for m in _TOKEN.finditer(text.lower())
+        if m.group(0) not in STOPWORDS and len(m.group(0)) > 1
+    ]
+
+
+def _ordered_tokens(term: str) -> list[str]:
+    return [t for t, _, _ in _word_list(term)]
+
+
+def _alts(token: str) -> set[str]:
+    """Stems an item word may have to stand for this term word."""
+    return {_stem(token), *(_stem(e) for e in EXPANSIONS.get(token, ()))}
+
+
+def _surface(text: str, start: int, end: int) -> str:
+    """The item's own words, lowercased unless written as an acronym (ICT)."""
+    s = " ".join(text[start:end].split())
+    words = s.split()
+    if words and all(w.isupper() and len(w) > 1 for w in words if w.isalpha()):
+        return s
+    return s.lower()
+
+
+@dataclass(frozen=True)
+class TermHit:
+    """One profile term found in an item's text.
+
+    ``phrase``: the whole term is there, word for word or through the synonym
+    list ("refrigerated logistics" for "cold chain"); only then may a reason
+    claim the term. Otherwise ``quotes`` are the item words that match a word
+    of the term (never a ``WEAK_ALONE`` word by itself)."""
+
+    term: str
+    phrase: bool
+    literal: bool  # the whole term word for word (no synonym)
+    quotes: tuple[str, ...]
+    stems: frozenset[str]
+
+
+def term_hits(terms: Iterable[str], text: str) -> list[TermHit]:
+    """Profile terms that occur in ``text`` (see ``TermHit``), in term order."""
+    words = _word_list(text)
+    stems = [_stem(w) for w, _, _ in words]
+    out: list[TermHit] = []
+    for term in terms:
+        seq = _ordered_tokens(term)
+        if not seq:
+            continue
+        alts = [_alts(t) for t in seq]
+        best: TermHit | None = None
+        n = len(seq)
+        for i in range(len(words) - n + 1):
+            if all(stems[i + k] in alts[k] for k in range(n)) and not any(
+                _BREAK.search(text[words[i + k][2] : words[i + k + 1][1]])
+                for k in range(n - 1)
+            ):
+                literal = all(stems[i + k] == _stem(seq[k]) for k in range(n))
+                hit = TermHit(
+                    term,
+                    True,
+                    literal,
+                    (_surface(text, words[i][1], words[i + n - 1][2]),),
+                    frozenset(stems[i : i + n]),
+                )
+                if best is None or (literal and not best.literal):
+                    best = hit
+                if literal:
+                    break
+        if best is not None:
+            out.append(best)
+            continue
+        quotes: list[str] = []
+        hit_stems: set[str] = set()
+        for k, tok in enumerate(seq):
+            if n > 1 and tok in WEAK_ALONE:
+                allowed = alts[k] - {_stem(tok)}
+            else:
+                allowed = alts[k]
+            for j, (_, a, b) in enumerate(words):
+                if stems[j] in allowed and stems[j] not in hit_stems:
+                    hit_stems.add(stems[j])
+                    quotes.append(_surface(text, a, b))
+        if quotes:
+            out.append(TermHit(term, False, False, tuple(quotes), frozenset(hit_stems)))
+    return out
+
+
+def mentioned(hits: Iterable[TermHit]) -> list[str]:
+    """What a reason may say the item mentions: the item's own words, whole
+    phrases first, each once (case-insensitive), and no word already inside a
+    phrase listed ("community health", not "community health, health")."""
+    hits = list(hits)
+    ordered = [q for h in hits if h.phrase for q in h.quotes] + [
+        q for h in hits if not h.phrase for q in h.quotes
+    ]
+    out: list[str] = []
+    for q in ordered:
+        key = q.lower()
+        if any(
+            key == o.lower() or re.search(rf"\b{re.escape(key)}\b", o.lower())
+            for o in out
+        ):
+            continue
+        out.append(q)
+    return out
+
+
 def matched_terms(terms: Iterable[str], opp_tokens: set[str]) -> list[str]:
-    """Profile terms that share a (stemmed, expanded) token with the item."""
+    """Profile terms that share a (stemmed, expanded) token with a token set."""
     stems = {_stem(t) for t in opp_tokens}
     return [t for t in terms if term_tokens(t) & stems]
 
 
 def opportunity_match_text(opp: Opportunity) -> str:
     tags = [t.split(":", 1)[-1] for t in (opp.tags or [])]
-    return " ".join([opp.title, opp.subtype or "", opp.summary or "", *tags])
+    return "\n".join([opp.title, opp.subtype or "", opp.summary or "", *tags])
 
 
 # --- profile ------------------------------------------------------------------------

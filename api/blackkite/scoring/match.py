@@ -6,9 +6,11 @@ Shortlist rule, for a pair that passed the hard filters:
    ``keywords``) is never shortlisted.
 2. **Tag overlap**: profile terms (``services``, ``sectors``, ``instruments``,
    ``event_topics``) are tokenised, expanded with a small domain synonym list
-   (``text.EXPANSIONS``) and stemmed; a term hits when it shares a token with the
-   item's tags, title, subtype or summary. ``tag_min_overlap`` (default 1) hits
-   shortlist the pair.
+   (``text.EXPANSIONS``) and stemmed; a term hits when its whole phrase is in the
+   item's tags, title, subtype or summary, or when one of its words is (never a
+   word like "dry" or "chain" alone, ``text.WEAK_ALONE``). ``tag_min_overlap``
+   (default 1) terms hit shortlist the pair. ``Match.matched`` holds the item's own
+   words that matched, each once, for the reason (``text.mentioned``).
 3. **Embedding similarity**: cosine similarity between the item's embedding and the
    profile embedding, computed by pgvector in the candidate query.
    ``embedding_min_similarity`` (default 0.45) or more shortlists the pair.
@@ -35,12 +37,13 @@ from blackkite.db.models import Opportunity, Profile
 from blackkite.llm.embeddings import Embedder, EmbeddingError
 from blackkite.scoring.settings import ScoringSettings
 from blackkite.scoring.text import (
+    TermHit,
     _str_list,
-    matched_terms,
+    mentioned,
     opportunity_match_text,
     profile_terms,
     profile_text,
-    tokens,
+    term_hits,
 )
 
 log = logging.getLogger("blackkite.scoring")
@@ -75,9 +78,17 @@ def clear_profile_embedding_cache() -> None:
 @dataclass
 class Match:
     shortlisted: bool
+    # The item's words that matched profile terms, whole phrases first, each once.
     matched: list[str] = field(default_factory=list)
     similarity: float | None = None
     excluded: str | None = None
+    hits: list[TermHit] = field(default_factory=list)
+
+    @property
+    def phrases(self) -> list[str]:
+        """Matched words that are a whole profile term (or its synonym phrase):
+        what a reason may say the profile lists."""
+        return mentioned(h for h in self.hits if h.phrase)
 
     @property
     def strength(self) -> float:
@@ -90,7 +101,7 @@ class Match:
         return min(s, 0.65)
 
 
-def _exclusion(opp: Opportunity, profile: Profile, opp_tokens: set[str]) -> str | None:
+def _exclusion(opp: Opportunity, profile: Profile) -> str | None:
     ex = (profile.data or {}).get("exclusions")
     if not isinstance(ex, dict):
         return None
@@ -115,14 +126,13 @@ def match(
     similarity: float | None,
     settings: ScoringSettings,
 ) -> Match:
-    opp_tokens = tokens(opportunity_match_text(opp))
-    excluded = _exclusion(opp, profile, opp_tokens)
+    excluded = _exclusion(opp, profile)
     if excluded:
         return Match(False, excluded=excluded, similarity=similarity)
-    hits = matched_terms(profile_terms(profile), opp_tokens)
+    hits = term_hits(profile_terms(profile), opportunity_match_text(opp))
     shortlisted = (
         len(hits) >= settings.tag_min_overlap
         or (similarity is not None and similarity >= settings.embedding_min_similarity)
         or (not opp.tags and opp.embedding is None)
     )
-    return Match(shortlisted, hits, similarity)
+    return Match(shortlisted, mentioned(hits), similarity, hits=hits)

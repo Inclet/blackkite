@@ -359,13 +359,35 @@ def _full_date(dt: datetime) -> str:
     return f"{d.day} {d.strftime('%B %Y')}"
 
 
+def _and(words: list[str]) -> str:
+    if len(words) <= 1:
+        return "".join(words)
+    return f"{', '.join(words[:-1])} and {words[-1]}"
+
+
+def _mentions(m: Match) -> str:
+    """ "It mentions ..." from the item's own matched words: whole profile terms
+    are claimed ("which this profile lists"), single words only said."""
+    words = m.matched[:3]
+    listed = [w for w in words if w.lower() in {p.lower() for p in m.phrases}]
+    other = [w for w in words if w not in listed]
+    if listed and other:
+        return (
+            f"It mentions {_and(listed)}, which this profile lists, "
+            f"and also {_and(other)}."
+        )
+    if listed:
+        return f"It mentions {_and(listed)}, which this profile lists."
+    return f"It mentions {_and(other)}, close to what this profile lists."
+
+
 def _rules_reason(opp: Opportunity, m: Match) -> str:
     if opp.stream == "event":
         what = (opp.subtype or "Event").capitalize()
         when = opp.event_start or opp.deadline_at
         text = what + (f" on {_full_date(when)}" if when else ", date not stated")
         if m.matched:
-            text += f", on {', '.join(m.matched[:2])}"
+            text += f", on {_and(m.matched[:2])}"
         return text + "."
     if opp.stream == "investment":
         what = (opp.subtype or "Investment listing").capitalize()
@@ -379,7 +401,7 @@ def _rules_reason(opp: Opportunity, m: Match) -> str:
     if not m.shortlisted:
         return "Little in it matches what this profile lists."
     if m.matched:
-        return f"It mentions {', '.join(m.matched[:3])}, which this profile lists."
+        return _mentions(m)
     if m.similarity is not None:
         return "Its description is close to what this profile lists."
     return "Not enough detail to judge the fit."
