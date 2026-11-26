@@ -115,3 +115,18 @@ Environment:
 | `BK_RENDERER_MIN_HOST_DELAY` (1, minimum 1), `BK_RENDERER_MAX_PACE_WAIT_SECONDS` (30) | renderer | Pause between two renders on one host; a render that would wait longer for its host's turn gets `rate_limited`. |
 | `BK_BOT_CONTACT_URL` | renderer too | Its User-Agent, as for every other fetch. The caller cannot set the User-Agent. |
 
+
+## 5. M4: calendar, private items, full opportunity page, feed filters (added 2026-11-26)
+
+Spec 8 "App" and 6 (private manual items). Member routes under `/api`, camelCase, every query filtered by the caller and `pipeline/visibility.py`.
+
+| Route | What |
+|---|---|
+| `GET /api/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD&kind=deadlines\|events\|all&saved=true` | The caller's visible items with a deadline or an event date in the window (Kigali dates), as `{days: [{date, entries: [{id, stream, title, organisationShort?, kind: "deadline"\|"event_start"\|"event_end"\|"event", time?, fit?, state, provisional}]}]}`. Same visibility and fit rules as the feed (decision 41); `saved=true` limits to saved/acting/done. Window at most 120 days. |
+| `GET /api/calendar.ics?token=…` | A personal calendar feed of saved/acting items' deadlines and events (all-day or timed, Kigali time zone), for phone/desktop calendar apps. Token: signed, per user, revocable like unsubscribe tokens (own nonce); `GET /api/calendar/feed-link` returns the URL, `POST /api/calendar/feed-link/rotate` revokes. No session needed for the .ics URL; it exposes only titles, organisations, dates and the app link — never notes, scores or profiles. |
+| `POST /api/items` | Create a private manual item (spec 6): stream, title, organisation?, deadline?, eventStart?, eventEnd?, value?, currency?, location?, url? (http/https only), notes?; `visibility=private`, `owner_user_id`=caller, `verification=unverified`. Scored against the caller's active profiles by the worker like any item. |
+| `PATCH /api/items/{id}`, `DELETE /api/items/{id}` | Owner only; 404 for anyone else (including admins). |
+| `PUT /api/items/{id}/share-consent` `{allow: bool}` | Owner allows (or withdraws) an admin making the item public. |
+| `POST /api/admin/catalogue/{id}/publish` | Admin publishes a private item **only if** the owner's consent is on; records who and when in change history; the item gets `visibility=public`, keeps its owner for attribution only. 409 without consent. |
+
+`GET /api/opportunities/{id}` already returns `detail.fields`, `sources`, `documents` (names only), `changes`, `note`; the web now shows them (spec 8 "Opportunity page"). `GET /api/feed` filters per spec 8: stream, profile, status, deadline window, fit (strong/good/possible — never a number), source, verification.
