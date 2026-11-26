@@ -85,6 +85,17 @@ def own_private(user_id: uuid.UUID) -> ColumnElement[bool]:
     )
 
 
+def own_item(user_id: uuid.UUID) -> ColumnElement[bool]:
+    """The caller's own manual item: private, or published by an admin with the
+    caller still its owner (decision 50, extended 2026-11-26)."""
+    return sa.and_(
+        Opportunity.owner_user_id == user_id,
+        sa.or_(
+            Opportunity.visibility == "private", Opportunity.made_public_at.is_not(None)
+        ),
+    )
+
+
 def visible_to(user_id: uuid.UUID, *, is_admin: bool) -> ColumnElement[bool]:
     """WHERE clause on ``Opportunity`` for what this caller may see."""
     public = Opportunity.visibility == "public" if is_admin else member_visible_public()

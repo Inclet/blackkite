@@ -31,6 +31,7 @@ from blackkite.member.view import (
     fit_for,
     get_visible,
     is_closed,
+    is_own_item,
     kigali_today,
     load_rows,
     member_visible,
@@ -57,7 +58,7 @@ class FeedFilters:
     state: str | None = None
     # Current statuses (view.current_status). Unset: open and closing soon.
     # Closed statuses (expired, awarded, cancelled) list only the caller's own
-    # tracked items (saved, acting, done) and own private items: an untracked
+    # tracked items (saved, acting, done) and own items (decision 50): an untracked
     # closed item is hard-filtered ("deadline passed", spec 7) and never shown.
     statuses: tuple[str, ...] | None = None
     # At least this fit word (strong > good > possible). Narrows tenders and
@@ -112,9 +113,7 @@ def _in_window(opps: list[Opportunity], window: int, now: datetime) -> list:
 
 
 def _tracked_or_own(row: Row, user_id: uuid.UUID) -> bool:
-    return row.state in KEPT_STATES or (
-        row.opp.visibility == "private" and row.opp.owner_user_id == user_id
-    )
+    return row.state in KEPT_STATES or is_own_item(row.opp, user_id)
 
 
 def _at_least(fit: str | None, wanted: str) -> bool:
@@ -176,11 +175,11 @@ def _hidden_without_fit_word(row: Row, user_id: uuid.UUID) -> bool:
     """Decision 41: a tender or funding item whose best active-profile row has no
     fit word (scored below "possible", or not scored yet) stays out of the feed,
     unless the caller has saved it, is acting on it or has done it, or it is
-    the caller's own private item. Events and investments never carry a fit
+    the caller's own item (private or published, decision 50). Events and investments never carry a fit
     word and are unaffected."""
     if row.opp.stream not in SCORED_STREAMS:
         return False
-    if row.opp.visibility == "private" and row.opp.owner_user_id == user_id:
+    if is_own_item(row.opp, user_id):
         return False
     if row.state in KEPT_STATES:
         return False

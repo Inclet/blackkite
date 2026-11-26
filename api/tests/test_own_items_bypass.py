@@ -1,4 +1,5 @@
-"""The caller's own private items always appear in their feed, shortlist and
+"""The caller's own items (private, or published with the caller still the
+owner) always appear in their feed, shortlist and
 calendar, hard filters included (orchestrator decision 2026-11-26); expired
 ones behave like tracked items; digests and alerts still need a fit word."""
 
@@ -6,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from blackkite.db.models import DigestSetting
+from blackkite.db.models import DigestSetting, UserSourceMute
 from blackkite.delivery.alerts import alert_rows
 from blackkite.delivery.build import build_digest
 from tests import factories as f
@@ -106,3 +107,95 @@ def test_digest_and_alerts_still_need_a_fit_word(db, ana, settings):
     built = build_digest(db, ana, settings, NOW)
     assert mine.id not in [r.opp.id for r in built.items]
     assert alert_rows(db, ana, setting, NOW) == []
+
+
+# --- published own items (decision 50 extended) ---------------------------------------
+
+
+def _published(db, user, title="Shared", **kw):
+    kw.setdefault("deadline_at", kigali(2026, 11, 27))
+    return f.opportunity(
+        db,
+        title,
+        visibility="public",
+        owner_user_id=user.id,
+        made_public_at=NOW,
+        **kw,
+    )
+
+
+def c_get(client, opp):
+    return client.get(f"/api/opportunities/{opp.id}")
+
+
+def _calendar_ids(c, start="2026-11-24", end="2026-11-30"):
+    cal = c.get("/api/calendar", params={"from": start, "to": end})
+    assert cal.status_code == 200, cal.text
+    return [e["id"] for d in cal.json()["days"] for e in d["entries"]]
+
+
+def test_published_own_item_shows_to_owner_with_no_profile(db, ana, login):
+    mine = _published(db, ana)
+    db.commit()
+    c = login(ana.email)
+    assert ids(c) == [str(mine.id)]
+    assert _calendar_ids(c) == [str(mine.id)]
+    assert c.get(f"/api/opportunities/{mine.id}").status_code == 200
+    c.put(f"/api/opportunities/{mine.id}/state", json={"state": "saved"})
+    assert [i["id"] for i in c.get("/api/shortlist").json()] == [str(mine.id)]
+
+
+@pytest.mark.parametrize("reason", [None, *FILTERS])
+def test_published_own_item_with_low_score_stays_for_owner_only(
+    db, ana, ben, login, reason
+):
+    mine = _published(db, ana)
+    for u in (ana, ben):
+        f.score(db, u, mine, fit_for(db, u), 5, fit_word=None, hard_filtered=reason)
+    db.commit()
+    c = login(ana.email)
+    assert ids(c) == [str(mine.id)]
+    assert ids(c, profile=str(fit_for(db, ana).id)) == [str(mine.id)]
+    assert _calendar_ids(c) == [str(mine.id)]
+    assert c.get(f"/api/opportunities/{mine.id}").status_code == 200
+    # Another member gets the normal rules: no fit word, so not in the feed.
+    other = login(ben.email)
+    assert ids(other) == []
+    assert _calendar_ids(other) == []
+
+
+def test_published_item_follows_normal_rules_for_others(db, ana, ben, login):
+    mine = _published(db, ana)
+    fit_for(db, ben, mine, word="good")
+    db.commit()
+    other = login(ben.email)
+    assert ids(other) == [str(mine.id)]
+    assert c_get(other, mine).status_code == 200
+
+
+def test_published_own_item_carried_by_a_muted_source_stays(db, ana, ben, login):
+    src = f.source(db, "Src")
+    mine = _published(db, ana)
+    f.link(db, mine, src)
+    for u in (ana, ben):
+        db.add(UserSourceMute(user_id=u.id, source_id=src.id))
+    db.commit()
+    assert ids(login(ana.email)) == [str(mine.id)]
+    fit_for(db, ben, mine, word="strong")
+    db.commit()
+    assert ids(login(ben.email)) == []
+
+
+def test_expired_published_own_item_behaves_like_a_tracked_item(db, ana, ben, login):
+    gone = _published(
+        db, ana, "Gone", deadline_at=kigali(2026, 11, 20), status="expired"
+    )
+    db.commit()
+    c = login(ana.email)
+    assert ids(c) == []
+    assert ids(c, status="expired") == [str(gone.id)]
+    assert _calendar_ids(c, "2026-11-15") == [str(gone.id)]
+    assert c_get(c, gone).status_code == 200
+    other = login(ben.email)
+    assert ids(other, status="expired") == []
+    assert _calendar_ids(other, "2026-11-15") == []

@@ -10,6 +10,11 @@ filled from the carrying sources' names and the item's dates.
   "Dates and venue match the organiser’s own event page." / "... own page.";
   investments: "Listed on RSE’s own site."
 * conflict: "Two sources give different closing dates; the original says 23 Nov."
+* added by hand (private, or published by an admin), no source carrying it: the
+  owner reads "You added this item yourself, so nobody else has checked it.";
+  anyone else "A member added this item by hand; check the details with WFP
+  before you act." (no organisation: "... check the details before you act.").
+  Both layouts use the same sentence.
 
 Apostrophes follow the fixtures: straight in the unconfirmed copy, curly in the
 confirmed copy. Wordings not on any board are listed in docs/design-review.md.
@@ -58,8 +63,11 @@ def trust_copy(
     deadline_at: datetime | None,
     links: list[LinkInfo],
     private: bool,
+    manual: bool = False,
+    own: bool = False,
 ) -> tuple[str, str]:
-    """(desktop, phone) copy for one trust state."""
+    """(desktop, phone) copy for one trust state. ``manual``: a member added the
+    item (private or since published); ``own``: the caller is that member."""
     original = next((link for link in links if link.is_original), None)
     first = min(links, key=lambda link: link.first_seen) if links else None
 
@@ -91,8 +99,16 @@ def trust_copy(
             text = f"Matched to the {CONFIRMED_NOUN[stream]} on {where}’s own site."
         return text, text
 
-    if private:
+    if private or (manual and own and not links):
         text = "You added this item yourself, so nobody else has checked it."
+        return text, text
+
+    if manual and not links:
+        with_org = f" with {organisation}" if organisation else ""
+        text = (
+            f"A member added this item by hand; check the details{with_org} "
+            "before you act."
+        )
         return text, text
 
     issuer = f"{organisation}'s" if organisation else "the issuer's"

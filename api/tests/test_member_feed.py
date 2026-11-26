@@ -192,6 +192,7 @@ def test_wfp_item_matches_the_reference_fixture(db, ana, login):
                 "own site before you act.",
             },
             "originalUrl": "https://www.jobinrwanda.com/jobs/tender",
+            "isManual": False,
         },
     }
 
@@ -261,6 +262,7 @@ def test_developpp_item_matches_the_reference_fixture(db, ana, login):
             ],
             "toCheck": "To check: it needs matching funds from your side.",
             "originalUrl": "https://www.developpp.de/",
+            "isManual": False,
         },
     }
     assert _subtitle(item) == "Good fit · needs matching funds"
@@ -340,6 +342,7 @@ def test_event_item_matches_the_reference_fixture(db, ana, login):
                 "phone": "Dates and venue match the organiser’s own page.",
             },
             "originalUrl": "https://africabusinessheroes.org/",
+            "isManual": False,
         },
     }
 
