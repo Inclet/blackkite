@@ -252,3 +252,31 @@
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
+
+.toolsWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.applied {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.filterLegend {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+}

@@ -5,6 +5,7 @@ import type { DismissReason, ItemState, LiveFeedItem } from '../../api/types';
 import { useResource } from '../../api/useResource';
 import type { StateKind } from '../../components/StateCard/StateCard';
 import type { FeedItem, Fixture } from '../../fixtures/types';
+import { filterQuery, readFilters } from '../../lib/feedFilters';
 import { fixtureFromSearch } from '../../lib/fixture';
 import { useIsDesktop } from '../../lib/useIsDesktop';
 import { LoadState, type LoadStateProps } from '../common/LoadState';
@@ -53,7 +54,11 @@ export function statesFrom(feedItems: LiveFeedItem[]): Record<string, ItemState>
 }
 
 function LiveFeed({ openId }: { openId: string | null }) {
-  const feed = useResource('feed', (s) => api.feed({}, s));
+  const [search] = useSearchParams();
+  // The panel's filters live in the URL (spec 8); the stream chips stay on screen only, as on the boards.
+  const filters = readFilters(search);
+  const key = filterQuery(filters);
+  const feed = useResource(key ? `feed?${key}` : 'feed', (s) => api.feed(filters, s));
   const shortlist = useResource('shortlist', (s) => api.shortlist(s));
   const profiles = useResource('profiles', (s) => api.profiles(s));
   const errors = [feed.error, shortlist.error, profiles.error];
