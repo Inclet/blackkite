@@ -41,6 +41,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session, sessionmaker
 
+from blackkite import logredact
 from blackkite.collectors.http import DbHttpCache, FetchClient, make_fetch_client
 from blackkite.config import Settings
 from blackkite.delivery.jobs import alerts_job, weekly_digest_job
@@ -210,6 +211,7 @@ def main(settings: Settings, sessions: sessionmaker[Session]) -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+    logredact.install()
     if not settings.bot_contact_url:
         log.warning("BK_BOT_CONTACT_URL is not set; the User-Agent has no contact URL")
     close_stale_runs(sessions, settings)  # runs left by a worker that stopped

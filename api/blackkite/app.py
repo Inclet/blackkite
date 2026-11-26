@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from blackkite import logredact
 from blackkite.auth.ratelimit import (
     LinkRequestLimiter,
     SlidingWindowLimiter,
@@ -26,6 +27,8 @@ API_PREFIX = "/api"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
+    # Link tokens in query strings (calendar feed, unsubscribe) never reach logs.
+    logredact.install()
     warn_ignored_env()
     app = FastAPI(title="Blackkite API", version="0.1.0")
     if settings is not None:

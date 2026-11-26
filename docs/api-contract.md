@@ -142,4 +142,6 @@ Spec 8 "App" and 6 (private manual items). Member routes under `/api`, camelCase
 
 Export and deletion (spec 10): `GET /api/me/export` adds `privateItems[].url`, `.shareConsent`, `.shareConsentAt`, `.madePublicAt`, `publishedItems` (the caller's items an admin made public, same shape) and `calendarFeed {rotatedAt}` (the link itself is not exported). `DELETE /api/me` removes private items; published ones stay public with the owner link cleared.
 
+Logs: **built:** `token=` query values (calendar feed, unsubscribe GET/POST) are rewritten to `token=[redacted]` in uvicorn's access log and the app's logs (`blackkite/logredact.py`); the reverse proxy must redact its own access log the same way (`.env.example`).
+
 Environment: `BK_CALENDAR_SECRET` (api; at least 32 random characters, example values refused at startup; the renderer refuses to start with it set), `BK_CALENDAR_RATE_PER_TOKEN_PER_HOUR` (api, default 60).
