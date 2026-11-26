@@ -48,6 +48,8 @@ class CatalogueSource(CamelModel):
 
 
 class CatalogueItem(CamelModel):
+    omit_if_none = frozenset({"share_consent_at", "made_public_at", "url"})
+
     id: uuid.UUID
     stream: str
     title: str
@@ -61,12 +63,12 @@ class CatalogueItem(CamelModel):
     member_visible: bool
     sources: list[CatalogueSource]
     # "private" only in the shareable list.
-    visibility: str
+    visibility: str = "public"
     # Manual items (spec 6): when the owner allowed sharing, when it was made
-    # public, and the link the owner gave. Null for collected items.
-    share_consent_at: datetime | None
-    made_public_at: datetime | None
-    url: str | None
+    # public, and the link the owner gave. Left out when null (collected items).
+    share_consent_at: datetime | None = None
+    made_public_at: datetime | None = None
+    url: str | None = None
     created_at: datetime
     updated_at: datetime
 

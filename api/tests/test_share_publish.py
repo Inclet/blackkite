@@ -62,7 +62,7 @@ def test_shareable_list_shows_only_consented_items(db, ana, ben, login):
     assert page["total"] == 1
     (it,) = page["items"]
     assert it["id"] == shared and it["visibility"] == "private"
-    assert it["shareConsentAt"] and it["madePublicAt"] is None
+    assert it["shareConsentAt"] and "madePublicAt" not in it
     assert it["url"] == "https://example.org/n"
     assert "secret note" not in str(page) and ana.email not in str(page)
     # The normal catalogue still lists public items only.
