@@ -4,6 +4,8 @@ Fetches once and returns the first parsed items. Writes nothing: no catalogue ro
 no source_run row, no HTTP cache row (the client gets an in-memory cache). Uses the
 same URL guard as scheduled runs, preview limits (first page, first query, at most
 3 detail pages), and the usual robots.txt, rate limit, size and timeout rules.
+Procurement record collectors (umucyo_awards, umucyo_plans) preview their
+records normalised as they would be stored, in ``records``.
 """
 
 from __future__ import annotations
@@ -15,15 +17,22 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import SecretStr
 
-from blackkite.collectors.base import CollectorError, RawItem, run_warnings
+from blackkite.collectors.base import (
+    CollectorError,
+    RawItem,
+    collected_records,
+    run_warnings,
+)
 from blackkite.collectors.http import FetchClient
 from blackkite.collectors.problems import ConfigInvalid, Problem
 from blackkite.collectors.registry import build_collector
 from blackkite.db.models import Source
+from blackkite.pipeline.records import preview as records_preview
 
 log = logging.getLogger("blackkite.sources.testrun")
 
@@ -72,6 +81,9 @@ class PreviewResult:
     problems: list[Problem] = field(default_factory=list)
     # What the fetch skipped without failing (decision 49), as on a run.
     warnings: list[dict] = field(default_factory=list)
+    # Procurement records (umucyo_awards, umucyo_plans), normalised as they
+    # would be stored (pipeline/records.preview); nothing is written.
+    records: list[dict] = field(default_factory=list)
 
 
 def transient_source(**fields: Any) -> Source:
@@ -100,6 +112,10 @@ def preview_source(
             total_parsed=len(items),
             warnings=run_warnings(collector),
         )
+        batch = collected_records(collector)
+        if batch is not None:
+            result.records = records_preview(batch, datetime.now(UTC))[:limit]
+            result.total_parsed += len(batch.items)
     except ConfigInvalid as e:
         result = PreviewResult(ok=False, error=e.text[:2000], problems=e.problems)
     except CollectorError as e:

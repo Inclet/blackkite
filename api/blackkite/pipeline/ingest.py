@@ -426,6 +426,9 @@ def _ingest_one(
     _finalise(session, opp, ev, now, review)
     opp.evidence = ev
 
+    if opp.stream == "tender":
+        _link_procurement(session, opp, now)
+
     if before is not None:
         after = _snapshot(opp)
         for f in TRACKED_FIELDS:
@@ -441,6 +444,18 @@ def _ingest_one(
                 )
     session.flush()
     return created
+
+
+def _link_procurement(session: Session, opp: Opportunity, now: datetime) -> None:
+    """Awards and plan items that belong to this tender (pipeline/records.py).
+    Its own SAVEPOINT: a failure here is logged and never fails the item."""
+    from blackkite.pipeline.records import link_tender
+
+    try:
+        with session.begin_nested():
+            link_tender(session, opp, now)
+    except Exception:
+        log.exception("linking procurement records to %s failed", opp.id)
 
 
 def _source_current_deadline(entry: dict[str, Any]) -> datetime | None:
