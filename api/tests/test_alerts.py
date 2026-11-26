@@ -275,3 +275,37 @@ def test_provisional_profile_label_in_alerts(db, ana, w, settings):
     assert 'href="https://testserver/settings/digest"' in mail.html
     assert "TENDER · FOR AI LAB (PROVISIONAL)" in mail.text
     assert "TENDER · FOR AI LAB (PROVISIONAL)" in mail.html
+
+
+def test_unchosen_instrument_kind_never_alerts(db, ana, w, settings):
+    """Decision 54: even with a fit word, an investment of a kind the user did
+    not choose is not alerted; a chosen kind is."""
+    w.prof = f.profile(
+        db,
+        ana,
+        "Personal",
+        "personal",
+        streams=["investment"],
+        instruments=["treasury bonds and bills", "RSE shares"],
+    )
+    urgent(
+        db,
+        ana,
+        w,
+        "Example Power corporate bond",
+        stream="investment",
+        subtype="corporate bond",
+    )
+    urgent(
+        db,
+        ana,
+        w,
+        "Two-year treasury bond",
+        stream="investment",
+        subtype="treasury bond",
+    )
+    db.commit()
+    out = MemoryTransport()
+    assert send_alerts(db, ana, settings, out, NOW) == 1
+    assert "Two-year treasury bond" in out.outbox[0].text
+    assert "corporate bond" not in out.outbox[0].text.replace("treasury bond", "")

@@ -436,3 +436,97 @@ def test_best_profile_is_chosen_among_active_profiles(db, ana, world, settings):
         ("Both", "Ironji-Trade"),
     ]
     assert higher.id
+
+
+def test_unchosen_instrument_kinds_stay_out_of_the_digest(db, ana, settings):
+    """Decision 54, the reviewer's case: treasury and RSE shares chosen, so no
+    corporate bond in the digest. An unrecognised kind and the user's own item
+    stay; the feed still lists the corporate bond."""
+    w = type("W", (), {})()
+    w.src = f.source(db, "Job in Rwanda, tenders", publisher="Job in Rwanda")
+    w.orig = f.source(db, "UNGM", kind="original", publisher="UNGM")
+    w.ironji = f.profile(db, ana, "Ironji-Trade")
+    w.personal = f.profile(
+        db,
+        ana,
+        "Personal",
+        "personal",
+        streams=["investment", "event"],
+        instruments=["treasury bonds and bills", "RSE shares"],
+    )
+    for title, subtype in (
+        ("Five-year treasury bond", "treasury bond"),
+        ("Example Power corporate bond", "corporate bond"),
+        ("Announcement for investors", None),
+    ):
+        item(
+            db,
+            ana,
+            w,
+            title,
+            90,
+            stream="investment",
+            deadline_at=None,
+            subtype=subtype,
+        )
+    own = f.opportunity(
+        db,
+        "My corporate bond note",
+        stream="investment",
+        subtype="corporate bond",
+        visibility="private",
+        owner_user_id=ana.id,
+        deadline_at=None,
+    )
+    f.score(db, ana, own, w.personal, 90, fit_word=None)
+    db.commit()
+
+    # (At most 3 investments a digest: exactly the three others.)
+    titles = {i.title for i in build_digest(db, ana, settings, MONDAY).view.items}
+    assert "Example Power corporate bond" not in titles
+    assert {
+        "Five-year treasury bond",
+        "Announcement for investors",
+        "My corporate bond note",
+    } == titles
+
+    # A second profile that follows investments with no instruments listed is
+    # no judgement: the corporate bond comes back.
+    f.profile(db, ana, "Family", "personal", streams=["investment"])
+    db.commit()
+    titles = {i.title for i in build_digest(db, ana, settings, MONDAY).view.items}
+    assert "Example Power corporate bond" in titles
+
+
+def test_feed_still_lists_the_unchosen_kind(db, ana, settings, client, outbox):
+    from blackkite.routes.member import now_utc
+    from tests.conftest import sign_in
+
+    w = type("W", (), {})()
+    w.src = f.source(db, "Job in Rwanda, tenders", publisher="Job in Rwanda")
+    w.orig = w.src
+    w.personal = f.profile(
+        db,
+        ana,
+        "Personal",
+        "personal",
+        streams=["investment"],
+        instruments=["treasury bonds and bills", "RSE shares"],
+    )
+    item(
+        db,
+        ana,
+        w,
+        "Example Power corporate bond",
+        20,
+        stream="investment",
+        deadline_at=None,
+        subtype="corporate bond",
+    )
+    db.commit()
+    client.app.dependency_overrides[now_utc] = lambda: MONDAY
+    c = sign_in(client, outbox, "ana@example.com")
+    r = c.get("/api/feed")
+    assert r.status_code == 200, r.text
+    assert "Example Power corporate bond" in r.text
+    assert build_digest(db, ana, settings, MONDAY).view is None
