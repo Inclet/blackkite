@@ -45,6 +45,8 @@ export interface AppShellProps {
   title: string;
   /** One line under the heading, slate (as the feed's summary). */
   summary?: string;
+  /** Desktop: let the content column use the whole main area (the calendar's month grid). */
+  wide?: boolean;
   children?: ReactNode;
 }
 
@@ -53,7 +55,7 @@ export interface AppShellProps {
  * Account, More): the feed boards' sidebar or header and tab bar, a heading and
  * a column of cards. Listed for design review.
  */
-export function AppShell({ path, title, summary, children }: AppShellProps) {
+export function AppShell({ path, title, summary, wide = false, children }: AppShellProps) {
   const desktop = useIsDesktop();
   const link = useAppLink();
   const navigate = useNavigate();
@@ -71,7 +73,7 @@ export function AppShell({ path, title, summary, children }: AppShellProps) {
             </h1>
             {summary && <div className={styles.summary}>{summary}</div>}
           </div>
-          <div className={styles.body}>{children}</div>
+          <div className={wide ? `${styles.body} ${styles.wide}` : styles.body}>{children}</div>
         </main>
       </div>
     );

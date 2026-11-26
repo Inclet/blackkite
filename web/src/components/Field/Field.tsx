@@ -1,4 +1,4 @@
-import { useId, type InputHTMLAttributes } from 'react';
+import { useId, type InputHTMLAttributes, type Ref } from 'react';
 import { cx } from '../../lib/streams';
 import styles from './Field.module.css';
 
@@ -10,6 +10,7 @@ export interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   hint?: string;
   id?: string;
   className?: string;
+  ref?: Ref<HTMLInputElement>;
 }
 
 export function Field({ label, error, hint, id, className, type = 'text', ...rest }: FieldProps) {

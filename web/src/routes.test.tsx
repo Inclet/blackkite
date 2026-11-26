@@ -3,7 +3,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { mockApi } from './test/mockApi';
 import { setNowForTests } from './lib/now';
-import { NOT_DESIGNED, routes } from './routes';
+import { routes } from './routes';
 
 beforeEach(() => setNowForTests('2026-11-24T14:00:00+02:00'));
 afterEach(() => {
@@ -40,11 +40,11 @@ test('?fixture=reference renders the feed', () => {
   expect(screen.getByRole('heading', { level: 1, name: 'Good afternoon, Clet' })).toBeInTheDocument();
 });
 
-test.each([['/calendar', 'Calendar']])('%s is not designed yet, in the app frame with the feed board\'s sidebar', (url, title) => {
-  mockApi({ 'GET /me': { id: 'u', email: 'c@x.rw', name: 'Clet', role: 'admin' } });
-  renderAt(url);
-  expect(screen.getByRole('heading', { level: 1, name: title })).toBeInTheDocument();
-  expect(screen.getByText(NOT_DESIGNED)).toBeInTheDocument();
+test('/calendar is the calendar, in the app frame with the feed board\'s sidebar', async () => {
+  mockApi({ 'GET /me': { id: 'u', email: 'c@x.rw', name: 'Clet', role: 'admin' }, 'GET /api/calendar': { days: [] }, 'GET /api/calendar/feed-link': { url: 'https://x/c.ics?token=t' } });
+  renderAt('/calendar');
+  expect(screen.getByRole('heading', { level: 1, name: 'Calendar' })).toBeInTheDocument();
+  expect(await screen.findByText('Nothing in November 2026 with these settings.')).toBeInTheDocument();
 });
 
 test('an unknown fixture falls back to live data', () => {

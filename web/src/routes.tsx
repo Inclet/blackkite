@@ -6,9 +6,9 @@ import { AdminSuggestions } from './screens/admin/AdminSuggestions';
 import { AdminUsers } from './screens/admin/AdminUsers';
 import { SourceEditor } from './screens/admin/SourceEditor';
 import { AuthConfirm } from './screens/AuthConfirm';
+import { Calendar } from './screens/calendar/Calendar';
 import { FeedRoute } from './screens/feed/FeedRoute';
 import { Placeholder } from './screens/Placeholder';
-import { AppShell } from './screens/shell/AppShell';
 import { SignIn } from './screens/SignIn';
 import { Shortlist } from './screens/shortlist/Shortlist';
 import { Sources } from './screens/sources/Sources';
@@ -20,9 +20,6 @@ import { DigestSettings } from './screens/settings/DigestSettings';
 import { More } from './screens/settings/More';
 import { StyleguideComponents } from './screens/StyleguideComponents';
 import { StyleguideFoundations } from './screens/StyleguideFoundations';
-
-/** Calendar, until it is built (CLAUDE.md section 12). */
-export const NOT_DESIGNED = 'Not designed yet.';
 
 export const routes: RouteObject[] = [
   {
@@ -56,12 +53,6 @@ export const routes: RouteObject[] = [
   { path: '/digest/preview', element: <Placeholder name="Digest preview" /> },
   { path: '/styleguide/foundations', element: <StyleguideFoundations /> },
   { path: '/styleguide/components', element: <StyleguideComponents /> },
-  // Not designed yet (CLAUDE.md section 12): reachable from the navigation, marked for design review.
-  // In the app frame, so the sidebar is the same as on every other screen.
-  ...[
-    { path: '/calendar', title: 'Calendar' },
-  ].map(({ path, title }) => ({
-    path,
-    element: <AppShell path={path} title={title} summary={NOT_DESIGNED} />,
-  })),
+  // Not designed yet (CLAUDE.md section 12): built from existing components, listed for design review.
+  { path: '/calendar', element: <Calendar /> },
 ];
