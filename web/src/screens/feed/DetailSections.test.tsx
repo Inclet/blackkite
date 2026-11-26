@@ -71,13 +71,17 @@ test('phone page: each section closed behind a real button', async () => {
   setup();
   renderAt('/o/wfp-logistics');
   const toggle = await screen.findByRole('button', { name: /^Details/ });
+  // The accessible name is the title only ("Details", not "DetailsShow"); the state is aria-expanded.
+  expect(toggle).toHaveAccessibleName('Details');
   expect(toggle).toHaveAttribute('aria-expanded', 'false');
   expect(screen.queryByText('FRW 120,000,000')).not.toBeVisible();
   fireEvent.click(toggle);
   expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(toggle).toHaveAccessibleName('Details');
+  expect(toggle).toHaveTextContent('Hide');
   expect(screen.getByText('FRW 120,000,000')).toBeVisible();
-  expect(screen.getByRole('heading', { level: 2, name: /^History/ })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /^Sources/ })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByRole('heading', { level: 2, name: 'History' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Sources' })).toHaveAttribute('aria-expanded', 'false');
 });
 
 test('fixtures show no sections', () => {

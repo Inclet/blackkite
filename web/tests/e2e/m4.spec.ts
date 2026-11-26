@@ -167,7 +167,8 @@ test('detail sections: open in the desktop pane, closed behind buttons on the ph
   await expect(page.getByRole('region', { name: 'History' })).toContainText('20 Nov 2026: the deadline moved from 28 Nov 2026, 5pm to 30 Nov 2026, 5pm.');
 
   await page.setViewportSize(phone);
-  const toggle = page.getByRole('button', { name: /^Details/ });
+  const toggle = page.getByRole('button', { name: 'Details', exact: true });
+  await expect(toggle).toHaveAccessibleName('Details');
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByText('FRW 120,000,000', { exact: true })).toBeHidden();
   await toggle.click();

@@ -145,7 +145,10 @@ function Section({ title, collapsible, level, children }: { title: string; colla
         {collapsible ? (
           <button type="button" className={styles.sectionToggle} aria-expanded={open} aria-controls={`${id}-body`} onClick={() => setOpen((o) => !o)}>
             {title}
-            <span className={styles.sectionHint}>{open ? 'Hide' : 'Show'}</span>
+            {/* The name is the title alone; aria-expanded carries the state. */}
+            <span className={styles.sectionHint} aria-hidden="true">
+              {open ? 'Hide' : 'Show'}
+            </span>
           </button>
         ) : (
           title
