@@ -36,6 +36,8 @@ export interface ExtractedField {
   value: string | number | string[];
   snippet?: string;
   snippets?: string[];
+  /** Value fields: the amount as the API writes it ("FRW 6,000,000"); optional until the API sends it. */
+  display?: string;
 }
 
 export interface OpportunitySource {

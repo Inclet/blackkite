@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { referenceItems } from '../../fixtures/reference';
 import { setNowForTests } from '../../lib/now';
 import { mockApi } from '../../test/mockApi';
-import { SECTIONS_COPY } from './DetailSections';
+import { noSourcesText, SECTIONS_COPY } from './DetailSections';
 import { renderAt, setViewport } from './testUtils';
 
 beforeEach(() => setNowForTests('2026-11-24T14:00:00+02:00'));
@@ -28,15 +28,15 @@ const EXTRAS = {
   state: 'unseen',
 };
 
-function setup() {
+function setup(extras: Record<string, unknown> = EXTRAS, role = 'member') {
   const items = referenceItems().map((i) => ({ ...i, state: 'unseen', provisional: false }));
   const wfp = items.find((i) => i.id === 'wfp-logistics')!;
   mockApi({
     'GET /api/feed': { user: { name: 'Clet' }, sources: { checked: 3, when: 'today' }, digest: { channel: 'email' }, items },
     'GET /api/shortlist': [],
     'GET /api/profiles': [{ id: 'p1' }],
-    'GET /me': { id: 'u', email: 'c@x.rw', name: 'Clet', role: 'member' },
-    'GET /api/opportunities/wfp-logistics': { ...wfp, detail: { ...wfp.detail, ...EXTRAS } },
+    'GET /me': { id: 'u', email: 'c@x.rw', name: 'Clet', role },
+    'GET /api/opportunities/wfp-logistics': { ...wfp, detail: { ...wfp.detail, ...extras } },
   });
 }
 
@@ -85,4 +85,29 @@ test('fixtures show no sections', () => {
   mockApi({});
   renderAt('/o/wfp-logistics?fixture=reference');
   expect(screen.queryByRole('region', { name: SECTIONS_COPY.details })).toBeNull();
+});
+
+const NO_SOURCES = { ...EXTRAS, sources: [] };
+
+test.each([
+  ['the owner', { ...NO_SOURCES, isManual: true, ownItem: { shareConsent: true, published: true } }, 'member', SECTIONS_COPY.noSourcesOwn],
+  ['another member', { ...NO_SOURCES, isManual: true }, 'member', SECTIONS_COPY.noSourcesManual],
+  ['an admin', { ...NO_SOURCES, isManual: true }, 'admin', SECTIONS_COPY.noSourcesManual],
+  ['anyone, on an item not added by hand', NO_SOURCES, 'member', SECTIONS_COPY.noSources],
+])('no sources, seen by %s', async (_who, extras, role, words) => {
+  setViewport('desktop');
+  setup(extras, role);
+  renderAt('/o/wfp-logistics');
+  const sources = await screen.findByRole('region', { name: SECTIONS_COPY.sources });
+  expect(sources).toHaveTextContent(words);
+  for (const other of [SECTIONS_COPY.noSourcesOwn, SECTIONS_COPY.noSourcesManual, SECTIONS_COPY.noSources].filter((w) => w !== words)) {
+    expect(sources).not.toHaveTextContent(other);
+  }
+});
+
+test('"You added it yourself" needs ownItem, never isManual alone', () => {
+  const detail = { ...referenceItems()[0]!.detail, ...NO_SOURCES } as unknown as Parameters<typeof noSourcesText>[0];
+  expect(noSourcesText({ ...detail, isManual: true })).toBe(SECTIONS_COPY.noSourcesManual);
+  expect(noSourcesText({ ...detail, ownItem: { shareConsent: false, published: false } })).toBe(SECTIONS_COPY.noSourcesOwn);
+  expect(noSourcesText(detail)).toBe(SECTIONS_COPY.noSources);
 });

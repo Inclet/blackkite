@@ -71,6 +71,8 @@ export interface FeedItemDetail {
   };
   /** Link to the original notice. */
   originalUrl: string;
+  /** A member added it by hand (api `detail.isManual`); optional until the API sends it everywhere. */
+  isManual?: boolean;
 }
 
 /** The feed screens' data. */

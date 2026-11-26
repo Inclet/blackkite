@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from 'react';
-import type { OpportunityDetail } from '../../api/types';
+import type { OwnedDetail } from '../../api/m4';
 import { Tag } from '../../components/Tag/Tag';
 import { TextLink } from '../../components/TextLink/TextLink';
 import { changeSentence, detailLines, formatWhen } from '../../lib/detailWords';
@@ -17,7 +17,9 @@ export const SECTIONS_COPY = {
   original: 'Original',
   seen: (first: string, last: string) => `First seen ${first} · last seen ${last}`,
   noOriginal: 'None of these is the original notice.',
-  noSources: 'No source carries this item. You added it yourself.',
+  noSourcesOwn: 'No source carries this item. You added it yourself.',
+  noSourcesManual: 'A member added this item; no collected source carries it.',
+  noSources: 'No sources to show.',
   documentsNote: 'Kept for reference. Open the original to read them.',
   noDocuments: 'No documents.',
   noHistory: 'No changes since Blackkite first saw it.',
@@ -30,7 +32,14 @@ export const SECTIONS_COPY = {
  * history in plain words (spec 4.4, 8). On the phone each section starts closed,
  * behind a real button (aria-expanded).
  */
-export function DetailSections({ detail, collapsible, headingLevel }: { detail: OpportunityDetail['detail']; collapsible: boolean; headingLevel: 2 | 3 }) {
+/** Why the Sources section is empty: the owner added it, another member did, or nothing to say. */
+export function noSourcesText(detail: OwnedDetail['detail']): string {
+  if (detail.ownItem) return SECTIONS_COPY.noSourcesOwn;
+  if (detail.isManual) return SECTIONS_COPY.noSourcesManual;
+  return SECTIONS_COPY.noSources;
+}
+
+export function DetailSections({ detail, collapsible, headingLevel }: { detail: OwnedDetail['detail']; collapsible: boolean; headingLevel: 2 | 3 }) {
   const lines = detailLines(detail.fields ?? []);
   const sources = detail.sources ?? [];
   const documents = detail.documents ?? [];
@@ -64,7 +73,7 @@ export function DetailSections({ detail, collapsible, headingLevel }: { detail: 
 
       <Section title={SECTIONS_COPY.sources} collapsible={collapsible} level={headingLevel}>
         {sources.length === 0 ? (
-          <p className={styles.liveText}>{SECTIONS_COPY.noSources}</p>
+          <p className={styles.liveText}>{noSourcesText(detail)}</p>
         ) : (
           <>
             <ul className={styles.sectionList}>
