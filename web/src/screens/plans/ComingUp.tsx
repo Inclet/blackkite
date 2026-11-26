@@ -20,7 +20,8 @@ export const COMING_UP_COPY = {
   plannedFor: (when: string) => `Planned for ${when}`,
   matches: (profile: string) => `Matches ${profile}`,
   plan: 'Open the plan (opens in a new tab)',
-  planLabel: (entity: string) => `Open the plan (opens in a new tab): ${entity}`,
+  /** The buyer first, so a list of these links reads apart; the visible words are in the name. */
+  planLabel: (entity: string) => `${entity}: open the plan (opens in a new tab)`,
 } as const;
 
 /** The plan's facts in one line: method, estimated value when known, and when it is planned for. */

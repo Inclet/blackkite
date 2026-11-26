@@ -97,7 +97,7 @@ test('unreachable shows the source-down card; 401 signs in', async () => {
   expect(await screen.findByText(COPY.unreachableTitle)).toBeInTheDocument();
   mockApi({ 'GET /api/benchmarks': status(401) });
   renderAt('/benchmarks');
-  expect(await screen.findAllByRole('heading', { name: SIGN_IN.title })).not.toHaveLength(0);
+  expect(await screen.findAllByRole('heading', { name: SIGN_IN.heading })).not.toHaveLength(0);
 });
 
 test('a category: its awards with winner, price, date, ref; bidders behind a real disclosure; the notice opens in a new tab', async () => {
@@ -110,13 +110,14 @@ test('a category: its awards with winner, price, date, ref; bidders behind a rea
   expect(list.getByText('Rwanda Transport Development Agency · Awarded 2 Oct 2026 · Ref RTDA/2026/014')).toBeInTheDocument();
   expect(list.getByText('Won by Kigali Roads Ltd at FRW 6,120,000')).toBeInTheDocument();
 
-  const toggle = list.getByRole('button', { name: AWARDS_COPY.showBidders(3) });
+  const toggle = list.getByRole('button', { name: AWARDS_COPY.toggleLabel(AWARD.title, false, 3) });
   expect(toggle).toHaveAttribute('aria-expanded', 'false');
   const bidders = document.getElementById(toggle.getAttribute('aria-controls')!)!;
   expect(bidders).not.toBeVisible();
   fireEvent.click(toggle);
   expect(toggle).toHaveAttribute('aria-expanded', 'true');
   expect(toggle).toHaveTextContent(AWARDS_COPY.hideBidders(3));
+  expect(toggle).toHaveAccessibleName(`${AWARD.title}: hide the 3 bidders`);
   expect(bidders).toBeVisible();
   expect(within(bidders).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
     'Kigali Roads Ltd — FRW 6,120,000 (winner)',

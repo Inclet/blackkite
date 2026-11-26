@@ -30,7 +30,8 @@ export const BENCHMARKS_COPY = {
   listLabel: 'Categories',
   listHelp: 'Prices are the winning bids. Each line keeps to one currency.',
   open: 'See the awards',
-  openLabel: (label: string) => `See the awards: ${label}`,
+  /** The category first, so a list of these links reads apart; the visible words are in the name. */
+  openLabel: (label: string) => `${label}: see the awards`,
   emptyTitle: 'No awarded contracts yet',
   emptyBody: 'Blackkite shows prices here once it has read awarded contracts.',
   emptyFiltered: (entity: string) => `No awarded contracts from “${entity}” in this period.`,

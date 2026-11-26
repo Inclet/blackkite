@@ -34,7 +34,9 @@ export const AWARDS_COPY = {
   priceNotPublished: 'price not published',
   winner: 'winner',
   notice: 'Open the notice (opens in a new tab)',
-  noticeLabel: (title: string) => `Open the notice (opens in a new tab): ${title}`,
+  /** The award first, so a list of these links reads apart; the visible words are in the name. */
+  noticeLabel: (title: string) => `${title}: open the notice (opens in a new tab)`,
+  toggleLabel: (title: string, open: boolean, n: number) => `${title}: ${(open ? AWARDS_COPY.hideBidders(n) : AWARDS_COPY.showBidders(n)).toLowerCase()}`,
   emptyTitle: 'No awards to show',
   emptyBody: 'Blackkite has no awarded contracts in this category yet.',
   pageOf: (first: number, last: number, total: number) => `Awards ${first}–${last} of ${total}`,
@@ -140,7 +142,7 @@ function AwardRow({ award: a, currency }: { award: Award; currency: string | nul
         <span className={styles.meta}>{AWARDS_COPY.noBidders}</span>
       ) : (
         <div>
-          <TextButton spacing="stacked" aria-expanded={open} aria-controls={`${id}-bidders`} onClick={() => setOpen((o) => !o)}>
+          <TextButton spacing="stacked" aria-label={AWARDS_COPY.toggleLabel(a.title, open, bidders.length)} aria-expanded={open} aria-controls={`${id}-bidders`} onClick={() => setOpen((o) => !o)}>
             {open ? AWARDS_COPY.hideBidders(bidders.length) : AWARDS_COPY.showBidders(bidders.length)}
           </TextButton>
           <ul id={`${id}-bidders`} hidden={!open} className={styles.list} aria-label={AWARDS_COPY.biddersLabel(a.title)}>
