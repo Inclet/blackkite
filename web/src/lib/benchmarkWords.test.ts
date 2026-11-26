@@ -43,16 +43,20 @@ test('amounts: millions and billions abbreviated, smaller amounts in full, RWF w
 });
 
 test('a category in plain words, with the middle award and the usual number of bidders', () => {
-  expect(categorySentence(cat())).toBe('Most awards were between FRW 4.2M and FRW 9.8M; the middle one was FRW 6.1M (14 awards). Usually 5 bidders.');
-  expect(categorySentence(cat({ medianBidders: null }))).toBe('Most awards were between FRW 4.2M and FRW 9.8M; the middle one was FRW 6.1M (14 awards).');
+  // The brief's example: p25 to p75 is the middle half of the awards.
+  expect(categorySentence(cat({ p25: 4_800_000, p75: 11_200_000, median: 6_100_000, medianBidders: 4 }))).toBe(
+    'Half the awards were between FRW 4.8M and FRW 11.2M; the middle one was FRW 6.1M (14 awards). Usually 4 bidders.',
+  );
+  expect(categorySentence(cat())).toBe('Half the awards were between FRW 4.2M and FRW 9.8M; the middle one was FRW 6.1M (14 awards). Usually 5 bidders.');
+  expect(categorySentence(cat({ medianBidders: null }))).toBe('Half the awards were between FRW 4.2M and FRW 9.8M; the middle one was FRW 6.1M (14 awards).');
   expect(categorySentence(cat({ medianBidders: 1, awards: 3 }))).toContain('(3 awards). Usually 1 bidder.');
   expect(categorySentence(cat({ medianBidders: 4.5 }))).toContain('Usually 5 bidders.');
   // Amounts as strings (decimal) read the same.
   expect(categorySentence(cat({ p25: '4200000.00', p75: '9800000.00', median: '6100000.00' }))).toContain('between FRW 4.2M and FRW 9.8M; the middle one was FRW 6.1M');
   // Both ends the same once rounded.
-  expect(categorySentence(cat({ p25: 4_210_000, p75: 4_240_000 }))).toContain('Most awards were about FRW 4.2M;');
+  expect(categorySentence(cat({ p25: 4_210_000, p75: 4_240_000 }))).toContain('Half the awards were about FRW 4.2M;');
   expect(categorySentence(cat({ currency: 'USD', p25: 40_000, p75: 90_000, median: 61_000 }))).toBe(
-    'Most awards were between USD 40,000 and USD 90,000; the middle one was USD 61,000 (14 awards). Usually 5 bidders.',
+    'Half the awards were between USD 40,000 and USD 90,000; the middle one was USD 61,000 (14 awards). Usually 5 bidders.',
   );
 });
 
@@ -67,7 +71,10 @@ test('fewer than 3 awards: counts only, no range', () => {
 
 test('the tender detail line', () => {
   expect(detailBenchmarkSentence({ category: 'road-works', median: 6_100_000, p25: 4_200_000, p75: 9_800_000, awards: 14, currency: 'RWF' })).toBe(
-    'Similar contracts were usually awarded between FRW 4.2M and FRW 9.8M (14 awards).',
+    'Half of similar contracts were awarded between FRW 4.2M and FRW 9.8M (14 awards).',
+  );
+  expect(detailBenchmarkSentence({ category: 'x', median: 4_220_000, p25: 4_210_000, p75: 4_240_000, awards: 5, currency: 'RWF' })).toBe(
+    'Half of similar contracts were awarded at about FRW 4.2M (5 awards).',
   );
   expect(detailBenchmarkSentence({ category: 'x', median: 1, p25: null, p75: 2, awards: 14, currency: 'RWF' })).toBeNull();
   expect(detailBenchmarkSentence({ category: 'x', median: 1, p25: 1, p75: 2, awards: 2, currency: 'RWF' })).toBeNull();

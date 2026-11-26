@@ -61,8 +61,9 @@ export const BENCHMARK_COPY = {
 } as const;
 
 /**
- * One category in plain words: "Most awards were between FRW 4.2M and FRW 9.8M;
- * the middle one was FRW 6.1M (14 awards). Usually 5 bidders."
+ * One category in plain words: "Half the awards were between FRW 4.8M and FRW
+ * 11.2M; the middle one was FRW 6.1M (14 awards). Usually 4 bidders." The range
+ * is p25 to p75, the middle half of the awards (not "most").
  */
 export function categorySentence(c: BenchmarkCategory): string {
   const range = c.awards >= MIN_AWARDS ? between(c.p25, c.p75, c.currency) : null;
@@ -70,14 +71,14 @@ export function categorySentence(c: BenchmarkCategory): string {
   const median = amountOf(c.median);
   const middle = median === null ? '' : `; the middle one was ${shortAmount(median, c.currency)}`;
   const bidders = c.medianBidders !== null && c.medianBidders !== undefined && c.medianBidders > 0 ? ` ${BENCHMARK_COPY.bidders(Math.round(c.medianBidders))}` : '';
-  return `Most awards were ${range}${middle} (${awardsWord(c.awards)}).${bidders}`;
+  return `Half the awards were ${range}${middle} (${awardsWord(c.awards)}).${bidders}`;
 }
 
-/** The tender detail's line: "Similar contracts were usually awarded between FRW 4.2M and FRW 9.8M (14 awards)." Null when there is no range. */
+/** The tender detail's line: "Half of similar contracts were awarded between FRW 4.2M and FRW 9.8M (14 awards)." p25 to p75, the middle half. Null when there is no range. */
 export function detailBenchmarkSentence(b: DetailBenchmark | null | undefined): string | null {
   if (!b || b.awards < MIN_AWARDS) return null;
   const range = between(b.p25, b.p75, b.currency);
-  return range ? `Similar contracts were usually awarded ${range} (${awardsWord(b.awards)}).` : null;
+  return range ? `Half of similar contracts were awarded ${range.startsWith('about') ? `at ${range}` : range} (${awardsWord(b.awards)}).` : null;
 }
 
 /** A category slug as words, when no label is known: "road-works" -> "Road works". */

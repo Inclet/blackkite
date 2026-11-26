@@ -47,11 +47,11 @@ test('each category in plain words, one currency per line, the currency named on
   renderAt('/benchmarks');
   const list = within(await screen.findByRole('region', { name: BENCHMARKS_COPY.listLabel }));
   expect(list.getByText('Road works')).toBeInTheDocument();
-  expect(list.getByText('Most awards were between FRW 4.2M and FRW 9.8M; the middle one was FRW 6.1M (14 awards). Usually 5 bidders.')).toBeInTheDocument();
+  expect(list.getByText('Half the awards were between FRW 4.2M and FRW 9.8M; the middle one was FRW 6.1M (14 awards). Usually 5 bidders.')).toBeInTheDocument();
   expect(list.getByText('Freight and transport (FRW)')).toBeInTheDocument();
   expect(list.getByText('Only 2 awards so far — not enough to show a range.')).toBeInTheDocument();
   expect(list.getByText('Freight and transport (USD)')).toBeInTheDocument();
-  expect(list.getByText('Most awards were between USD 40,000 and USD 90,000; the middle one was USD 61,000 (4 awards). Usually 3 bidders.')).toBeInTheDocument();
+  expect(list.getByText('Half the awards were between USD 40,000 and USD 90,000; the middle one was USD 61,000 (4 awards). Usually 3 bidders.')).toBeInTheDocument();
   expect(list.getByRole('link', { name: BENCHMARKS_COPY.openLabel('Road works') })).toHaveAttribute('href', '/benchmarks/road-works');
   // The default window: the last 12 months, Kigali.
   expect(api.fetch.mock.calls.map((c) => c[0])).toContain('/api/benchmarks?from=2025-11-24&to=2026-11-24');
