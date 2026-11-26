@@ -1,0 +1,120 @@
+# Blackkite reverse proxy (Caddy). Built into the `proxy` image by web/Dockerfile.
+#
+# - Serves the built SPA from /srv, with history fallback to /index.html.
+# - Forwards exactly these paths to the API (docs/api-contract.md section 2,
+#   web/apiProxy.ts): /api and /api/*, /auth/verify, /auth/request-link,
+#   /auth/logout, /me. Everything else is the SPA, including /auth/confirm,
+#   /unsubscribe, /admin/*, /sources and /calendar: those pages carry their token
+#   in the URL fragment, which no browser sends, and are never forwarded.
+# - Site address from BK_SITE_ADDRESS. On the VPS compose sets it to BK_DOMAIN:
+#   Caddy gets and renews a TLS certificate and redirects HTTP to HTTPS. The
+#   local override sets ":80" (plain HTTP, no certificate, no HSTS).
+# - Logs: `token=` query values are replaced by [redacted] in the access log and
+#   in every other Caddy log line that carries the request (error log), and the
+#   Cookie, Authorization and Referer request headers are dropped from logs.
+{
+	# Admin API only inside the container (used by `caddy reload`).
+	admin localhost:2019
+	log default {
+		output stderr
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp "(?i)([?&]token=)[^&#]*" "${1}[redacted]"
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+				request>headers>Referer delete
+			}
+		}
+	}
+	# No trusted_proxies: Caddy is the edge, so a client's own X-Forwarded-For
+	# is never believed, and reverse_proxy below overwrites it.
+}
+
+(redacted_access_log) {
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp "(?i)([?&]token=)[^&#]*" "${1}[redacted]"
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+				request>headers>Referer delete
+				resp_headers>Set-Cookie delete
+			}
+		}
+	}
+}
+
+(security_headers) {
+	header {
+		# The build has no inline scripts or styles; React sets styles through
+		# the CSSOM, which style-src does not govern.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Cross-Origin-Opener-Policy same-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		-Server
+	}
+	# The sign-in landing page and the unsubscribe page send no Referer at all
+	# (the app also sets <meta name="referrer" content="no-referrer"> there).
+	@no_referrer path /auth/confirm /unsubscribe
+	header @no_referrer Referrer-Policy no-referrer
+	@default_referrer not path /auth/confirm /unsubscribe
+	header @default_referrer Referrer-Policy strict-origin-when-cross-origin
+	# HSTS only over TLS (never on the plain-HTTP local stack).
+	@tls protocol https
+	header @tls Strict-Transport-Security "max-age=31536000"
+	# The static digest design preview is plain HTML with inline styles (no scripts).
+	@digest_preview path /digest/preview.html
+	header @digest_preview Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+}
+
+{$BK_SITE_ADDRESS} {
+	import redacted_access_log
+	import security_headers
+
+	@api path /api /api/* /auth/verify /auth/request-link /auth/logout /me
+	handle @api {
+		request_body {
+			max_size 10MB
+		}
+		reverse_proxy api:8000 {
+			# Overwrite, never append: the API trusts X-Forwarded-For from this
+			# proxy only (BK_FORWARDED_ALLOW_IPS) and keys rate limits on it.
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-Host {host}
+			header_down -Server
+		}
+	}
+
+	handle {
+		root * /srv
+		encode zstd gzip
+		# Vite's hashed bundles never change under one name.
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		@static path /fonts/* /icons/* /digest/*
+		header @static Cache-Control "public, max-age=86400"
+		# index.html, the service worker and the manifest: always revalidate,
+		# so a deploy reaches every browser on its next load.
+		@revalidate not path /assets/* /fonts/* /icons/* /digest/*
+		header @revalidate Cache-Control "no-cache"
+		# History fallback for app routes; a missing bundle is a 404, not the app.
+		@app_route {
+			not path /assets/*
+			not file {path}
+		}
+		rewrite @app_route /index.html
+		file_server
+	}
+}
+
+# Container health check only (not published by compose).
+http://:8099 {
+	respond /healthz "ok" 200
+	respond 404
+}
