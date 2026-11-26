@@ -17,6 +17,7 @@ from pathlib import Path
 from pydantic import BaseModel
 from pydantic.alias_generators import to_camel
 
+from blackkite.member import procurement as PR
 from blackkite.member import profiles as P
 from blackkite.member import schemas as S
 from blackkite.routes import source_schemas as SS
@@ -70,6 +71,12 @@ MODELS = {
     "ItemIn": ItemIn,
     "ItemPatch": ItemPatch,
     "ShareConsentIn": ShareConsentIn,
+    # M5 (docs/api-contract.md section 6): responses. OpportunityOut above
+    # carries detail.benchmark (OpportunityBenchmark).
+    "BenchmarksOut": PR.BenchmarksOut,
+    "BenchmarkAwardsOut": PR.BenchmarkAwardsOut,
+    "PlansOut": PR.PlansOut,
+    "OpportunityBenchmark": S.OpportunityBenchmark,
 }
 
 
