@@ -27,8 +27,14 @@
 			}
 		}
 	}
-	# No trusted_proxies: Caddy is the edge, so a client's own X-Forwarded-For
-	# is never believed, and reverse_proxy below overwrites it.
+	# Standalone: BK_TRUSTED_PROXIES defaults to 127.0.0.1/32 (trust nothing
+	# external). Behind a shared reverse proxy: set it to the shared Caddy's IP
+	# or subnet. When the peer is trusted, {client_ip} is taken from
+	# X-Forwarded-For instead of the connection; untrusted peers' headers are
+	# still overwritten by reverse_proxy below.
+	servers {
+		trusted_proxies static {$BK_TRUSTED_PROXIES}
+	}
 }
 
 (redacted_access_log) {
@@ -64,9 +70,16 @@
 	header @no_referrer Referrer-Policy no-referrer
 	@default_referrer not path /auth/confirm /unsubscribe
 	header @default_referrer Referrer-Policy strict-origin-when-cross-origin
-	# HSTS only over TLS (never on the plain-HTTP local stack).
-	@tls protocol https
-	header @tls Strict-Transport-Security "max-age=31536000"
+	# HSTS when the client's connection is genuinely HTTPS: either directly
+	# (standalone) or forwarded by a trusted proxy (shared layout). An
+	# untrusted peer sending X-Forwarded-Proto: https does not trigger HSTS.
+	@https_direct protocol https
+	header @https_direct Strict-Transport-Security "max-age=31536000"
+	@https_forwarded {
+		remote_ip {$BK_TRUSTED_PROXIES}
+		header X-Forwarded-Proto https
+	}
+	header @https_forwarded Strict-Transport-Security "max-age=31536000"
 	# The static digest design preview is plain HTML with inline styles (no scripts).
 	@digest_preview path /digest/preview.html
 	header @digest_preview Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
@@ -84,7 +97,9 @@
 		reverse_proxy api:8000 {
 			# Overwrite, never append: the API trusts X-Forwarded-For from this
 			# proxy only (BK_FORWARDED_ALLOW_IPS) and keys rate limits on it.
-			header_up X-Forwarded-For {remote_host}
+			# {client_ip} equals the peer address unless the peer is in
+			# trusted_proxies, so an untrusted client's forged header is replaced.
+			header_up X-Forwarded-For {client_ip}
 			header_up X-Forwarded-Proto {scheme}
 			header_up X-Forwarded-Host {host}
 			header_down -Server

@@ -16,6 +16,12 @@
 # Only the proxy publishes ports. db and api are not reachable from outside.
 name: blackkite
 
+# Memory budget for a 4 GB VPS (docs/deploy.md):
+#   db ~400m + api ~300m + proxy ~50m + renderer 1g + worker 768m ≈ 2.5 GB,
+#   leaving ~1.5 GB for the OS, page cache and swap headroom.
+#   Renderer and worker have configurable limits (BK_RENDERER_MEM_LIMIT,
+#   BK_WORKER_MEM_LIMIT); lower them if the VPS has less memory.
+#
 # Container logs rotate (json-file): at most 5 x 10 MB per container.
 x-logging: &logging
   driver: json-file
@@ -92,6 +98,7 @@ services:
     pull_policy: never
     restart: unless-stopped
     logging: *logging
+    mem_limit: ${BK_WORKER_MEM_LIMIT:-768m}
     command: ["bk", "worker"]
     env_file:
       - path: .env
@@ -136,6 +143,7 @@ services:
     pull_policy: build
     restart: unless-stopped
     logging: *logging
+    mem_limit: ${BK_RENDERER_MEM_LIMIT:-1g}
     environment:
       BK_RENDERER_TOKEN: ${BK_RENDERER_TOKEN:?set BK_RENDERER_TOKEN in .env}
       BK_BOT_CONTACT_URL: ${BK_BOT_CONTACT_URL:-}
@@ -179,6 +187,7 @@ services:
     logging: *logging
     environment:
       BK_SITE_ADDRESS: ${BK_DOMAIN:-}
+      BK_TRUSTED_PROXIES: ${BK_TRUSTED_PROXIES:-127.0.0.1/32}
     ports:
       - "80:80"
       - "443:443"

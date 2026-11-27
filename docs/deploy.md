@@ -246,8 +246,10 @@ sign-in links included, to its log (section 6). Switch to `resend` before
 inviting anyone else.
 
 If you put another proxy or CDN in front, it must redact `token=` the same way
-and overwrite `X-Forwarded-For`; then also add its addresses to Caddy's
-`trusted_proxies`, or every client shares one rate-limit key.
+and set `X-Forwarded-For` and `X-Forwarded-Proto`; then set
+`BK_TRUSTED_PROXIES` to its address or subnet so Caddy reads `{client_ip}`
+from the header instead of overwriting it. Without that, every client shares
+one rate-limit key. See section 15 for the shared-proxy layout.
 
 ## 12. What not to expose
 
@@ -328,3 +330,123 @@ get that cached file's headers (the pages' own `no-referrer` meta tag still
 applies). Calendar apps and mail providers do not run the service worker and are
 unaffected. Fix: a `navigateFallbackDenylist` for `/api` and the other API paths
 in `web/vite.config.ts`.
+
+## 15. Behind a shared reverse proxy
+
+Use this layout when the VPS already runs a shared reverse proxy (e.g. Caddy)
+that holds ports 80 and 443 for multiple services. The blackkite proxy
+publishes no host ports; it joins the shared proxy's Docker network and
+listens on plain HTTP. TLS terminates at the shared proxy.
+
+### When to use
+
+- The host already has another Caddy (or nginx, Traefik, ...) on 80/443.
+- You do not want blackkite to manage its own TLS certificates.
+- Multiple services share one IP address.
+
+If blackkite is the only service on the VPS, use the standalone layout
+(sections 4 to 6).
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `docker-compose.yml` | Base: all services, networks, volumes |
+| `deploy/compose.shared-proxy.yml` | Override: proxy gets no ports, listens on :80, joins the shared network |
+| `deploy/shared-caddy.example` | Template site block for the shared Caddy (**needs owner approval before loading**) |
+
+### Required variables
+
+Set these in `.env` (or export them):
+
+| Variable | Value | How to find it |
+|---|---|---|
+| `BK_CADDY_NETWORK` | Name of the shared Caddy's Docker network | `docker network ls` |
+| `BK_TRUSTED_PROXIES` | Subnet of that network, or the shared Caddy's IP | `docker network inspect <net> --format '{{(index .IPAM.Config 0).Subnet}}'` |
+| `BK_DOMAIN` | Public hostname (same as standalone) | |
+
+The override refuses to start if `BK_CADDY_NETWORK` or `BK_TRUSTED_PROXIES` is
+unset, with a message naming the missing variable.
+
+### Commands
+
+```sh
+# Build (same as standalone):
+docker compose build
+# or: make deploy-build
+
+# Start:
+docker compose -f docker-compose.yml -f deploy/compose.shared-proxy.yml up -d --wait
+# or: make deploy-up-shared
+
+# The rest (bootstrap, seed-sources, backup, restore) is the same as standalone.
+```
+
+### What changes
+
+- **`BK_SITE_ADDRESS`** is `:80` (plain HTTP). The shared Caddy handles TLS.
+  The blackkite proxy's `caddy-data` volume no longer stores certificates.
+- **No published ports** on the proxy. The shared Caddy reaches it at
+  `blackkite-proxy:80` on the shared Docker network.
+- **Only the proxy** joins the shared network (`shared_edge`). db, api, worker
+  and renderer stay on internal networks only.
+- **`BK_TRUSTED_PROXIES`** tells the blackkite Caddy whose `X-Forwarded-For`
+  and `X-Forwarded-Proto` to believe. When the peer is in that range,
+  `{client_ip}` is taken from `X-Forwarded-For`; otherwise the header is
+  overwritten with the peer's real address (same as standalone). Rate limits
+  in the API still key on the real visitor's IP.
+- **HSTS** is sent when the connection is HTTPS directly (standalone) or when
+  `X-Forwarded-Proto: https` comes from a trusted proxy. An untrusted peer
+  sending that header does not trigger HSTS.
+
+### The shared Caddy template
+
+`deploy/shared-caddy.example` is a site-block template for the shared Caddy.
+**Do not load it without the owner's approval.** It reverse-proxies to
+`blackkite-proxy:80`, sets `X-Forwarded-For`, `X-Forwarded-Proto: https`,
+and strips `Forwarded` and `X-Forwarded-Port`. Review and adapt it for
+your shared Caddy's conventions before loading.
+
+### Memory limits
+
+The renderer (`BK_RENDERER_MEM_LIMIT`, default 1 GB) and the worker
+(`BK_WORKER_MEM_LIMIT`, default 768 MB) have configurable memory limits in
+the base compose file. Together with the other services (db ~400 MB, api
+~300 MB, proxy ~50 MB), the total is about 2.5 GB, leaving ~1.5 GB for the
+OS, page cache and swap headroom on a 4 GB VPS.
+
+ro-vps has about 4.7 GB available and is already using swap. If other
+services on the host compete for memory, lower the limits:
+
+```sh
+BK_RENDERER_MEM_LIMIT=768m
+BK_WORKER_MEM_LIMIT=512m
+```
+
+### Subnet clashes
+
+The blackkite edge network defaults to `BK_EDGE_SUBNET=172.30.250.0/24`
+with the proxy at `BK_PROXY_IP=172.30.250.10`. If that clashes with the
+shared network or other networks on the host, change both in `.env`:
+
+```sh
+BK_EDGE_SUBNET=172.30.251.0/24
+BK_PROXY_IP=172.30.251.10
+```
+
+### Verification
+
+```sh
+# Standalone config still works:
+docker compose config >/dev/null
+
+# Shared config works:
+BK_CADDY_NETWORK=x BK_TRUSTED_PROXIES=172.18.0.0/16 \
+  docker compose -f docker-compose.yml -f deploy/compose.shared-proxy.yml config >/dev/null
+
+# Compose config checks (both layouts):
+make check-compose
+
+# Shared-proxy smoke test (creates throwaway containers and networks):
+make smoke-shared
+```

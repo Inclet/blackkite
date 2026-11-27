@@ -1,0 +1,40 @@
+# TEMPLATE — do not load into the shared Caddy without the owner's approval.
+#
+# Site block for the shared Caddy that fronts blackkite. Add this to the shared
+# Caddy's Caddyfile (or import it) after reviewing it. The shared Caddy handles
+# TLS for {$BK_DOMAIN} and forwards to the blackkite proxy container on the
+# shared Docker network.
+#
+# Prerequisites:
+#   - The blackkite proxy is running with deploy/compose.shared-proxy.yml.
+#   - The shared Caddy and the blackkite proxy are on the same external Docker
+#     network (BK_CADDY_NETWORK).
+#   - DNS for {$BK_DOMAIN} points at the host running the shared Caddy.
+#
+# The blackkite proxy has the network alias "blackkite-proxy" on the shared
+# network, so this block does not depend on the compose project name.
+
+{$BK_DOMAIN} {
+	reverse_proxy blackkite-proxy:80 {
+		header_up Host {host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto https
+		header_up -Forwarded
+		header_up -X-Forwarded-Port
+	}
+
+	# Token redaction: the blackkite proxy redacts token= from its own logs,
+	# but the shared Caddy's access log also sees the request. Either redact
+	# here (uncomment the log block below) or accept that the shared Caddy's
+	# log contains calendar and unsubscribe tokens.
+	#
+	# log {
+	# 	output file /var/log/caddy/blackkite-access.log
+	# 	format filter {
+	# 		wrap json
+	# 		fields {
+	# 			request>uri regexp "(?i)([?&]token=)[^&#]*" "${1}[redacted]"
+	# 		}
+	# 	}
+	# }
+}
