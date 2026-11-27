@@ -1,7 +1,7 @@
 # Blackkite developer tasks. Run from the repo root.
 API := cd api &&
 
-.PHONY: install migrate downgrade-base test bootstrap seed-sources demo-seed worker renderer dev up down smoke smoke-down deploy-build deploy-up backup
+.PHONY: install migrate downgrade-base test bootstrap seed-sources demo-seed worker renderer dev up down smoke smoke-down smoke-shared check-compose deploy-build deploy-up deploy-up-shared backup
 
 install:        ## install API dependencies
 	$(API) uv sync
@@ -48,11 +48,22 @@ smoke:          ## local stack end-to-end smoke test through the proxy (leaves i
 smoke-down:     ## smoke test, then remove the stack's containers, volumes and networks
 	deploy/smoke/run.sh --down
 
+smoke-shared:   ## shared-proxy layout smoke test (creates throwaway containers and networks)
+	deploy/smoke-shared-proxy.sh
+
+check-compose:  ## validate standalone and shared-proxy compose configs (no containers)
+	deploy/check-compose-configs.sh
+
 deploy-build:   ## VPS: build the production images
 	docker compose build
 
 deploy-up:      ## VPS: start or update the production stack (BK_ENV=prod, HTTPS for BK_DOMAIN)
 	docker compose up -d --wait
+
+SHARED := docker compose -f docker-compose.yml -f deploy/compose.shared-proxy.yml
+
+deploy-up-shared: ## VPS: start behind a shared reverse proxy (needs BK_CADDY_NETWORK, BK_TRUSTED_PROXIES)
+	$(SHARED) up -d --wait
 
 backup:         ## VPS: dump the database to ./backups (deploy/backup.sh)
 	deploy/backup.sh

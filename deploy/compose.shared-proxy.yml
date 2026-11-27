@@ -1,0 +1,33 @@
+# Shared reverse proxy layout: the blackkite proxy runs behind an external
+# Caddy (or other reverse proxy) that already holds ports 80 and 443.
+#
+# Usage (see docs/deploy.md, "Behind a shared reverse proxy"):
+#   docker compose -f docker-compose.yml -f deploy/compose.shared-proxy.yml up -d --wait
+#
+# Required env vars (compose refuses to start without them):
+#   BK_CADDY_NETWORK     name of the external Docker network the shared Caddy is on
+#   BK_TRUSTED_PROXIES   CIDR of the shared network or the shared Caddy's IP
+#   BK_DOMAIN            the site's public hostname (for certificates on the shared Caddy)
+#
+# Differences from standalone (docker-compose.yml alone):
+#   - The proxy publishes no host ports; the shared Caddy reaches it on the
+#     external network at alias "blackkite-proxy".
+#   - BK_SITE_ADDRESS is :80 (plain HTTP); TLS terminates at the shared Caddy.
+#   - BK_TRUSTED_PROXIES is required (the shared Caddy's subnet or IP).
+#   - Only the proxy joins the shared network; db, api, worker, renderer do not.
+services:
+  proxy:
+    environment:
+      BK_SITE_ADDRESS: ":80"
+      BK_TRUSTED_PROXIES: "${BK_TRUSTED_PROXIES:?BK_TRUSTED_PROXIES must be set (shared network subnet or shared Caddy IP)}"
+    ports: !reset []
+    networks:
+      edge:
+        ipv4_address: ${BK_PROXY_IP:-172.30.250.10}
+      shared_edge:
+        aliases: [blackkite-proxy]
+
+networks:
+  shared_edge:
+    name: ${BK_CADDY_NETWORK:?BK_CADDY_NETWORK must be set to the shared Caddy's Docker network}
+    external: true
