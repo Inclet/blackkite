@@ -5,6 +5,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
 pass=0
 fail=0
 result() {
@@ -18,11 +21,11 @@ echo "== standalone layout (docker-compose.yml)"
 standalone=$(BK_DOMAIN=test.example.com \
   POSTGRES_PASSWORD=aaaaaaaaaaaabbbbbbbbbbbb \
   BK_RENDERER_TOKEN=aaaaaaaaaaaabbbbbbbbbbbbcccccccccccc \
-  docker compose -f docker-compose.yml config --format json 2>"$TMPDIR/standalone-err" || true)
+  docker compose -f docker-compose.yml config --format json 2>"$tmpdir/standalone-err" || true)
 if [ -n "$standalone" ]; then
   result PASS "standalone config parses" "ok"
 else
-  result FAIL "standalone config parses" "$(cat "$TMPDIR/standalone-err")"
+  result FAIL "standalone config parses" "$(cat "$tmpdir/standalone-err")"
 fi
 
 # Standalone publishes 80, 443, 443/udp.
@@ -46,11 +49,11 @@ shared=$(BK_DOMAIN=test.example.com \
   BK_RENDERER_TOKEN=aaaaaaaaaaaabbbbbbbbbbbbcccccccccccc \
   BK_CADDY_NETWORK=octant-caddy \
   BK_TRUSTED_PROXIES=172.18.0.0/16 \
-  docker compose -f docker-compose.yml -f deploy/compose.shared-proxy.yml config --format json 2>"$TMPDIR/shared-err" || true)
+  docker compose -f docker-compose.yml -f deploy/compose.shared-proxy.yml config --format json 2>"$tmpdir/shared-err" || true)
 if [ -n "$shared" ]; then
   result PASS "shared config parses with BK_CADDY_NETWORK + BK_TRUSTED_PROXIES" "ok"
 else
-  result FAIL "shared config parses" "$(cat "$TMPDIR/shared-err")"
+  result FAIL "shared config parses" "$(cat "$tmpdir/shared-err")"
 fi
 
 # Proxy has no ports in shared config.

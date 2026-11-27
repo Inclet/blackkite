@@ -322,15 +322,6 @@ Not verified here:
   calls (no keys; demo data only).
 - The backup cron line and off-site copies.
 
-Known issue (application code, not deployment): the PWA service worker answers
-every navigation with its cached `index.html`. Once it is installed, opening an
-`/api/...` URL in that browser (for example the calendar `.ics` link from the
-app) shows the app instead of the file, and `/auth/confirm` and `/unsubscribe`
-get that cached file's headers (the pages' own `no-referrer` meta tag still
-applies). Calendar apps and mail providers do not run the service worker and are
-unaffected. Fix: a `navigateFallbackDenylist` for `/api` and the other API paths
-in `web/vite.config.ts`.
-
 ## 15. Behind a shared reverse proxy
 
 Use this layout when the VPS already runs a shared reverse proxy (e.g. Caddy)
@@ -450,3 +441,10 @@ make check-compose
 # Shared-proxy smoke test (creates throwaway containers and networks):
 make smoke-shared
 ```
+
+The shared-proxy smoke test (`deploy/smoke-shared-proxy.sh`) starts the proxy
+with an echo upstream and checks: (a) a trusted peer's `X-Forwarded-For` is
+forwarded to the upstream, (b) an untrusted peer's forged `X-Forwarded-For` is
+replaced with the peer's real address, (c) HSTS is sent when
+`X-Forwarded-Proto: https` comes from a trusted peer and not from an untrusted
+one, and (d) `token=` values are redacted in proxy logs.

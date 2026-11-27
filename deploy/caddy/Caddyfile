@@ -8,7 +8,8 @@
 #   in the URL fragment, which no browser sends, and are never forwarded.
 # - Site address from BK_SITE_ADDRESS. On the VPS compose sets it to BK_DOMAIN:
 #   Caddy gets and renews a TLS certificate and redirects HTTP to HTTPS. The
-#   local override sets ":80" (plain HTTP, no certificate, no HSTS).
+#   local override and shared-proxy layout set ":80" (plain HTTP, no TLS from
+#   this Caddy; HSTS only when a trusted proxy forwards X-Forwarded-Proto: https).
 # - Logs: `token=` query values are replaced by [redacted] in the access log and
 #   in every other Caddy log line that carries the request (error log), and the
 #   Cookie, Authorization and Referer request headers are dropped from logs.
@@ -27,13 +28,13 @@
 			}
 		}
 	}
-	# Standalone: BK_TRUSTED_PROXIES defaults to 127.0.0.1/32 (trust nothing
-	# external). Behind a shared reverse proxy: set it to the shared Caddy's IP
-	# or subnet. When the peer is trusted, {client_ip} is taken from
-	# X-Forwarded-For instead of the connection; untrusted peers' headers are
-	# still overwritten by reverse_proxy below.
+	# BK_TRUSTED_PROXIES defaults to 127.0.0.1/32 (trust nothing external).
+	# Behind a shared reverse proxy: set it to the shared Caddy's IP or subnet.
+	# When the peer is trusted, {client_ip} is taken from X-Forwarded-For
+	# instead of the connection; untrusted peers' headers are still overwritten
+	# by reverse_proxy below.
 	servers {
-		trusted_proxies static {$BK_TRUSTED_PROXIES}
+		trusted_proxies static {$BK_TRUSTED_PROXIES:127.0.0.1/32}
 	}
 }
 
@@ -76,7 +77,7 @@
 	@https_direct protocol https
 	header @https_direct Strict-Transport-Security "max-age=31536000"
 	@https_forwarded {
-		remote_ip {$BK_TRUSTED_PROXIES}
+		remote_ip {$BK_TRUSTED_PROXIES:127.0.0.1/32}
 		header X-Forwarded-Proto https
 	}
 	header @https_forwarded Strict-Transport-Security "max-age=31536000"
