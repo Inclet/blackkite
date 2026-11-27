@@ -354,3 +354,5 @@ Rules that follow from the design:
 Naming note: "Black Kite" is already the name of a US cyber-risk software company, plus a few smaller firms. Fine for a free, invite-only tool. Before any public launch, pick a distinct domain and get the name checked for trademark conflicts.
 
 Revisit if the platform opens to public sign-up or becomes paid: terms-of-use checks on sources and the investment-listing question in section 10.
+
+@OCTANT.md
